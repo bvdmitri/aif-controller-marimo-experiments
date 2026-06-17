@@ -294,16 +294,33 @@ class AnticipatoryControllerSpec:
 class AIFControllerSpec:
     """Active-Inference signal controller.
 
-    PLACEHOLDER spec. The fields below are intentionally minimal; the AIF
-    controller's generative model, preferences, and action-selection are an
-    open design question developed later (see ``control/aif_controller.py``).
-    For now the AIF controller conforms to the controller interface so the
-    pipeline runs end to end.
+    The controller keeps a Gaussian belief over the two signalised queues
+    ``(L_2, L_6)``, predicts them one control interval ahead under each
+    candidate green split, and selects the split by minimising the fixed
+    Expected-Free-Energy functional. Its preference is a preferred-observation
+    distribution ``N(0, Sigma_pref)`` over the queues ("prefer empty queues"),
+    with the low-and-balanced goal encoded in ``Sigma_pref``. See
+    ``control/aif_controller.py`` and paper Section 4.2.
     """
 
     control_interval_min: int = 10
-    # Reserved knobs for the future AIF formulation (unused by the placeholder):
-    omega: float = 1.0       # utilisation-balance weight in the preferred state
+    horizon_min: int = 10
+    """Prediction horizon for scoring a candidate split (defaults to one interval)."""
+    phi_grid_size: int = 9
+    """Number of candidate green splits evaluated each control epoch."""
+
+    # Preference N(0, Sigma_pref) over the queues (the only designed object).
+    sigma_pref: float = 20.0
+    """Preferred-queue level tolerance (veh): isotropic SD of the preference."""
+    omega: float = 0.02
+    """Balance precision along the capacity-normalised imbalance direction (veh^-2)."""
+
+    # Generative-model noise for the queue belief.
+    sigma_obs: float = 5.0
+    """Queue observation-noise SD (veh)."""
+    sigma_proc: float = 2.0
+    """Per-step random-walk process-noise SD on the queue belief (veh)."""
+
     kappa: float = 1.0       # green-split smoothness (policy-prior) weight
     gamma: float = 4.0       # action precision
 

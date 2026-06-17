@@ -1,9 +1,10 @@
 """Headless smoke runner for the AIF-controller experiments.
 
-There is only a markdown landing page (notebook 00) so far, so this script
-instead exercises the *core coupled pipeline* without the marimo runtime: it
-runs a short simulation for every controller type and every communication
-signal, and renders the available plots. Any logic error surfaces here.
+Rather than drive the marimo notebooks (00 landing page, 01 AIF controller)
+through the runtime, this script exercises the *core coupled pipeline*
+directly: it runs a short simulation for every controller type and every
+communication signal, and renders the available plots. Any logic error
+surfaces here.
 
 Run with::
 
