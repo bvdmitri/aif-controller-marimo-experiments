@@ -14,4 +14,4 @@ services:
     container_name: aif-controller
     restart: unless-stopped
     ports:
-      - "2718:2718"
+      - "2719:2719"
