@@ -119,7 +119,6 @@ def simulate_one_day(
         "phi2": phi2, "phi6": phi6, "SC": SC,
     })
 
-    sig_ab, sig_cd = net.signalised_links
     return {
         "day": day_index,
         "P_alpha": P_alpha,
@@ -129,9 +128,9 @@ def simulate_one_day(
         "TT_alpha": tt_route["alpha"],
         "TT_beta": tt_route["beta"],
         "TT_gamma": tt_route["gamma"],
-        "L2": queues[sig_ab],
-        "L5": queues[5] if 5 in queues else np.zeros(sim.K),
-        "L6": queues[sig_cd],
+        # Per-link queues for every link (L1..L7); the network-state chart needs
+        # all of them, the within-day charts use L2/L5/L6.
+        **{f"L{lid}": queues[lid] for lid in net.link_ids},
         "phi2": phi2,
         "phi6": phi6,
         "SC": SC,
@@ -247,9 +246,7 @@ def run_experiment(
                     "TT_alpha": float(out["TT_alpha"][k]),
                     "TT_beta": float(out["TT_beta"][k]),
                     "TT_gamma": float(out["TT_gamma"][k]),
-                    "L2": float(out["L2"][k]),
-                    "L5": float(out["L5"][k]),
-                    "L6": float(out["L6"][k]),
+                    **{f"L{lid}": float(out[f"L{lid}"][k]) for lid in net.link_ids},
                     "phi2": float(out["phi2"][k]),
                     "phi6": float(out["phi6"][k]),
                     # SC is a daily scalar; repeated on every step row so the

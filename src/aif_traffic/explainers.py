@@ -90,6 +90,10 @@ day, how the A--B demand splits between the intersection route $\alpha$ (link 2)
 and the bypass $\beta$ (link 5), alongside the exogenous C--D stream $\gamma$
 (link 6): when travellers divert away from the congested intersection near the
 demand peak, $Q_\alpha$ dips and $Q_\beta$ rises, which relieves $L_2$ there.
+The *network-state diagram* draws the seven links as a graph for a chosen day
+**and time of day**, colouring and labelling each link by either the traveller
+flow or the queue length (a switch); every link label carries both, and the two
+signalised links are annotated with the current green split $\phi_2,\phi_6$.
 The *green-split heatmap* shows $\phi_2$ over (day $\times$ time-of-day); the
 *queue heatmaps* do the same for $L_2,L_6$. The *system cost* and *route share*
 curves track day-to-day evolution, and the gif animates the within-day profiles

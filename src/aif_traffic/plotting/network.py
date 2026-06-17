@@ -6,8 +6,23 @@ from __future__ import annotations
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from matplotlib.colors import Normalize
+from matplotlib.patches import FancyArrowPatch
 
 from .primitives import TEXT_W, TEXT_W_HALF
+
+# Fixed layout for the default 7-link intersection network (paper figure
+# ``intersection_network_v2``): A--n1--nX--n3--B on a horizontal axis, with the
+# C--D stream crossing vertically at the signalised junction nX.
+_NODE_POS = {
+    "A": (0.0, 0.0), "n1": (2.0, 0.0), "nX": (4.0, 0.0),
+    "n3": (6.0, 0.0), "B": (8.0, 0.0), "C": (4.0, 2.4), "D": (4.0, -2.4),
+}
+_LINK_FROM_TO = {
+    1: ("A", "n1"), 2: ("n1", "nX"), 3: ("nX", "n3"), 4: ("n3", "B"),
+    5: ("n1", "n3"), 6: ("C", "nX"), 7: ("nX", "D"),
+}
+_BYPASS_LINK = 5  # drawn as an arc above the axis
 
 
 def _edges(v: np.ndarray) -> np.ndarray:
@@ -74,6 +89,132 @@ def plot_route_flows(step: pd.DataFrame, day: int | None = None):
     ax.set_title(f"Per-route traveller flow (day {day})")
     ax.legend(fontsize=7)
     ax.grid(alpha=0.25)
+    fig.tight_layout()
+    return fig
+
+
+def _link_flows(row, net) -> dict[int, float]:
+    """Per-link traveller flow [veh/h] at one (day, tau) row, from the route
+    flows via the route->link incidence (a link carries the sum of the route
+    flows that traverse it)."""
+    route_flow = {"alpha": float(row["Q_alpha"]),
+                  "beta": float(row["Q_beta"]),
+                  "gamma": float(row["Q_gamma"])}
+    flows = {}
+    for lid in net.link_ids:
+        flows[lid] = sum(route_flow[r] for r in net.routes
+                         if lid in net.route_links[r])
+    return flows
+
+
+def plot_network_state(
+    step: pd.DataFrame,
+    net,
+    day: int | None = None,
+    tau: int | None = None,
+    color_by: str = "travellers",
+    *,
+    seed: int | None = None,
+):
+    """Node-edge diagram of the network at one day and time of day.
+
+    Each link is coloured and labelled by either the traveller flow
+    (``color_by="travellers"``, veh/h) or the queue length
+    (``color_by="queue"``, veh); the label always shows both, and the two
+    signalised links (2, 6) additionally show the current green split. The
+    colour scale is fixed to that day's maximum of the selected metric so
+    frames are comparable as the time-of-day slider moves.
+    """
+    if tuple(net.link_ids) != (1, 2, 3, 4, 5, 6, 7):
+        raise ValueError(
+            "plot_network_state assumes the default 7-link intersection "
+            f"network; got link ids {net.link_ids}."
+        )
+    if color_by not in ("travellers", "queue"):
+        raise ValueError(f"color_by must be 'travellers' or 'queue', got {color_by!r}.")
+
+    sd = step if (seed is None or "seed" not in step.columns) else step[step["seed"] == seed]
+    if "seed" in sd.columns and seed is None:
+        sd = sd[sd["seed"] == sd["seed"].min()]
+    if day is None:
+        day = int(sd["day"].max())
+    day_df = sd[sd["day"] == day].sort_values("tau")
+    taus = day_df["tau"].to_numpy()
+    if tau is None:
+        tau = int(taus[len(taus) // 2])
+    tau = int(taus[np.argmin(np.abs(taus - tau))])  # snap to an available tau
+    row = day_df[day_df["tau"] == tau].iloc[0]
+
+    flows = _link_flows(row, net)
+    queues = {lid: float(row[f"L{lid}"]) for lid in net.link_ids}
+    phi = {2: float(row["phi2"]), 6: float(row["phi6"])}
+
+    if color_by == "queue":
+        values, cmap, clabel = queues, plt.get_cmap("YlOrRd"), "queue length [veh]"
+        vmax = float(np.nanmax([day_df[f"L{lid}"].max() for lid in net.link_ids]))
+    else:
+        # Max link flow over the day = max over links of the route-flow sums.
+        flow_day = {lid: np.zeros(len(day_df)) for lid in net.link_ids}
+        for r in net.routes:
+            qr = day_df[f"Q_{r}"].to_numpy()
+            for lid in net.route_links[r]:
+                flow_day[lid] = flow_day[lid] + qr
+        values, cmap, clabel = flows, plt.get_cmap("viridis"), "traveller flow [veh/h]"
+        vmax = float(np.nanmax([flow_day[lid].max() for lid in net.link_ids]))
+    norm = Normalize(vmin=0.0, vmax=max(vmax, 1e-6))
+
+    fig, ax = plt.subplots(figsize=(TEXT_W * 1.35, TEXT_W * 0.85))
+    ax.set_aspect("equal")
+    ax.axis("off")
+
+    for lid, (a, b) in _LINK_FROM_TO.items():
+        (x0, y0), (x1, y1) = _NODE_POS[a], _NODE_POS[b]
+        colour = cmap(norm(values[lid]))
+        # Bypass arcs above the axis (matching the paper figure); rad<0 bows up.
+        arc = -0.45 if lid == _BYPASS_LINK else 0.0
+        ax.add_patch(FancyArrowPatch(
+            (x0, y0), (x1, y1),
+            connectionstyle=f"arc3,rad={arc}",
+            arrowstyle="-|>", mutation_scale=14,
+            linewidth=3.0, color=colour, shrinkA=12, shrinkB=12, zorder=1,
+        ))
+        # Label position: left part of the arc for the bypass (clear of the
+        # vertical C--D links), perpendicular offset otherwise.
+        mx, my = (x0 + x1) / 2.0, (y0 + y1) / 2.0
+        dx, dy = x1 - x0, y1 - y0
+        length = np.hypot(dx, dy) or 1.0
+        nx, ny = -dy / length, dx / length  # unit normal
+        if lid == _BYPASS_LINK:
+            mx, my, off = mx - 1.0, my + 0.95, (0.0, 0.0)
+        else:
+            off = (nx * 0.34, ny * 0.34)
+        label = f"L{lid}\n{flows[lid]:.0f} veh/h\nq={queues[lid]:.0f}"
+        if lid in phi:
+            label += f"\n$\\phi$={phi[lid]:.2f}"
+        ax.text(mx + off[0], my + off[1], label, ha="center", va="center",
+                fontsize=6.5, zorder=3,
+                bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="#cccccc",
+                          alpha=0.85, lw=0.5))
+
+    for name, (x, y) in _NODE_POS.items():
+        is_od = name in ("A", "B", "C", "D")
+        ax.scatter([x], [y], s=380 if is_od else 200,
+                   c="#1f4e79" if is_od else "#888888", zorder=2)
+        ax.text(x, y, name, ha="center", va="center", color="white",
+                fontsize=8, fontweight="bold", zorder=4)
+
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+    sm.set_array([])
+    fig.colorbar(sm, ax=ax, label=clabel, fraction=0.04, pad=0.02)
+
+    ax.set_title(
+        f"Network state — day {day}, t = {tau} min\n"
+        f"green split $\\phi_2$={phi[2]:.2f}, $\\phi_6$={phi[6]:.2f}   "
+        f"(colour: {color_by})",
+        fontsize=8,
+    )
+    ax.set_xlim(-1.0, 9.0)
+    ax.set_ylim(-3.2, 3.2)
     fig.tight_layout()
     return fig
 

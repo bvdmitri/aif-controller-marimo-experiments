@@ -59,6 +59,7 @@ def _():
         plot_daily_system_cost,
         plot_demand_profile,
         plot_green_split_heatmap,
+        plot_network_state,
         plot_route_flows,
         plot_route_share_over_days,
         plot_signal_day,
@@ -82,6 +83,7 @@ def _():
         plot_daily_system_cost,
         plot_demand_profile,
         plot_green_split_heatmap,
+        plot_network_state,
         plot_route_flows,
         plot_route_share_over_days,
         plot_signal_day,
@@ -244,6 +246,36 @@ def _(day_sel, figure_placeholder, plot_route_flows, results):
     )
     fig_routes
     return (fig_routes,)
+
+
+@app.cell
+def _(SimParams, mo, results):
+    tod_sel = mo.ui.slider(
+        0, SimParams().h_min, value=150, step=5, label="time of day [min]",
+    )
+    color_metric = mo.ui.radio(
+        options=["travellers", "queue"], value="travellers",
+        label="colour links by", inline=True,
+    )
+    (mo.hstack([tod_sel, color_metric], justify="start", gap=2)
+     if results is not None else mo.md(""))
+    return color_metric, tod_sel
+
+
+@app.cell
+def _(color_metric, day_sel, figure_placeholder, params, plot_network_state,
+      results, tod_sel):
+    fig_network = (
+        figure_placeholder("Network state at a time of day")
+        if results is None
+        else plot_network_state(
+            results.step, params.network,
+            day=int(day_sel.value), tau=int(tod_sel.value),
+            color_by=color_metric.value,
+        )
+    )
+    fig_network
+    return (fig_network,)
 
 
 @app.cell
