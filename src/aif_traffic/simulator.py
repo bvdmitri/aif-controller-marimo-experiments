@@ -96,9 +96,17 @@ def simulate_one_day(
     SC = daily_system_cost(inflow_by_route, tt_route, sim.dt_h)
 
     route_q = route_arrival_queues(queues, net, sim)
+    # Arrival-aligned intersection green split: the split the traveller meets
+    # when discharging through the signalised link, mirroring the forward look
+    # used for queue/TT observations (k + N_l).
+    sig_ab, _sig_cd = net.signalised_links
+    N_ab = net.n_delay(sim.dt_min)[sig_ab]
+    k_arr = np.minimum(np.arange(sim.K) + N_ab, sim.K - 1)
+    green_obs_alpha = np.asarray(phi2, dtype=float)[k_arr]
     population.update_beliefs(
         tt_route["alpha"], tt_route["beta"],
         route_q["alpha"], route_q["beta"],
+        green_obs_alpha=green_obs_alpha,
         rng=rng_obs, obs_noise_sd=params.noise.obs_noise_sd,
     )
 
@@ -198,7 +206,7 @@ def run_experiment(
 
         population = build_population(
             params_seed.population, sim, demand, construct_rng,
-            route_names=net.traveller_routes,
+            route_names=net.traveller_routes, signal=signal,
         )
         controller = build_controller(params_seed.controller, signal, net, sim)
 

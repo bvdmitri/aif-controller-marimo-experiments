@@ -24,32 +24,53 @@ from __future__ import annotations
 import jax
 import jax.numpy as jnp
 
-from .filter import C_IDX, F_IDX, L_IDX, VariationalState, predicted_tt
+from .filter import (
+    C_IDX,
+    F_IDX,
+    L_IDX,
+    PHI_HI_DEFAULT,
+    PHI_IDX,
+    PHI_LO_DEFAULT,
+    VariationalState,
+    predicted_tt,
+)
 
 
 def _predictive_moments(
     state: VariationalState,
+    signalised: jnp.ndarray,
+    phi_lo: float = PHI_LO_DEFAULT,
+    phi_hi: float = PHI_HI_DEFAULT,
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
     """Closed-form tomorrow's TT predictive moments per (agent, route).
 
     Returns ``(mu_y, var_y)`` each shape ``(N, n_routes)``. ``var_y`` is the
     posterior-uncertainty variance only; the caller adds ``sigma_obs^2``.
+    On signalised routes the forward map is ``F + 60 L/(phi*C)`` so an uncertain
+    green split ``phi`` inflates ``var_y`` (and hence the epistemic info gain).
     """
     Sigma = state.scale_tril @ jnp.swapaxes(state.scale_tril, -1, -2)
 
     mu_F = state.mu[..., F_IDX]
     mu_C = state.mu[..., C_IDX]
     mu_L = state.mu[..., L_IDX]
+    mu_phi = state.mu[..., PHI_IDX]
 
-    mu_y = predicted_tt(mu_F, mu_C, mu_L)
+    mu_y = predicted_tt(mu_F, mu_C, mu_L, mu_phi, signalised, phi_lo, phi_hi)
 
     C_safe = jnp.maximum(mu_C, 100.0)
     L_safe = jnp.maximum(mu_L, 0.0)
+    phi_clip = jnp.clip(mu_phi, phi_lo, phi_hi)
+    sig = signalised[None, :]                            # (1, R) broadcast
+    green = jnp.where(sig > 0.5, phi_clip, 1.0)
     grad = jnp.stack(
         [
-            jnp.ones_like(mu_F),
-            -60.0 * L_safe / (C_safe ** 2),
-            60.0 / C_safe,
+            jnp.ones_like(mu_F),                              # ∂/∂F
+            -60.0 * L_safe / (C_safe ** 2 * green),           # ∂/∂C
+            60.0 / (C_safe * green),                          # ∂/∂L
+            jnp.where(                                        # ∂/∂phi
+                sig > 0.5, -60.0 * L_safe / (C_safe * phi_clip ** 2), 0.0,
+            ),
         ],
         axis=-1,
     )
@@ -77,15 +98,20 @@ def efe_route_probabilities(
     gamma: jnp.ndarray,
     risk_weight: float,
     info_gain_weight: float,
+    signalised: jnp.ndarray,
     cost_offset: jnp.ndarray | None = None,
+    phi_lo: float = PHI_LO_DEFAULT,
+    phi_hi: float = PHI_HI_DEFAULT,
 ) -> jnp.ndarray:
     """Return ``p(a | i)`` of shape ``(N, n_routes)`` for each agent.
 
     ``cost_offset`` (``(N, n_routes)`` or ``None``) shifts the predicted
     perceived cost in the risk term, implementing the perceived route cost
     ``zeta_r = TT_r + theta * E_r`` when the controller broadcast is active.
+    ``signalised`` (``(n_routes,)`` 0/1) marks routes where the green-split
+    latent couples into the predicted travel time.
     """
-    mu_y, var_y = _predictive_moments(state)
+    mu_y, var_y = _predictive_moments(state, signalised, phi_lo, phi_hi)
     sigma_obs_sq = sigma_obs ** 2
     var_pred = var_y + sigma_obs_sq[:, None]
 

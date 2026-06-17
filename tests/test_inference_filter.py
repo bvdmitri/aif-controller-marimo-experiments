@@ -11,18 +11,40 @@ from aif_traffic.inference.filter import (
     CohortPriors,
     F_IDX,
     L_IDX,
+    PHI_IDX,
     _build_prior,
     _inflate_sigma,
     init_variational_state,
-    window_step,
 )
+from aif_traffic.inference.filter import window_step as _window_step_impl
 
 
 W_DEFAULT = 5  # smaller W in tests for speed
+# Existing (F, C, L)-oriented tests treat both routes as non-signalised so the
+# green-split latent is inert and the forward map reduces to F + 60 L/C. The
+# dedicated phi tests below pass signalised=[1, 0] explicitly.
+SIGNALISED = jnp.asarray([0.0, 0.0])
+
+
+def window_step(state, priors, route, y_tt, sigma_tt, y_L, sigma_L, mask, **kw):
+    """Back-compat wrapper: supply default green-split obs + signalised mask
+    so the existing (F, C, L)-oriented tests need no per-call changes."""
+    N, W = mask.shape
+    y_phi = kw.pop("y_phi", jnp.full((N, W), 0.45))
+    sigma_phi = kw.pop("sigma_phi", jnp.full((N, W), 0.05))
+    signalised = kw.pop("signalised", SIGNALISED)
+    return _window_step_impl(
+        state, priors,
+        route_chosen_window=route, y_tt_window=y_tt, sigma_tt_window=sigma_tt,
+        y_L_window=y_L, sigma_L_window=sigma_L,
+        y_phi_window=y_phi, sigma_phi_window=sigma_phi,
+        obs_mask=mask, signalised=signalised, **kw,
+    )
 
 
 def _cohort_priors(N=4, F_mu=16.0, C_mu=4000.0, L_mu=50.0,
-                    F_sigma=2.0, C_sigma=1500.0, L_sigma=200.0):
+                    F_sigma=2.0, C_sigma=1500.0, L_sigma=200.0,
+                    phi_mu=0.45, phi_sigma=0.2):
     return CohortPriors(
         F_mu=jnp.full((N, 2), F_mu),
         F_sigma=jnp.full((N, 2), F_sigma),
@@ -30,6 +52,8 @@ def _cohort_priors(N=4, F_mu=16.0, C_mu=4000.0, L_mu=50.0,
         C_sigma=jnp.full((N, 2), C_sigma),
         L_mu=jnp.full((N, 2), L_mu),
         L_sigma=jnp.full((N, 2), L_sigma),
+        phi_mu=jnp.full((N, 2), phi_mu),
+        phi_sigma=jnp.full((N, 2), phi_sigma),
     )
 
 
@@ -92,13 +116,14 @@ def test_init_state_has_diagonal_cholesky():
     assert jnp.allclose(L[2:, 1], 0.0)
 
 
-def test_latent_state_shape_is_3():
-    """Latent dim per (agent, route) is 3: one F, one C, one L."""
+def test_latent_state_shape_is_4():
+    """Latent dim per (agent, route) is 4: F, C, L, phi."""
     state, _ = _init_state(N=1, C_sigma=1500.0)
-    assert state.mu.shape == (1, 2, 3)
-    assert state.scale_tril.shape == (1, 2, 3, 3)
+    assert state.mu.shape == (1, 2, 4)
+    assert state.scale_tril.shape == (1, 2, 4, 4)
     var_C = float(_marginal_var(state, C_IDX)[0, 0])
     assert var_C == pytest.approx(1500.0 ** 2, rel=1e-4)
+    assert float(state.mu[0, 0, PHI_IDX]) == pytest.approx(0.45)
 
 
 def test_window_step_pulls_predictive_toward_observation():
@@ -159,6 +184,7 @@ def test_window_step_carries_forward_F_and_C_means_only_not_sigma():
         F_mu=F_carry, F_sigma=priors.F_sigma,
         C_mu=C_carry, C_sigma=priors.C_sigma,
         L_mu=L_carry, L_sigma=priors.L_sigma,
+        phi_mu=state.mu[..., PHI_IDX], phi_sigma=priors.phi_sigma,
     )
     # Means are carried forward.
     assert float(fresh_prior.mu[0, 0, F_IDX]) == pytest.approx(new_F_mean)
@@ -254,6 +280,8 @@ def test_window_step_zero_obs_window_returns_inflated_prior_exactly():
         C_sigma=_inflate_sigma(priors.C_sigma, n_stale, sigma_C_drift),
         L_mu=state.mu[..., L_IDX],
         L_sigma=_inflate_sigma(priors.L_sigma, n_stale, sigma_L_drift),
+        phi_mu=state.mu[..., PHI_IDX],
+        phi_sigma=_inflate_sigma(priors.phi_sigma, n_stale, jnp.zeros_like(sigma_F_drift)),
     )
 
     state_new = window_step(

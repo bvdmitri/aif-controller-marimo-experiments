@@ -35,8 +35,16 @@ in two stages.
 1. **Route choice (once per day).** Every A--B traveller is an Active Inference
    agent that picks the intersection route $\alpha$ or the bypass $\beta$ by
    minimising expected free energy over its belief about route travel times
-   (the reused IWAI rolling-window Gaussian smoother). The chosen shares set the
-   route inflows; a competing C--D stream $\gamma$ is exogenous.
+   (the IWAI rolling-window Gaussian smoother). Each route's latent is
+   $(F, C, L, \phi)$: free-flow time, capacity, queue, and -- extending the IWAI
+   model -- the **expected green split** $\phi$. On the signalised intersection
+   route $C$ is the saturation flow and the effective capacity is $\phi\,C$, so
+   $TT_\alpha = F + 60\,L/(\phi\,C)$; the bypass has no signal and keeps
+   $TT_\beta = F + 60\,L/C$ with $\phi$ inert. The green split is observed
+   *directly* only when the intersection is actually chosen (which is what
+   separates $\phi$ from the saturation flow), and between observations it
+   decays/widens like the other latents. The chosen shares set the route
+   inflows; a competing C--D stream $\gamma$ is exogenous.
 
 2. **Within-day control and queues.** Demand enters minute by minute. Every
    *control interval* the signal controller observes the junction queues and
@@ -77,10 +85,15 @@ about. The travellers' exploration, by contrast, arises because a route is seen
 only when chosen; both layers act under one expected-free-energy objective.
 
 **What the charts show.** *Within-day queues and green split* trace one day's
-$L_2,L_6$ and $\phi_2,\phi_6$. The *green-split heatmap* shows $\phi_2$ over
-(day $\times$ time-of-day); the *queue heatmaps* do the same for $L_2,L_6$. The
-*system cost* and *route share* curves track day-to-day evolution, and the gif
-animates the within-day profiles one day per frame.
+$L_2,L_6$ and $\phi_2,\phi_6$. *Per-route traveller flow* shows, for the same
+day, how the A--B demand splits between the intersection route $\alpha$ (link 2)
+and the bypass $\beta$ (link 5), alongside the exogenous C--D stream $\gamma$
+(link 6): when travellers divert away from the congested intersection near the
+demand peak, $Q_\alpha$ dips and $Q_\beta$ rises, which relieves $L_2$ there.
+The *green-split heatmap* shows $\phi_2$ over (day $\times$ time-of-day); the
+*queue heatmaps* do the same for $L_2,L_6$. The *system cost* and *route share*
+curves track day-to-day evolution, and the gif animates the within-day profiles
+one day per frame.
 """
 
 _COMPARISON = r"""

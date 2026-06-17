@@ -59,6 +59,7 @@ def _():
         plot_daily_system_cost,
         plot_demand_profile,
         plot_green_split_heatmap,
+        plot_route_flows,
         plot_route_share_over_days,
         plot_signal_day,
         setup_style,
@@ -81,6 +82,7 @@ def _():
         plot_daily_system_cost,
         plot_demand_profile,
         plot_green_split_heatmap,
+        plot_route_flows,
         plot_route_share_over_days,
         plot_signal_day,
         replace,
@@ -231,6 +233,17 @@ def _(day_sel, figure_placeholder, plot_signal_day, results):
     )
     fig_signal
     return (fig_signal,)
+
+
+@app.cell
+def _(day_sel, figure_placeholder, plot_route_flows, results):
+    fig_routes = (
+        figure_placeholder("Per-route traveller flow")
+        if results is None
+        else plot_route_flows(results.step, day=int(day_sel.value))
+    )
+    fig_routes
+    return (fig_routes,)
 
 
 @app.cell

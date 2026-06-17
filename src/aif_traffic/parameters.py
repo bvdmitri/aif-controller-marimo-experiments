@@ -205,16 +205,22 @@ class CohortSpec:
     sigma_pref: float = 4.0
     sigma_obs: float = 5.0
     sigma_L_obs: float = 30.0
+    sigma_phi_obs: float = 0.05
+    """Observation-noise SD on the directly-sensed green split (fraction)."""
     gamma: float = 1.0
 
-    # Priors over the per-route latent (F, C, L).
+    # Priors over the per-route latent (F, C, L, phi).
     # alpha = intersection route (lower free-flow, signal-limited capacity);
     # beta  = bypass route (higher free-flow, high capacity).
     F_prior_mu_alpha: float = 4.4
     F_prior_mu_beta: float = 5.2
     F_prior_sigma: float = 1.0
 
-    C_prior_mu_alpha: float = 1000.0
+    # On the signalised route, C is the *saturation flow* (green-independent);
+    # effective capacity is phi * C. On the bypass C is the effective capacity
+    # (no signal, phi inert). C_prior_mu_alpha * phi_prior_mu_alpha ~ 900 matches
+    # the previous effective-capacity prior (1000) for day-0 consistency.
+    C_prior_mu_alpha: float = 2000.0
     C_prior_mu_beta: float = 4000.0
     C_prior_sigma_alpha: float = 600.0
     C_prior_sigma_beta: float = 800.0
@@ -223,10 +229,17 @@ class CohortSpec:
     L_prior_mu_beta: float = 20.0
     L_prior_sigma: float = 100.0
 
+    # Green-split belief phi (fraction in [phi_min, phi_sat]). On the bypass it
+    # is inert (never observed, does not enter travel time).
+    phi_prior_mu_alpha: float = 0.45
+    phi_prior_mu_beta: float = 0.45
+    phi_prior_sigma: float = 0.2
+
     # Between-window drift SDs (stale-route prior inflation).
     sigma_F_drift: float = 0.2
     sigma_C_drift: float = 150.0
     sigma_L_drift: float = 10.0
+    sigma_phi_drift: float = 0.02
     mean_revert_days: float = 60.0
 
     window_size: int = 10

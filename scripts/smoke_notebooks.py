@@ -36,6 +36,7 @@ from aif_traffic.parameters import (
 )
 from aif_traffic.plotting import (
     plot_demand_profile,
+    plot_route_flows,
     plot_route_share_over_days,
     plot_signal_day,
     setup_style,
@@ -78,6 +79,7 @@ def smoke_controllers() -> None:
         assert (res.step["phi2"] + res.step["phi6"]).sub(
             params.signal.phi_sat).abs().max() < 1e-9, f"{name}: cycle constraint"
         _save_figure(plot_signal_day(res.step), f"signal_{name}.png")
+        _save_figure(plot_route_flows(res.step), f"route_flows_{name}.png")
         _save_figure(plot_route_share_over_days(res.step), f"route_share_{name}.png")
 
 

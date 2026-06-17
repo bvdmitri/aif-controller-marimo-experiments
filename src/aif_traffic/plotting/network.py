@@ -46,6 +46,38 @@ def plot_signal_day(step: pd.DataFrame, day: int | None = None):
     return fig
 
 
+def plot_route_flows(step: pd.DataFrame, day: int | None = None):
+    """Within-day traveller flow on each route, for a single day.
+
+    Shows the two A--B options -- the intersection route ``alpha`` (link 2) and
+    the bypass ``beta`` (link 5) -- and the exogenous C--D stream ``gamma``
+    (link 6), with the total A--B demand for reference. When travellers divert
+    away from the congested intersection around the demand peak, ``Q_alpha``
+    dips while ``Q_beta`` rises, which relieves the intersection queue.
+    """
+    if day is None:
+        day = int(step["day"].max())
+    d = step[step["day"] == day].sort_values("tau")
+    tau = d["tau"]
+    total_ab = d["Q_alpha"] + d["Q_beta"]
+
+    fig, ax = plt.subplots(figsize=(TEXT_W, TEXT_W * 0.55))
+    ax.plot(tau, total_ab, color="0.6", ls="--", label="A--B total demand")
+    ax.plot(tau, d["Q_alpha"], color="tab:blue",
+            label=r"A--B via intersection ($Q_\alpha$, link 2)")
+    ax.plot(tau, d["Q_beta"], color="tab:green",
+            label=r"A--B via bypass ($Q_\beta$, link 5)")
+    ax.plot(tau, d["Q_gamma"], color="tab:orange",
+            label=r"C--D ($Q_\gamma$, link 6)")
+    ax.set_xlabel("time of day [min]")
+    ax.set_ylabel("traveller flow [veh/h]")
+    ax.set_title(f"Per-route traveller flow (day {day})")
+    ax.legend(fontsize=7)
+    ax.grid(alpha=0.25)
+    fig.tight_layout()
+    return fig
+
+
 def plot_green_split_heatmap(
     step: pd.DataFrame, value: str = "phi2", *, seed: int | None = None,
 ):

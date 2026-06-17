@@ -3,10 +3,20 @@
 The smoother carries a multivariate Gaussian posterior over the latent
 vector::
 
-    z = (F, C, L)  in R^3
+    z = (F, C, L, phi)  in R^4
 
-per (agent, route). All three latents are treated as fixed within the
-W-day window -- the same L value explains all W queue observations. Each day:
+per (agent, route). All four latents are treated as fixed within the
+W-day window -- the same L value explains all W queue observations.
+
+Extension beyond the verbatim IWAI model: ``phi`` is the traveller's belief
+over the **green-split fraction** allocated to the route's signalised movement.
+On a signalised route the effective capacity decomposes as ``C_eff = phi * C``
+(so ``C`` is the saturation flow), giving ``TT = F + 60*L/(phi*C)``; on a
+non-signalised route ``phi`` is inert and ``TT = F + 60*L/C`` as before. The
+green split is observed *directly* only when the route is chosen (it is what
+disentangles ``phi`` from the saturation flow ``C``), and decays/inflates
+between observations exactly like the other latents. A per-route ``signalised``
+mask selects where ``phi`` couples. Each day:
 
 1. The observation buffer is shifted left by one slot and today's
    ``(route, y_TT, y_L)`` is written into slot ``W-1``. Cold-start slots
@@ -35,25 +45,47 @@ from typing import NamedTuple
 import jax.numpy as jnp
 
 
-# Index conventions for the 3-dim latent vector (F, C, L) per (agent, route).
+# Index conventions for the 4-dim latent vector (F, C, L, phi) per (agent, route).
 F_IDX = 0
 C_IDX = 1
 L_IDX = 2
+PHI_IDX = 3
+
+# Default green-split guard bounds (overridable per call via phi_lo/phi_hi).
+PHI_LO_DEFAULT = 0.1
+PHI_HI_DEFAULT = 0.9
 
 
-def predicted_tt(F: jnp.ndarray, C: jnp.ndarray, L: jnp.ndarray) -> jnp.ndarray:
-    """Paper's deterministic forward map :math:`TT = F + 60\\,L/C`.
+def _green(
+    phi: jnp.ndarray, signalised: jnp.ndarray, phi_lo: float, phi_hi: float,
+) -> jnp.ndarray:
+    """Effective green multiplier per (agent, route): clamp ``phi`` to
+    ``[phi_lo, phi_hi]`` on signalised routes, ``1`` elsewhere."""
+    phi_safe = jnp.clip(phi, phi_lo, phi_hi)
+    return jnp.where(signalised > 0.5, phi_safe, 1.0)
+
+
+def predicted_tt(
+    F: jnp.ndarray, C: jnp.ndarray, L: jnp.ndarray, phi: jnp.ndarray,
+    signalised: jnp.ndarray,
+    phi_lo: float = PHI_LO_DEFAULT, phi_hi: float = PHI_HI_DEFAULT,
+) -> jnp.ndarray:
+    """Deterministic forward map :math:`TT = F + 60\\,L/(\\phi\\,C)`.
+
+    On a signalised route the effective capacity is ``phi * C`` (``C`` is the
+    saturation flow); on a non-signalised route ``phi`` is ignored (``green=1``)
+    and the map reduces to the IWAI form ``TT = F + 60 L / C``.
 
     Numerical guards:
 
-    * Capacity floored at 100 veh/h (below that the route is physically
-      impassable; the guard keeps ``1/C`` bounded for samples that drift
-      negative under the Gaussian posterior).
+    * Capacity floored at 100 veh/h (keeps ``1/C`` bounded for negative samples).
     * Queue length floored at 0 (physically can't be negative).
+    * Green split clamped to ``[phi_lo, phi_hi]`` (keeps ``1/phi`` bounded).
     """
     C_safe = jnp.maximum(C, 100.0)
     L_safe = jnp.maximum(L, 0.0)
-    return F + 60.0 * L_safe / C_safe
+    green = _green(phi, signalised, phi_lo, phi_hi)
+    return F + 60.0 * L_safe / (C_safe * green)
 
 
 class CohortPriors(NamedTuple):
@@ -71,14 +103,16 @@ class CohortPriors(NamedTuple):
     C_sigma: jnp.ndarray
     L_mu: jnp.ndarray
     L_sigma: jnp.ndarray
+    phi_mu: jnp.ndarray
+    phi_sigma: jnp.ndarray
 
 
 class VariationalState(NamedTuple):
     """Per-agent, per-route multivariate-Gaussian posterior.
 
     Attributes:
-        mu: ``(N, 2, 3)`` per-agent, per-route mean of $(F, C, L)$.
-        scale_tril: ``(N, 2, 3, 3)`` lower-triangular Cholesky factor.
+        mu: ``(N, 2, 4)`` per-agent, per-route mean of $(F, C, L, \\phi)$.
+        scale_tril: ``(N, 2, 4, 4)`` lower-triangular Cholesky factor.
     """
 
     mu: jnp.ndarray
@@ -105,20 +139,22 @@ def _build_prior(
     F_mu: jnp.ndarray, F_sigma: jnp.ndarray,
     C_mu: jnp.ndarray, C_sigma: jnp.ndarray,
     L_mu: jnp.ndarray, L_sigma: jnp.ndarray,
+    phi_mu: jnp.ndarray, phi_sigma: jnp.ndarray,
 ) -> VariationalState:
     """Assemble the joint Gaussian prior per (agent, route).
 
-    $F$, $C$, and $L$ are independent at the prior level; the Cholesky
+    $F$, $C$, $L$, and $\\phi$ are independent at the prior level; the Cholesky
     factor is diagonal. Returns a :class:`VariationalState` (mu + scale_tril).
     """
-    # Mean: (F, C, L) stacked along last axis → (N, 2, 3).
-    mu = jnp.stack([F_mu, C_mu, L_mu], axis=-1)
+    # Mean: (F, C, L, phi) stacked along last axis → (N, 2, 4).
+    mu = jnp.stack([F_mu, C_mu, L_mu, phi_mu], axis=-1)
 
-    # Diagonal Cholesky: (N, 2, 3, 3).
-    scale_tril = jnp.zeros((*F_mu.shape, 3, 3))
+    # Diagonal Cholesky: (N, 2, 4, 4).
+    scale_tril = jnp.zeros((*F_mu.shape, 4, 4))
     scale_tril = scale_tril.at[..., F_IDX, F_IDX].set(F_sigma)
     scale_tril = scale_tril.at[..., C_IDX, C_IDX].set(C_sigma)
     scale_tril = scale_tril.at[..., L_IDX, L_IDX].set(L_sigma)
+    scale_tril = scale_tril.at[..., PHI_IDX, PHI_IDX].set(phi_sigma)
     return VariationalState(mu=mu, scale_tril=scale_tril)
 
 
@@ -135,6 +171,7 @@ def init_variational_state(
         F_mu=cohort_priors.F_mu, F_sigma=cohort_priors.F_sigma,
         C_mu=cohort_priors.C_mu, C_sigma=cohort_priors.C_sigma,
         L_mu=cohort_priors.L_mu, L_sigma=cohort_priors.L_sigma,
+        phi_mu=cohort_priors.phi_mu, phi_sigma=cohort_priors.phi_sigma,
     )
 
 
@@ -196,19 +233,30 @@ def _laplace_iter_step(
     sigma_tt_window: jnp.ndarray,
     y_L_window: jnp.ndarray,
     sigma_L_window: jnp.ndarray,
+    y_phi_window: jnp.ndarray,
+    sigma_phi_window: jnp.ndarray,
     obs_mask: jnp.ndarray,
+    signalised: jnp.ndarray,
+    phi_lo: float,
+    phi_hi: float,
     W: int,
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
     """One iterated-Laplace step.
 
     Linearises the TT forward map around ``mu_lin`` and folds in all W
-    chosen-route observations (TT + L) starting from the prior.
+    chosen-route observations (TT, L, and -- on signalised routes -- the green
+    split ``phi``) starting from the prior.
     """
     N, R, _ = prior_mu.shape
     F_lin = mu_lin[..., F_IDX]
     C_lin = mu_lin[..., C_IDX]
     L_lin = mu_lin[..., L_IDX]
+    phi_lin = mu_lin[..., PHI_IDX]
     C_safe = jnp.maximum(C_lin, 100.0)
+    phi_clip = jnp.clip(phi_lin, phi_lo, phi_hi)
+    sig = signalised[None, :]                             # (1, R)
+    green = jnp.where(sig > 0.5, phi_clip, 1.0)           # (N, R)
+    denom = C_safe * green
 
     chosen = (
         route_chosen_window[:, None, :] == jnp.arange(R)[None, :, None]
@@ -221,19 +269,24 @@ def _laplace_iter_step(
     for d in range(W):
         active_d = active_all[..., d]                     # (N, R)
 
-        # --- y_TT,d: linearise h(F,C,L) at mu_lin ----------------------
-        # Jacobian row: [1 at F, -60·L/C² at C, 60/C at L]
-        # L is fixed across the window — same slot L_IDX for every day d.
-        H_tt = jnp.zeros((N, R, 3), dtype=mu.dtype)
+        # --- y_TT,d: linearise h(F,C,L,phi) at mu_lin ------------------
+        # h = F + 60 L / (phi*C) on signalised routes (green=phi), else
+        # F + 60 L / C (green=1). Jacobian rows:
+        #   ∂h/∂F = 1,  ∂h/∂C = -60 L /(C²·green),  ∂h/∂L = 60/(C·green),
+        #   ∂h/∂phi = -60 L /(C·phi²)  on signalised routes, else 0.
+        H_tt = jnp.zeros((N, R, 4), dtype=mu.dtype)
         H_tt = H_tt.at[..., F_IDX].set(1.0)
-        H_tt = H_tt.at[..., C_IDX].set(-60.0 * L_lin / (C_safe ** 2))
-        H_tt = H_tt.at[..., L_IDX].set(60.0 / C_safe)
+        H_tt = H_tt.at[..., C_IDX].set(-60.0 * L_lin / (C_safe ** 2 * green))
+        H_tt = H_tt.at[..., L_IDX].set(60.0 / denom)
+        H_tt = H_tt.at[..., PHI_IDX].set(
+            jnp.where(sig > 0.5, -60.0 * L_lin / (C_safe * phi_clip ** 2), 0.0)
+        )
         # Predicted TT at linearisation point and standard-form innovation
         # ``y - H·μ - b`` with ``b = h(mu_lin) - H·mu_lin``. After the
         # first observation in this iter ``mu`` may have moved off
         # ``mu_lin``; the next Laplace iter re-linearises around the
         # updated mean so the local Taylor stays valid.
-        h_pred = F_lin + 60.0 * L_lin / C_safe
+        h_pred = F_lin + 60.0 * L_lin / denom
         H_dot_mu = jnp.einsum("...d,...d->...", H_tt, mu)
         H_dot_mu_lin = jnp.einsum("...d,...d->...", H_tt, mu_lin)
         innovation = y_tt_window[:, d][:, None] - h_pred - (H_dot_mu - H_dot_mu_lin)
@@ -242,12 +295,23 @@ def _laplace_iter_step(
         mu, Sigma = _kalman_one_obs(mu, Sigma, H_tt, innovation, R_var, active_d)
 
         # --- y_L,d: linear; H_L is one-hot at L_IDX ---------------------
-        H_L = jnp.zeros((N, R, 3), dtype=mu.dtype)
+        H_L = jnp.zeros((N, R, 4), dtype=mu.dtype)
         H_L = H_L.at[..., L_IDX].set(1.0)
         innov_L = y_L_window[:, d][:, None] - mu[..., L_IDX]
         R_var_L = (sigma_L_window[:, d][:, None]) ** 2
 
         mu, Sigma = _kalman_one_obs(mu, Sigma, H_L, innov_L, R_var_L, active_d)
+
+        # --- y_phi,d: direct green-split obs, signalised routes only ----
+        # H_phi one-hot at PHI_IDX; gated to chosen AND signalised routes.
+        # This is what identifies phi separately from the saturation flow C.
+        H_phi = jnp.zeros((N, R, 4), dtype=mu.dtype)
+        H_phi = H_phi.at[..., PHI_IDX].set(1.0)
+        innov_phi = y_phi_window[:, d][:, None] - mu[..., PHI_IDX]
+        R_var_phi = (sigma_phi_window[:, d][:, None]) ** 2
+        active_phi = active_d * sig                       # (N, R)
+
+        mu, Sigma = _kalman_one_obs(mu, Sigma, H_phi, innov_phi, R_var_phi, active_phi)
 
     # Symmetrise Σ for numerical safety (rank-1 updates preserve symmetry
     # in exact arithmetic; float rounding can drift).
@@ -263,14 +327,20 @@ def window_step(
     sigma_tt_window: jnp.ndarray,
     y_L_window: jnp.ndarray,
     sigma_L_window: jnp.ndarray,
+    y_phi_window: jnp.ndarray,
+    sigma_phi_window: jnp.ndarray,
     obs_mask: jnp.ndarray,
+    signalised: jnp.ndarray,
     W: int,
     n_stale_days: jnp.ndarray | None = None,
     sigma_F_drift: jnp.ndarray | float = 0.0,
     sigma_C_drift: jnp.ndarray | float = 0.0,
     sigma_L_drift: jnp.ndarray | float = 0.0,
+    sigma_phi_drift: jnp.ndarray | float = 0.0,
     n_laplace_iters: int = 3,
     mean_revert_days: jnp.ndarray | float = 0.0,
+    phi_lo: float = PHI_LO_DEFAULT,
+    phi_hi: float = PHI_HI_DEFAULT,
 ) -> VariationalState:
     """One smoother step: rebuild prior (with carry-forward + Σ inflation),
     then iterated linearised Kalman over the W-day window.
@@ -302,6 +372,7 @@ def window_step(
     F_carry = state.mu[..., F_IDX]                       # (N, 2)
     C_carry = state.mu[..., C_IDX]                       # (N, 2)
     L_carry = state.mu[..., L_IDX]                       # (N, 2)
+    phi_carry = state.mu[..., PHI_IDX]                   # (N, 2)
 
     if n_stale_days is None:
         n_stale_days = jnp.zeros_like(F_carry, dtype=jnp.int32)
@@ -321,6 +392,7 @@ def window_step(
     F_carry = (1.0 - f) * F_carry + f * cohort_priors.F_mu
     C_carry = (1.0 - f) * C_carry + f * cohort_priors.C_mu
     L_carry = (1.0 - f) * L_carry + f * cohort_priors.L_mu
+    phi_carry = (1.0 - f) * phi_carry + f * cohort_priors.phi_mu
     sigma_F_drift_b = jnp.broadcast_to(
         jnp.asarray(sigma_F_drift, dtype=F_carry.dtype), F_carry.shape,
     )
@@ -330,15 +402,20 @@ def window_step(
     sigma_L_drift_b = jnp.broadcast_to(
         jnp.asarray(sigma_L_drift, dtype=F_carry.dtype), F_carry.shape,
     )
+    sigma_phi_drift_b = jnp.broadcast_to(
+        jnp.asarray(sigma_phi_drift, dtype=F_carry.dtype), F_carry.shape,
+    )
 
     F_sigma_eff = _inflate_sigma(cohort_priors.F_sigma, n_stale_b, sigma_F_drift_b)
     C_sigma_eff = _inflate_sigma(cohort_priors.C_sigma, n_stale_b, sigma_C_drift_b)
     L_sigma_eff = _inflate_sigma(cohort_priors.L_sigma, n_stale_b, sigma_L_drift_b)
+    phi_sigma_eff = _inflate_sigma(cohort_priors.phi_sigma, n_stale_b, sigma_phi_drift_b)
 
     prior = _build_prior(
         F_mu=F_carry, F_sigma=F_sigma_eff,
         C_mu=C_carry, C_sigma=C_sigma_eff,
         L_mu=L_carry, L_sigma=L_sigma_eff,
+        phi_mu=phi_carry, phi_sigma=phi_sigma_eff,
     )
 
     prior_Sigma = prior.scale_tril @ jnp.swapaxes(prior.scale_tril, -1, -2)
@@ -355,7 +432,12 @@ def window_step(
             sigma_tt_window=sigma_tt_window,
             y_L_window=y_L_window,
             sigma_L_window=sigma_L_window,
+            y_phi_window=y_phi_window,
+            sigma_phi_window=sigma_phi_window,
             obs_mask=obs_mask,
+            signalised=signalised,
+            phi_lo=phi_lo,
+            phi_hi=phi_hi,
             W=W,
         )
 

@@ -20,7 +20,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from ..demand import DemandProfile
-from ..parameters import CohortSpec, EFEParams, PopulationParams, SimParams
+from ..parameters import CohortSpec, EFEParams, PopulationParams, SignalParams, SimParams
 from ..utils import smooth_profile
 from .efe import _predictive_moments, efe_route_probabilities
 from .filter import (
@@ -28,6 +28,7 @@ from .filter import (
     CohortPriors,
     F_IDX,
     L_IDX,
+    PHI_IDX,
     VariationalState,
     init_variational_state,
     window_step,
@@ -56,11 +57,20 @@ class Population:
         demand: DemandProfile,
         rng: np.random.Generator,
         route_names: tuple[str, str] = ("alpha", "beta"),
+        signal: SignalParams | None = None,
     ):
         self.sim = sim
         self.cohorts = tuple(cohorts)
         self.route_names = route_names
         self.N = sum(c.n_agents for c in cohorts)
+
+        # Route 0 (alpha) is the signalised intersection route; route 1 (beta)
+        # is the bypass with no signal. The green-split latent phi couples into
+        # travel time only on signalised routes.
+        signal = signal if signal is not None else SignalParams()
+        self.signalised_route = jnp.asarray([1.0, 0.0])
+        self.phi_lo = float(signal.phi_min)
+        self.phi_hi = float(signal.phi_sat)
 
         window_sizes = {int(c.window_size) for c in cohorts}
         if len(window_sizes) != 1:
@@ -84,9 +94,13 @@ class Population:
         C_prior_sigma = np.empty((self.N, 2), dtype=float)
         L_prior_mu = np.empty((self.N, 2), dtype=float)
         L_prior_sigma = np.empty((self.N, 2), dtype=float)
+        phi_prior_mu = np.empty((self.N, 2), dtype=float)
+        phi_prior_sigma = np.empty((self.N, 2), dtype=float)
+        self.sigma_phi_obs = _cohort_array(cohorts, "sigma_phi_obs", self.N)
         self._sigma_F_drift = np.empty(self.N, dtype=float)
         self._sigma_C_drift = np.empty(self.N, dtype=float)
         self._sigma_L_drift = np.empty(self.N, dtype=float)
+        self._sigma_phi_drift = np.empty(self.N, dtype=float)
         self._mean_revert_days = np.empty(self.N, dtype=float)
         self._n_laplace_iters = max(int(c.n_laplace_iters) for c in cohorts)
 
@@ -109,10 +123,14 @@ class Population:
             L_prior_mu[s:e, 0] = c.L_prior_mu_alpha
             L_prior_mu[s:e, 1] = c.L_prior_mu_beta
             L_prior_sigma[s:e, :] = c.L_prior_sigma
+            phi_prior_mu[s:e, 0] = c.phi_prior_mu_alpha
+            phi_prior_mu[s:e, 1] = c.phi_prior_mu_beta
+            phi_prior_sigma[s:e, :] = c.phi_prior_sigma
 
             self._sigma_F_drift[s:e] = float(c.sigma_F_drift)
             self._sigma_C_drift[s:e] = float(c.sigma_C_drift)
             self._sigma_L_drift[s:e] = float(c.sigma_L_drift)
+            self._sigma_phi_drift[s:e] = float(c.sigma_phi_drift)
             self._mean_revert_days[s:e] = float(c.mean_revert_days)
 
             n_comply = int(round(c.compliance_fraction * c.n_agents))
@@ -128,6 +146,8 @@ class Population:
             C_sigma=jnp.asarray(C_prior_sigma),
             L_mu=jnp.asarray(L_prior_mu),
             L_sigma=jnp.asarray(L_prior_sigma),
+            phi_mu=jnp.asarray(phi_prior_mu),
+            phi_sigma=jnp.asarray(phi_prior_sigma),
         )
 
         self.state: VariationalState = init_variational_state(
@@ -139,6 +159,8 @@ class Population:
         self._obs_buffer_sigma_tt = np.ones((self.N, self.W), dtype=float)
         self._obs_buffer_L = np.zeros((self.N, self.W), dtype=float)
         self._obs_buffer_sigma_L = np.ones((self.N, self.W), dtype=float)
+        self._obs_buffer_phi = np.zeros((self.N, self.W), dtype=float)
+        self._obs_buffer_sigma_phi = np.ones((self.N, self.W), dtype=float)
         self._obs_mask = np.zeros((self.N, self.W), dtype=float)
         self.day_count: int = 0
 
@@ -158,7 +180,9 @@ class Population:
     # ----------------------------------------------------- helper accessors
     @property
     def predictive_moments(self) -> tuple[np.ndarray, np.ndarray]:
-        mu_y, var_y = _predictive_moments(self.state)
+        mu_y, var_y = _predictive_moments(
+            self.state, self.signalised_route, self.phi_lo, self.phi_hi,
+        )
         return np.asarray(mu_y), np.asarray(var_y)
 
     def latent_summary(self) -> dict:
@@ -172,6 +196,8 @@ class Population:
             "C_sd": np.asarray(marginal_sd[..., C_IDX]),
             "L_mean": np.asarray(mu[..., L_IDX]),
             "L_sd": np.asarray(marginal_sd[..., L_IDX]),
+            "phi_mean": np.asarray(mu[..., PHI_IDX]),
+            "phi_sd": np.asarray(marginal_sd[..., PHI_IDX]),
         }
 
     def _broadcast_cost_offset(self, broadcast) -> np.ndarray | None:
@@ -208,7 +234,10 @@ class Population:
             gamma=jnp.asarray(self.gamma),
             risk_weight=efe.risk_weight,
             info_gain_weight=efe.info_gain_weight,
+            signalised=self.signalised_route,
             cost_offset=None if cost_offset is None else jnp.asarray(cost_offset),
+            phi_lo=self.phi_lo,
+            phi_hi=self.phi_hi,
         )
 
         P = np.asarray(P)
@@ -239,10 +268,17 @@ class Population:
         TT_beta: np.ndarray,
         L_obs_alpha: np.ndarray,
         L_obs_beta: np.ndarray,
+        green_obs_alpha: np.ndarray | None = None,
         rng: np.random.Generator | None = None,
         obs_noise_sd: float = 0.0,
     ) -> None:
-        """Append today's TT + queue observations and re-fit the smoother."""
+        """Append today's TT + queue (+ green-split) observations and re-fit.
+
+        ``green_obs_alpha`` is the realised intersection green split, aligned to
+        the traveller's arrival, per departure minute (length ``K``). Only
+        agents who chose the intersection observe it; the smoother gates it to
+        the signalised route, so others' values are ignored.
+        """
         t_i = self.departure_time
         realised_tt_alpha = TT_alpha[t_i]
         realised_tt_beta = TT_beta[t_i]
@@ -257,6 +293,14 @@ class Population:
         if rng is not None:
             y_L_today = y_L_today + rng.normal(0.0, self.sigma_L_obs, size=self.N)
 
+        # Green-split observation (intersection route only; gated downstream).
+        if green_obs_alpha is None:
+            y_phi_today = np.full(self.N, 0.5, dtype=float)
+        else:
+            y_phi_today = np.asarray(green_obs_alpha, dtype=float)[t_i]
+            if rng is not None and self.sigma_phi_obs.max() > 0.0:
+                y_phi_today = y_phi_today + rng.normal(0.0, self.sigma_phi_obs, size=self.N)
+
         self._obs_buffer_route[:, :-1] = self._obs_buffer_route[:, 1:]
         self._obs_buffer_route[:, -1] = self.last_choice.astype(np.int32)
         self._obs_buffer_tt[:, :-1] = self._obs_buffer_tt[:, 1:]
@@ -267,6 +311,10 @@ class Population:
         self._obs_buffer_L[:, -1] = y_L_today
         self._obs_buffer_sigma_L[:, :-1] = self._obs_buffer_sigma_L[:, 1:]
         self._obs_buffer_sigma_L[:, -1] = self.sigma_L_obs
+        self._obs_buffer_phi[:, :-1] = self._obs_buffer_phi[:, 1:]
+        self._obs_buffer_phi[:, -1] = y_phi_today
+        self._obs_buffer_sigma_phi[:, :-1] = self._obs_buffer_sigma_phi[:, 1:]
+        self._obs_buffer_sigma_phi[:, -1] = self.sigma_phi_obs
         self._obs_mask[:, :-1] = self._obs_mask[:, 1:]
         self._obs_mask[:, -1] = 1.0
         self.day_count += 1
@@ -290,14 +338,20 @@ class Population:
             sigma_tt_window=jnp.asarray(self._obs_buffer_sigma_tt),
             y_L_window=jnp.asarray(self._obs_buffer_L),
             sigma_L_window=jnp.asarray(self._obs_buffer_sigma_L),
+            y_phi_window=jnp.asarray(self._obs_buffer_phi),
+            sigma_phi_window=jnp.asarray(self._obs_buffer_sigma_phi),
             obs_mask=jnp.asarray(self._obs_mask),
+            signalised=self.signalised_route,
             W=self.W,
             n_stale_days=jnp.asarray(n_stale),
             sigma_F_drift=jnp.asarray(self._sigma_F_drift)[:, None],
             sigma_C_drift=jnp.asarray(self._sigma_C_drift)[:, None],
             sigma_L_drift=jnp.asarray(self._sigma_L_drift)[:, None],
+            sigma_phi_drift=jnp.asarray(self._sigma_phi_drift)[:, None],
             n_laplace_iters=self._n_laplace_iters,
             mean_revert_days=jnp.asarray(self._mean_revert_days)[:, None],
+            phi_lo=self.phi_lo,
+            phi_hi=self.phi_hi,
         )
 
     # ----------------------------------------------------------- snapshots
@@ -320,6 +374,8 @@ class Population:
             "C_mean_beta": latents["C_mean"][:, 1],
             "L_mean_alpha": latents["L_mean"][:, 0],
             "L_mean_beta": latents["L_mean"][:, 1],
+            "phi_mean_alpha": latents["phi_mean"][:, 0],
+            "phi_sd_alpha": latents["phi_sd"][:, 0],
             "last_P_alpha": self.last_P_alpha.copy(),
             "last_choice": self.last_choice.copy(),
         }
@@ -331,6 +387,7 @@ def build_population(
     demand: DemandProfile,
     rng: np.random.Generator,
     route_names: tuple[str, str] = ("alpha", "beta"),
+    signal: SignalParams | None = None,
 ) -> Population:
     return Population(
         cohorts=population_params.cohorts,
@@ -338,4 +395,5 @@ def build_population(
         demand=demand,
         rng=rng,
         route_names=route_names,
+        signal=signal,
     )

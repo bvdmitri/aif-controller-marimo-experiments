@@ -54,6 +54,34 @@ experiment notebook.
 - Headless smoke: `uv run python scripts/smoke_notebooks.py`
 - Both must pass before committing behaviour-changing diffs.
 
+## Behavioural tests (verbal, self-documenting)
+
+Beyond unit tests, this repo keeps **behavioural characterization tests** in
+`tests/test_behaviour.py`: they run a small default experiment and assert
+*emergent* facts about the coupled two-layer dynamics (e.g. the queue dip at the
+demand peak is route diversion; travellers learn the green split only by taking
+the intersection). Each test **prints its reasoning** — what it expected, the
+observed numbers, and a verdict — so the behaviour can be audited, not just
+pass/fail-checked. Read the narration with:
+
+    uv run --extra dev pytest tests/test_behaviour.py -s
+
+**When you discover or change a non-obvious emergent behaviour, add (or update) a
+verbal behavioural test for it.** The goal is that a future agent can run pytest,
+read the narration, and directly confirm or disconfirm the documented
+understanding of how the model behaves. Guidelines:
+
+- Assert robust *qualitative* facts (with generous margins), not brittle exact
+  numbers — emergent equilibria shift slightly with parameters/seeds.
+- Narrate via `print(...)` (pytest shows it on `-s` and on failure); state the
+  expectation, the evidence, and a one-line verdict.
+- If a behavioural test starts failing, that is a signal to re-investigate and
+  consciously revise the documented understanding — not to silently loosen it.
+- Keep them affordable: share one `run_experiment` via a module-scoped fixture,
+  use a modest day count, and prefer the deterministic (noise-free) path.
+- When the throwaway `/tmp` analysis you wrote to understand a behaviour proves a
+  point worth keeping, promote it into `tests/test_behaviour.py`.
+
 ## Notebooks
 
 - `00_introduction.py` — markdown landing page.
