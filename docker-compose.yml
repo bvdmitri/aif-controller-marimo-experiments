@@ -1,0 +1,17 @@
+# Serves the AIF-controller marimo notebooks at http://<host>:2718 in
+# read-only `marimo run` mode, no token. Cloudflared / nginx / TLS
+# termination is expected to live outside this stack.
+#
+#   docker compose up -d           # build + run in the background
+#   docker compose logs -f         # follow the marimo logs
+#   docker compose down            # stop and remove
+
+services:
+  aif-controller:
+    build:
+      context: .
+    image: aif-controller:latest
+    container_name: aif-controller
+    restart: unless-stopped
+    ports:
+      - "2718:2718"

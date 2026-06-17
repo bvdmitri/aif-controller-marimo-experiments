@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# uv / virtualenvs
+.venv/
+.python-version.local
+
+# Jupyter
+.ipynb_checkpoints/
+
+# pytest
+.pytest_cache/
+
+# Marimo
+__marimo__/
+
+# Build
+build/
+dist/
+*.egg-info/
+
+# Experiment outputs
+outputs/
+!outputs/.gitkeep
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+.claude/

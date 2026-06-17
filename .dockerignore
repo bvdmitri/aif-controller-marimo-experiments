@@ -1,0 +1,38 @@
+# Keep the build context small and free of host-specific cruft.
+
+.git
+.gitignore
+.gitattributes
+
+# Local virtualenvs / caches
+.venv
+.python-version
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.ruff_cache
+
+# Build artefacts
+build/
+dist/
+*.egg-info
+*.egg
+
+# Output / scratch
+outputs/
+__marimo__/
+.mypy_cache/
+
+# Test / dev-only directories (not needed at runtime)
+tests/
+scripts/
+
+# Editor and OS noise
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.override.yml
