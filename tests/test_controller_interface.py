@@ -78,3 +78,24 @@ def test_anticipatory_favours_overloaded_movement():
     })
     phi2, phi6 = ctrl.decide({2: 0.0, 6: 0.0}, 0)
     assert phi2 > SIGNAL.phi_sat / 2.0
+
+
+def test_anticipatory_is_rolling_horizon():
+    """The anticipatory controller re-decides per interval: its split tracks the
+    movement that is overloaded *now*, so it differs across control epochs."""
+    ctrl = build_controller(
+        AnticipatoryControllerSpec(phi_grid_size=9, horizon_min=10), SIGNAL, NET, SIM,
+    )
+    K = SIM.K
+    early = np.arange(K) < K // 2
+    # A--B overloaded early, C--D overloaded late.
+    alpha = np.where(early, 1800.0, 100.0)
+    gamma = np.where(early, 100.0, 1800.0)
+    ctrl.prepare_day({
+        "inflow_by_route": {"alpha": alpha, "beta": np.zeros(K), "gamma": gamma},
+        "net": NET, "sim": SIM, "signal": SIGNAL, "day": 0,
+    })
+    obs0 = {lid: 0.0 for lid in NET.link_ids}
+    phi2_early, _ = ctrl.decide(obs0, 0)
+    phi2_late, _ = ctrl.decide(obs0, K - 12)
+    assert phi2_early > phi2_late

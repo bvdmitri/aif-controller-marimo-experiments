@@ -270,7 +270,7 @@ class FixedTimeControllerSpec:
 
     phi2_frac: float = 0.5
     """Fraction of phi_sat allocated to the A--B movement (link 2)."""
-    control_interval_min: int = 5
+    control_interval_min: int = 10
 
 
 @dataclass(frozen=True)
@@ -278,16 +278,17 @@ class ReactiveControllerSpec:
     """Traffic-responsive feedback on the queue imbalance L_2 - L_6 (SCOOT-like)."""
 
     k_L: float = 1.0e-3
-    control_interval_min: int = 5
+    control_interval_min: int = 10
 
 
 @dataclass(frozen=True)
 class AnticipatoryControllerSpec:
-    """Predictive: grid-search a constant split over a short rollout horizon."""
+    """Predictive: at each control epoch, grid-search the constant split that
+    minimises predicted system cost over a rollout horizon (rolling horizon)."""
 
     horizon_min: int = 20
     phi_grid_size: int = 9
-    control_interval_min: int = 5
+    control_interval_min: int = 10
 
 
 @dataclass(frozen=True)
@@ -303,8 +304,8 @@ class AIFControllerSpec:
     ``control/aif_controller.py`` and paper Section 4.2.
     """
 
-    control_interval_min: int = 5
-    horizon_min: int = 5
+    control_interval_min: int = 10
+    horizon_min: int = 10
     """Prediction horizon for scoring a candidate split (defaults to one interval)."""
     phi_grid_size: int = 9
     """Number of candidate green splits evaluated each control epoch."""
@@ -313,16 +314,25 @@ class AIFControllerSpec:
     sigma_pref: float = 20.0
     """Preferred-queue level tolerance (veh): isotropic SD of the preference."""
     omega: float = 0.02
-    """Balance precision along the capacity-normalised imbalance direction (veh^-2)."""
+    """Balance precision along the *unit* capacity-normalised imbalance
+    direction (veh^-2), directly comparable to the isotropic precision
+    ``sigma_pref^-2``. With the defaults the balance term dominates, so the
+    'low and balanced' preference genuinely shapes the split. See
+    ``aif_controller._build_sigma_pref`` for the convention (and the note that
+    paper Table 2 lists a different, un-normalised convention to be reconciled)."""
 
     # Generative-model noise for the queue belief.
     sigma_obs: float = 5.0
-    """Queue observation-noise SD (veh)."""
+    """Queue observation-noise SD (veh) at the reference (balanced) split. The
+    per-movement observation precision scales with the green allocated to that
+    movement, which makes the EFE epistemic term action-dependent."""
     sigma_proc: float = 2.0
     """Per-step random-walk process-noise SD on the queue belief (veh)."""
 
     kappa: float = 1.0       # green-split smoothness (policy-prior) weight
     gamma: float = 4.0       # action precision
+    info_gain_weight: float = 1.0
+    """Weight on the EFE epistemic (information-gain) term, EFE = risk - lambda*info."""
 
 
 ControllerSpecLike = (

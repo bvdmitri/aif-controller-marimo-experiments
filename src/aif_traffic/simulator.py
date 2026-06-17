@@ -102,7 +102,10 @@ def simulate_one_day(
         rng=rng_obs, obs_noise_sd=params.noise.obs_noise_sd,
     )
 
-    broadcast_next = build_broadcast(params.comm, tt_route, queues, net, sim)
+    broadcast_next = build_broadcast(
+        params.comm, tt_route, queues, net, sim,
+        inflow_by_route=inflow_by_route, phi2=phi2, phi6=phi6,
+    )
     controller.observe({
         "day": day_index, "queues": queues, "tt_route": tt_route,
         "phi2": phi2, "phi6": phi6, "SC": SC,
@@ -241,6 +244,8 @@ def run_experiment(
                     "L6": float(out["L6"][k]),
                     "phi2": float(out["phi2"][k]),
                     "phi6": float(out["phi6"][k]),
+                    # SC is a daily scalar; repeated on every step row so the
+                    # per-day value is recovered with a groupby(...).first().
                     "SC": out["SC"],
                 })
             cohort_records.extend(

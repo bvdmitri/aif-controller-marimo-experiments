@@ -62,6 +62,25 @@ def test_aif_favours_overloaded_movement():
     assert phi2_cd < SIGNAL.phi_sat / 2.0
 
 
+def test_aif_observation_precision_depends_on_split():
+    """A movement receiving more green is observed more precisely -- this is
+    what makes the EFE epistemic term action-dependent (no longer inert)."""
+    ctrl = build_controller(AIFControllerSpec(), SIGNAL, NET, SIM)
+    _prepare(ctrl, alpha=800.0, gamma=800.0)
+    R = ctrl._obs_var(0.8, SIGNAL.phi_sat - 0.8)  # lots of green to movement 2
+    assert R[0] < R[1]
+
+
+def test_aif_epistemic_term_is_live_and_positive():
+    """The information-gain term is actually computed and contributes to EFE."""
+    ctrl = build_controller(AIFControllerSpec(), SIGNAL, NET, SIM)
+    _prepare(ctrl, alpha=800.0, gamma=800.0)
+    ctrl.decide({2: 20.0, 6: 20.0}, 0)
+    snap = ctrl.snapshot()
+    assert np.isfinite(snap["info_last"]) and snap["info_last"] > 0.0
+    assert np.isfinite(snap["efe_last"])
+
+
 def test_aif_end_to_end_respects_constraint():
     params = replace(Params(), sim=replace(SimParams(), days=3),
                      controller=AIFControllerSpec())

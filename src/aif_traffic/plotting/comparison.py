@@ -27,17 +27,19 @@ _CTRL_LABELS = {
     "anticipatory": "Anticipatory (predictive)",
     "aif": "AIF (proposed)",
 }
+# Distinct but unbiased styling: every controller gets the same line weight so
+# no controller is visually favoured; colours only serve to tell them apart.
 _CTRL_COLOURS = {
     "fixed_time": "#9e9e9e",   # grey
     "reactive": "#4393c3",     # blue
     "anticipatory": "#ff9800",  # amber
-    "aif": "#1b5e20",          # dark green (highlighted)
+    "aif": "#1b5e20",          # green
 }
 _CTRL_LINEWIDTHS = {
-    "fixed_time": 1.1,
-    "reactive": 1.3,
-    "anticipatory": 1.3,
-    "aif": 2.2,
+    "fixed_time": 1.5,
+    "reactive": 1.5,
+    "anticipatory": 1.5,
+    "aif": 1.5,
 }
 
 

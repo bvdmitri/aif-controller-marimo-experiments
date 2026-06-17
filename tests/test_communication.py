@@ -52,25 +52,51 @@ def test_zero_theta_neutralises_broadcast():
     assert np.allclose(res_signal.step["P_alpha"], res_none.step["P_alpha"])
 
 
-def test_build_broadcast_externality_nonneg_and_ordered():
+def _congested_alpha_scenario():
+    """A day where the signalised A--B movement (alpha) is oversaturated and the
+    bypass (beta) is free-flowing, with a constant balanced split."""
+    from aif_traffic.network import simulate_link_queues_const_phi
+    from aif_traffic.parameters import SignalParams
+
     net = NetworkParams()
     sim = SimParams(h_min=10, dt_min=1)
+    signal = SignalParams()
     K = sim.K
-    # alpha is more delayed than beta.
-    tt_route = {
-        "alpha": np.full(K, net.route_free_flow("alpha") + 5.0),
-        "beta": np.full(K, net.route_free_flow("beta") + 1.0),
-        "gamma": np.full(K, net.route_free_flow("gamma")),
+    inflow = {
+        "alpha": np.full(K, 1600.0),   # over the signalised link-2 capacity
+        "beta": np.full(K, 150.0),     # on the high-capacity bypass
+        "gamma": np.full(K, 300.0),
     }
-    queues = {lid: np.zeros(K) for lid in net.link_ids}
+    phi2_val = signal.phi_sat / 2.0
+    queues, tt_route = simulate_link_queues_const_phi(inflow, phi2_val, net, sim, signal)
+    phi2 = np.full(K, phi2_val)
+    phi6 = np.full(K, signal.phi_sat - phi2_val)
+    return net, sim, inflow, queues, tt_route, phi2, phi6
+
+
+def test_build_broadcast_msc_is_finite_difference_and_ordered():
+    net, sim, inflow, queues, tt_route, phi2, phi6 = _congested_alpha_scenario()
+    bc = build_broadcast(
+        CommunicationSpec(signal_type=SignalType.MSC),
+        tt_route, queues, net, sim, inflow_by_route=inflow, phi2=phi2, phi6=phi6,
+    )
+    assert bc.signal_type is SignalType.MSC
+    assert np.all(bc.value["alpha"] >= 0.0) and np.all(bc.value["beta"] >= 0.0)
+    # Adding a vehicle to the oversaturated A--B approach imposes far more
+    # marginal social cost than adding one to the free-flowing bypass.
+    assert bc.value["alpha"].mean() > bc.value["beta"].mean()
+
+
+def test_build_broadcast_externality_nonneg_and_ordered():
+    net, sim, inflow, queues, tt_route, phi2, phi6 = _congested_alpha_scenario()
     bc = build_broadcast(
         CommunicationSpec(signal_type=SignalType.EXTERNALITY),
-        tt_route, queues, net, sim,
+        tt_route, queues, net, sim, inflow_by_route=inflow, phi2=phi2, phi6=phi6,
     )
     assert bc.signal_type is SignalType.EXTERNALITY
     assert np.all(bc.value["alpha"] >= 0.0)
     assert np.all(bc.value["beta"] >= 0.0)
-    # The more-delayed route carries the larger advisory.
+    # The congested route carries the larger externality.
     assert bc.value["alpha"].mean() > bc.value["beta"].mean()
 
 

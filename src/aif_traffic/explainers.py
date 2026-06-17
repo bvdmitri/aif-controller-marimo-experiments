@@ -53,23 +53,28 @@ _CONTROLLER = r"""
 ### The Active Inference signal controller
 
 The controller is the same kind of agent as the travellers, differing only in
-its preferred observation. It keeps a Gaussian belief over the two signalised
-queues $(L_2, L_6)$ and selects the split by minimising the **fixed** expected
-free energy
+its preferred observation. It runs a genuine recursive Gaussian filter over the
+two signalised queues $(L_2, L_6)$ -- correcting its belief from each new
+observation and carrying it across control epochs -- and selects the split by
+minimising the expected free energy
 
-$$G(\phi)=\underbrace{\mathrm{KL}\!\big[q(o^c\mid\phi)\,\|\,\tilde p(o^c)\big]}_{\text{pragmatic}}
--\underbrace{\text{(epistemic value)}}_{\approx\,0\ \text{here}},\qquad
+$$G(\phi)=\underbrace{\mathrm{KL}\!\big[q(o^c\mid\phi)\,\|\,\tilde p(o^c)\big]}_{\text{pragmatic (risk)}}
+-\underbrace{\mathbb E\big[\mathrm{KL}(q(s^c\mid o^c,\phi)\,\|\,q(s^c\mid\phi))\big]}_{\text{epistemic (info gain)}},\qquad
 \tilde p(o^c)=\mathcal N(\mathbf 0,\Sigma^c_{\mathrm{pref}}).$$
 
 The only designed object is the preference $\tilde p(o^c)$ ("prefer empty
 queues"); the *low and balanced* goal lives inside $\Sigma^c_{\mathrm{pref}}$
-(extra precision $\omega$ along the capacity-normalised imbalance direction),
-**not** in a hand-built cost. For each candidate split it rolls the queue belief
-forward one control interval, scores the pragmatic risk, adds a smoothness prior
-on $\phi$, and takes the most probable (MAP) split. The epistemic term is inert
-because the queues are observed every interval at fixed precision, so it cannot
-distinguish splits; the travellers, by contrast, explore because a route is seen
-only when chosen. That asymmetry is derived, not designed.
+(extra precision $\omega$ along the **unit** capacity-normalised imbalance
+direction, so $\omega$ is comparable to the isotropic precision and balance
+genuinely matters), **not** in a hand-built cost. For each candidate split it
+rolls the queue belief forward one control interval, scores the pragmatic risk,
+subtracts the expected information gain, adds a smoothness prior on $\phi$, and
+takes the most probable (MAP) split. The epistemic term is **live**: the
+controller's detectors sample a movement more accurately the more green it
+receives, so the predicted observation precision depends on the split and the
+information gain pulls green toward the movement the controller is least certain
+about. The travellers' exploration, by contrast, arises because a route is seen
+only when chosen; both layers act under one expected-free-energy objective.
 
 **What the charts show.** *Within-day queues and green split* trace one day's
 $L_2,L_6$ and $\phi_2,\phi_6$. The *green-split heatmap* shows $\phi_2$ over
@@ -86,10 +91,12 @@ The same network and demand are run under four signal controllers, swapping only
 
 - **Fixed-time** holds a constant green split; non-adaptive.
 - **Reactive (SCOOT-like)** shifts green toward the longer queue each interval.
-- **Anticipatory (predictive)** grid-searches a single constant split per day by
-  rolling the queue model forward; no within-day adjustment.
+- **Anticipatory (predictive)** re-optimises each control interval: it
+  grid-searches the constant split minimising predicted system cost over a
+  rollout horizon from the current queues (receding horizon, point estimate).
 - **AIF (proposed)** keeps a belief over the junction queues and minimises the
-  fixed Expected Free Energy each control interval (Section 4.2).
+  Expected Free Energy (risk minus information gain) each control interval --
+  the belief-propagated counterpart of the anticipatory controller (Section 4.2).
 
 **What the charts show.** Scalar day-series are overlaid on one chart, one line
 per controller: *daily system cost* (total travel time, lower is better), *daily
