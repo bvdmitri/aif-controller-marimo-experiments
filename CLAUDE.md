@@ -61,7 +61,14 @@ experiment notebook.
   explanations), a progress-bar run, within-day and day-to-day charts
   (`plot_signal_day`, `plot_green_split_heatmap`, `plot_daily_system_cost`,
   `plot_route_share_over_days`), and an optional per-day gif (`animate_days`,
-  needs `pillow`). Controller comparison and disruptions are not in it yet.
+  needs `pillow`).
+- `02_controller_comparison.py` — runs all four controllers and compares them
+  (`plotting/comparison.py`): scalar day-series overlaid on one chart
+  (`plot_controller_metrics`: system cost, peak queue, green-split variation),
+  per-controller green-split heatmaps (`plot_green_split_heatmaps_by_controller`),
+  a `controller_summary` table, and an optional faceted gif
+  (`animate_controller_comparison`). Disruptions / communication sweeps are not
+  in it yet.
 
 ## Scope reminders
 

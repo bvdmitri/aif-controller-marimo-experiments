@@ -96,9 +96,9 @@ def _(explainer_pointer, mo):
 
 @app.cell
 def _(mo):
-    days = mo.ui.slider(10, 120, value=30, label="days")
+    days = mo.ui.slider(10, 180, value=90, label="days")
     seed = mo.ui.slider(0, 100, value=42, label="seed")
-    control_interval = mo.ui.slider(1, 30, value=10, label="control interval [min]")
+    control_interval = mo.ui.slider(1, 30, value=5, label="control interval [min]")
     demand_scale = mo.ui.slider(0.5, 2.0, step=0.1, value=1.0, label="demand scale")
 
     gamma = mo.ui.slider(0.5, 20.0, step=0.5, value=4.0, label="gamma")

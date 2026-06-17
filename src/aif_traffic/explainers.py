@@ -15,7 +15,7 @@ Public API mirrors the IWAI companion repo:
 
 from __future__ import annotations
 
-NOTEBOOK_IDS: tuple[str, ...] = ("aif_controller",)
+NOTEBOOK_IDS: tuple[str, ...] = ("aif_controller", "controller_comparison")
 
 
 def explainer_pointer() -> str:
@@ -78,8 +78,38 @@ $L_2,L_6$ and $\phi_2,\phi_6$. The *green-split heatmap* shows $\phi_2$ over
 animates the within-day profiles one day per frame.
 """
 
+_COMPARISON = r"""
+### Comparing the four controllers
+
+The same network and demand are run under four signal controllers, swapping only
+`params.controller`:
+
+- **Fixed-time** holds a constant green split; non-adaptive.
+- **Reactive (SCOOT-like)** shifts green toward the longer queue each interval.
+- **Anticipatory (predictive)** grid-searches a single constant split per day by
+  rolling the queue model forward; no within-day adjustment.
+- **AIF (proposed)** keeps a belief over the junction queues and minimises the
+  fixed Expected Free Energy each control interval (Section 4.2).
+
+**What the charts show.** Scalar day-series are overlaid on one chart, one line
+per controller: *daily system cost* (total travel time, lower is better), *daily
+peak total queue* $L_2+L_6$, and the *green-split variation* $\sum_t|\phi_2(t)-
+\phi_2(t{-}1)|$ within a day (how much the signal moves; lower is steadier
+operation). The *green-split heatmaps* show $\phi_2$ over (day $\times$
+time-of-day), one column per controller, so the policies can be read side by
+side. The *summary table* collects mean cost, day-to-day cost stability
+($\mathrm{std}$ of daily cost), mean signal variation, and mean peak queue. The
+optional gif animates each controller's within-day queues and split, one frame
+per day.
+
+A good controller reaches **low cost and low queues** without paying for it with
+**erratic signal switching**; read the cost/queue panels together with the
+variation panel.
+"""
+
 _ADDENDA: dict[str, str] = {
     "aif_controller": _CONTROLLER,
+    "controller_comparison": _COMPARISON,
 }
 
 

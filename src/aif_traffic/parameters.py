@@ -43,7 +43,7 @@ import numpy as np
 @dataclass(frozen=True)
 class SimParams:
     seed: int = 42
-    days: int = 30
+    days: int = 90
     burn_in: int = 30
     h_min: int = 300
     dt_min: int = 1
@@ -270,7 +270,7 @@ class FixedTimeControllerSpec:
 
     phi2_frac: float = 0.5
     """Fraction of phi_sat allocated to the A--B movement (link 2)."""
-    control_interval_min: int = 10
+    control_interval_min: int = 5
 
 
 @dataclass(frozen=True)
@@ -278,7 +278,7 @@ class ReactiveControllerSpec:
     """Traffic-responsive feedback on the queue imbalance L_2 - L_6 (SCOOT-like)."""
 
     k_L: float = 1.0e-3
-    control_interval_min: int = 10
+    control_interval_min: int = 5
 
 
 @dataclass(frozen=True)
@@ -287,7 +287,7 @@ class AnticipatoryControllerSpec:
 
     horizon_min: int = 20
     phi_grid_size: int = 9
-    control_interval_min: int = 10
+    control_interval_min: int = 5
 
 
 @dataclass(frozen=True)
@@ -303,8 +303,8 @@ class AIFControllerSpec:
     ``control/aif_controller.py`` and paper Section 4.2.
     """
 
-    control_interval_min: int = 10
-    horizon_min: int = 10
+    control_interval_min: int = 5
+    horizon_min: int = 5
     """Prediction horizon for scoring a candidate split (defaults to one interval)."""
     phi_grid_size: int = 9
     """Number of candidate green splits evaluated each control epoch."""
