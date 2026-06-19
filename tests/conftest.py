@@ -32,3 +32,23 @@ def small_params() -> Params:
 @pytest.fixture
 def default_params() -> Params:
     return Params.default()
+
+
+# --------------------------------------------------------------------------
+# Opt-in for the full-scale (slow) characterization tests.
+# --------------------------------------------------------------------------
+def pytest_addoption(parser) -> None:
+    parser.addoption(
+        "--runslow", action="store_true", default=False,
+        help="run the slow, full-scale characterization tests (real 90-day "
+             "experiment); they are skipped by default.",
+    )
+
+
+def pytest_collection_modifyitems(config, items) -> None:
+    if config.getoption("--runslow"):
+        return
+    skip_slow = pytest.mark.skip(reason="full-scale: pass --runslow to run")
+    for item in items:
+        if "slow" in item.keywords:
+            item.add_marker(skip_slow)

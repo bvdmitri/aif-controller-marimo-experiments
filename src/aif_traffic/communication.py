@@ -19,6 +19,15 @@ measure the increase in system cost), and the externality is
 ``E_r = MSC_r - TT_r``. This is performance-heavy -- it re-rolls the network
 once per (traveller route, minute) -- so it only runs when one of those two
 signals is actually broadcast.
+
+Separately from this cost-offset advisory, the controller can also broadcast
+**belief-informing** signals (:class:`BeliefBroadcast`, paper Experiment 3:
+BL/CG/SN/CG+SN). Unlike the ``Broadcast`` above -- which only shifts the
+traveller's *perceived cost* -- a ``BeliefBroadcast`` is fed straight into the
+traveller's smoother as *observations* of routes the traveller did not take
+(see :mod:`inference.population` / :mod:`inference.filter`). It carries the raw
+route queue ``L_hat_r`` (CG) and/or the route green split ``phi_hat_r`` (SN);
+these are NOT clipped (a Kalman observation, not a cost advisory).
 """
 
 from __future__ import annotations
@@ -34,7 +43,13 @@ from .network import (
     link_inflows,
     route_arrival_queues,
 )
-from .parameters import CommunicationSpec, NetworkParams, SignalType, SimParams
+from .parameters import (
+    BeliefSignal,
+    CommunicationSpec,
+    NetworkParams,
+    SignalType,
+    SimParams,
+)
 from .utils import daily_system_cost
 
 
@@ -162,3 +177,82 @@ def build_broadcast(
             raise ValueError(f"Unknown signal type {st!r}.")
         value[r] = v
     return Broadcast(signal_type=st, value=value)
+
+
+# ---------------------------------------------------------------------------
+# Belief-informing broadcasts (paper Experiment 3: BL / CG / SN / CG+SN)
+# ---------------------------------------------------------------------------
+@dataclass(frozen=True)
+class BeliefBroadcast:
+    """Belief-informing payload the controller shares with travellers.
+
+    ``L`` maps each traveller route to a length-``K`` queue-length advisory
+    ``L_hat_r(k)`` (the CG signal); ``phi`` maps the *signalised* traveller
+    route to its arrival-aligned green split ``phi_hat_r(k)`` (the SN signal).
+    Either may be ``None`` when that signal is not broadcast; both ``None`` is
+    the baseline (BL) case. A traveller departing at minute ``t`` on a route it
+    did *not* take reads ``L[r][t]`` / ``phi[r][t]`` and folds it into its
+    Gaussian belief over that route (see :mod:`inference.population`).
+
+    These values are raw observations (not clipped, unlike the cost-advisory
+    :class:`Broadcast`): the smoother treats them as noisy readings of the
+    latent ``L`` and ``phi``.
+    """
+
+    L: Mapping[str, np.ndarray] | None
+    phi: Mapping[str, np.ndarray] | None
+
+
+def empty_belief_broadcast() -> BeliefBroadcast:
+    """The baseline (BL) belief broadcast: no information shared."""
+    return BeliefBroadcast(L=None, phi=None)
+
+
+def build_belief_broadcast(
+    comm: CommunicationSpec,
+    queues_by_link: Mapping[int, np.ndarray],
+    phi2: np.ndarray,
+    phi6: np.ndarray,
+    net: NetworkParams,
+    sim: SimParams,
+) -> BeliefBroadcast:
+    """Assemble the belief-informing broadcast from the realised day.
+
+    * ``BeliefSignal.CONGESTION`` (CG) -> ``L_hat_r``: the arrival-aligned route
+      queue ``route_arrival_queues`` -- the very quantity a traveller senses
+      first-hand when it *does* take the route -- broadcast for every traveller
+      route.
+    * ``BeliefSignal.GREEN_SPLIT`` (SN) -> ``phi_hat``: the arrival-aligned
+      intersection green split ``phi2`` for the signalised traveller route only
+      (``phi`` is inert on the bypass), mirroring the chosen-route green-split
+      observation built in the simulator.
+
+    Empty ``belief_signals`` returns ``BeliefBroadcast(None, None)`` so the
+    baseline (BL) path is bit-identical to sharing no information.
+    """
+    signals = comm.belief_signals
+    if not signals:
+        return empty_belief_broadcast()
+
+    L_payload: dict[str, np.ndarray] | None = None
+    phi_payload: dict[str, np.ndarray] | None = None
+
+    if BeliefSignal.CONGESTION in signals:
+        route_queue = route_arrival_queues(queues_by_link, net, sim)
+        L_payload = {
+            r: np.asarray(route_queue[r], dtype=float) for r in net.traveller_routes
+        }
+
+    if BeliefSignal.GREEN_SPLIT in signals:
+        # Arrival-aligned intersection split, identical to the chosen-route
+        # green-split observation (simulator: k + N_l forward look). Only the
+        # signalised traveller route (alpha) carries phi.
+        sig_ab, _sig_cd = net.signalised_links
+        N_ab = net.n_delay(sim.dt_min)[sig_ab]
+        k_arr = np.minimum(np.arange(sim.K) + N_ab, sim.K - 1)
+        phi_alpha = np.asarray(phi2, dtype=float)[k_arr]
+        # The signalised traveller route is the first traveller route (alpha);
+        # phi is inert on the bypass, so only alpha carries a green-split obs.
+        phi_payload = {net.traveller_routes[0]: phi_alpha}
+
+    return BeliefBroadcast(L=L_payload, phi=phi_payload)

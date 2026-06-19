@@ -27,6 +27,7 @@ from .network import (
     plot_signal_day,
 )
 from .primitives import TEXT_W, TEXT_W_HALF, figure_placeholder
+from .sweep import plot_sweep_metrics
 
 
 def setup_style() -> None:
@@ -67,4 +68,5 @@ __all__ = [
     "plot_green_split_heatmaps_by_controller",
     "controller_summary",
     "animate_controller_comparison",
+    "plot_sweep_metrics",
 ]

@@ -15,7 +15,11 @@ Public API mirrors the IWAI companion repo:
 
 from __future__ import annotations
 
-NOTEBOOK_IDS: tuple[str, ...] = ("aif_controller", "controller_comparison")
+NOTEBOOK_IDS: tuple[str, ...] = (
+    "social_internalisation",
+    "controller_benchmark",
+    "information_communication",
+)
 
 
 def explainer_pointer() -> str:
@@ -55,6 +59,23 @@ in two stages.
 
 At the end of the day travellers update their route beliefs from the realised
 travel times. Across days the two layers co-adapt through the shared network.
+
+**Two controller$\to$traveller communication channels.** The controller has a
+network-wide view and can share it in two distinct ways.
+
+- *Cost-offset advisory* ($\theta$): a per-route signal (e.g. the congestion
+  externality $E_r$) is folded into the traveller's **perceived cost**
+  $\zeta_r = TT_r + \theta\,E_r$, where $\theta\in[0,1]$ is the traveller's
+  social internalisation ($0$ = purely selfish / user equilibrium, $1$ = fully
+  cooperative / system optimum). This shifts route *choice* only; it never
+  touches the belief update.
+- *Belief-informing broadcast* (CG / SN): the controller broadcasts the route
+  queue $\hat L_r$ (**CG**) and/or the green split $\hat\phi_r$ (**SN**), which
+  **compliant** travellers fold into their belief about routes they did *not*
+  take that day -- so they can learn about a route without driving it. The
+  baseline (**BL**) shares nothing. The first-hand observation on the route a
+  traveller actually took always wins (the broadcast is suppressed there, so no
+  double counting), and non-compliant travellers ignore the broadcast entirely.
 """
 
 _CONTROLLER = r"""
@@ -131,9 +152,61 @@ A good controller reaches **low cost and low queues** without paying for it with
 variation panel.
 """
 
+_SOCIAL = r"""
+### Sweeping social internalisation $\theta$
+
+This experiment fixes the AIF controller and varies how cooperative the
+travellers are. At $\theta=0.5$ the within-day and day-to-day charts above show
+the coupled traveller--controller adaptation. Sweeping
+$\theta\in\{0,0.25,0.5,0.75,1\}$ then traces the spectrum from the **user
+equilibrium** ($\theta=0$, travellers minimise only their own travel time) to
+the **system optimum** ($\theta=1$, travellers fully internalise the congestion
+externality $E_r$ they impose). The summary panels compare route shares, travel
+times, queue imbalance, and total system cost across $\theta$: higher $\theta$
+is expected to spread demand more evenly between the intersection and bypass --
+especially at the demand peak -- and lower the total system cost.
+
+Note that $\theta$ enters the perceived cost as $\zeta_r = TT_r + \theta E_r$,
+so it only changes behaviour when the externality $E_r$ is actually communicated
+(otherwise the offset is $\theta \times 0$ and every $\theta$ coincides). This
+experiment therefore broadcasts the externality at full compliance; the
+belief-informing CG/SN broadcasts of Experiment 3 are not used here.
+"""
+
+_COMMUNICATION = r"""
+### What information should the controller share?
+
+This experiment fixes the AIF controller and a single traveller population, and
+varies only the **belief-informing broadcast** (the second communication channel
+described above), comparing four settings:
+
+- **BL (baseline)** -- travellers observe only the realised travel time on the
+  route they took. No broadcast.
+- **CG (congestion)** -- the controller broadcasts the route queues $\hat L_r$.
+- **SN (signal)** -- the controller broadcasts the green split $\hat\phi_r$ of
+  the signalised route.
+- **CG+SN** -- both.
+
+Compliant travellers fold the broadcast into their belief about routes they did
+*not* take, so a broadcast sharpens the belief (and shrinks the posterior
+uncertainty) about the otherwise-unobserved route. CG mainly improves awareness
+of the current network imbalance; SN lets travellers anticipate how the signal
+will shape the intersection's future travel time.
+
+**What the charts show.** Day-to-day *route share* and *total system cost*
+overlay the four settings (does richer information converge faster, to a lower
+cost?); *queue evolution on the critical links* checks whether the broadcast
+reduces imbalance; *green-split evolution* shows how the controller responds
+under each information setting; and a *belief-uncertainty* panel compares the
+posterior SD across settings -- the direct readout of the "value of
+information". The expectation is that **CG+SN** yields the most stable
+route-choice patterns and the lowest system cost.
+"""
+
 _ADDENDA: dict[str, str] = {
-    "aif_controller": _CONTROLLER,
-    "controller_comparison": _COMPARISON,
+    "social_internalisation": _CONTROLLER + "\n" + _SOCIAL,
+    "controller_benchmark": _COMPARISON,
+    "information_communication": _CONTROLLER + "\n" + _COMMUNICATION,
 }
 
 

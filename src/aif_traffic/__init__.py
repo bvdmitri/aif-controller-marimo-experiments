@@ -30,6 +30,7 @@ from .explainers import NOTEBOOK_IDS, explainer_pointer, notebook_explainer
 from .parameters import (
     AIFControllerSpec,
     AnticipatoryControllerSpec,
+    BeliefSignal,
     CohortSpec,
     CommunicationSpec,
     DemandParams,
@@ -61,6 +62,7 @@ __all__ = [
     "AIFControllerSpec",
     "CommunicationSpec",
     "SignalType",
+    "BeliefSignal",
     "NOTEBOOK_IDS",
     "explainer_pointer",
     "notebook_explainer",

@@ -37,7 +37,7 @@ from aif_traffic.parameters import Params, SimParams
 from aif_traffic.simulator import run_experiment
 
 SEED = 42
-DAYS = 45  # enough post-burn-in days to reach the learned equilibrium
+DAYS = 90  # the full default experiment (reaches the learned equilibrium)
 
 
 @pytest.fixture(scope="module")

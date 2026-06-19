@@ -25,6 +25,7 @@ from aif_traffic.aggregation import build_daily_and_summary
 from aif_traffic.parameters import (
     AIFControllerSpec,
     AnticipatoryControllerSpec,
+    BeliefSignal,
     CohortSpec,
     FixedTimeControllerSpec,
     NoiseParams,
@@ -40,6 +41,7 @@ from aif_traffic.plotting import (
     plot_route_flows,
     plot_route_share_over_days,
     plot_signal_day,
+    plot_sweep_metrics,
     setup_style,
 )
 from aif_traffic.simulator import run_experiment
@@ -89,11 +91,41 @@ def smoke_controllers() -> None:
 
 
 def smoke_communication() -> None:
-    """Run every broadcast signal type with a compliant cohort."""
+    """Run every cost-offset broadcast signal type with a compliant cohort."""
     for st in SignalType:
         params = _small_params(ReactiveControllerSpec(), signal_type=st)
         res = run_experiment(params)
         assert not res.step.empty, f"{st}: empty step frame"
+
+
+def smoke_belief_communication() -> None:
+    """Run the four belief-informing settings (BL/CG/SN/CG+SN, Experiment 3)
+    with a fully-compliant cohort and render the sweep overlay. Also checks
+    that the baseline is bit-identical to sharing no belief signals."""
+    base = _small_params(AIFControllerSpec()).with_compliance(1.0)
+    settings = {
+        "BL": base.with_belief_signals(),
+        "CG": base.with_belief_signals(BeliefSignal.CONGESTION),
+        "SN": base.with_belief_signals(BeliefSignal.GREEN_SPLIT),
+        "CG+SN": base.with_belief_signals(
+            BeliefSignal.CONGESTION, BeliefSignal.GREEN_SPLIT
+        ),
+    }
+    results = {}
+    for name, params in settings.items():
+        res = run_experiment(params)
+        assert not res.step.empty, f"belief {name}: empty step frame"
+        results[name] = res
+
+    # Baseline (empty belief set) must be bit-identical to the default comm.
+    import numpy as np
+
+    default = run_experiment(base)
+    assert np.allclose(
+        results["BL"].step["P_alpha"].values, default.step["P_alpha"].values
+    ), "BL belief broadcast is not bit-identical to no information"
+
+    _save_figure(plot_sweep_metrics(results), "belief_communication_sweep.png")
 
 
 def smoke_demand() -> None:
@@ -107,6 +139,7 @@ def main() -> int:
         "demand": smoke_demand,
         "controllers": smoke_controllers,
         "communication": smoke_communication,
+        "belief_communication": smoke_belief_communication,
     }
     failures: list[str] = []
     for name, fn in smokes.items():

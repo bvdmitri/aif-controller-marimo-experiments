@@ -358,11 +358,16 @@ ControllerSpecLike = (
 #  Communication
 # ============================================================================
 class SignalType(enum.Enum):
-    """What the controller broadcasts to travellers.
+    """What the controller broadcasts to travellers as a *cost-offset advisory*.
 
     All variants are folded into the perceived route cost via a per-route
-    externality-like offset; ``build_broadcast`` converts each into that
-    common form. Which signal is most effective is an experimental question.
+    externality-like offset ``zeta_r = TT_r + theta * value_r``;
+    ``build_broadcast`` converts each into that common form. This channel
+    affects *action selection only* (the EFE risk term), never the belief
+    update. It carries the theta social-internalisation of Experiment 1.
+
+    This is distinct from the belief-informing channel (:class:`BeliefSignal`),
+    which feeds observations into the smoother.
     """
 
     NONE = "none"
@@ -372,11 +377,42 @@ class SignalType(enum.Enum):
     MSC = "msc"                   # \widehat{MSC}_r (marginal social cost)
 
 
+class BeliefSignal(enum.Enum):
+    """What the controller broadcasts to travellers as a *belief-informing*
+    observation (paper Experiment 3 settings BL/CG/SN/CG+SN).
+
+    Unlike :class:`SignalType` (a cost-offset that only shifts action
+    selection), these signals enter the traveller's belief update: compliant
+    travellers fold the broadcast into their Gaussian posterior over the latent
+    ``(F, C, L, phi)`` for routes they did *not* take that day. This is a
+    deliberate, documented departure from the "smoother reused verbatim"
+    invariant -- see ``inference/filter.py`` and ``inference/population.py``.
+
+    Experiment-3 settings map to subsets of this enum::
+
+        BL    -> frozenset()                       (baseline, no info)
+        CG    -> {CONGESTION}                       (broadcast queue \hat{L}_r)
+        SN    -> {GREEN_SPLIT}                      (broadcast green split \hat{phi}_r)
+        CG+SN -> {CONGESTION, GREEN_SPLIT}          (both)
+    """
+
+    CONGESTION = "cg"     # \hat{L}_r for all traveller routes
+    GREEN_SPLIT = "sn"    # \hat{phi}_r for the signalised route only
+
+
 @dataclass(frozen=True)
 class CommunicationSpec:
-    """How the controller communicates with travellers."""
+    """How the controller communicates with travellers.
+
+    Two orthogonal channels that can be combined:
+
+    * ``signal_type`` -- the cost-offset advisory (Experiment 1, theta);
+    * ``belief_signals`` -- the belief-informing broadcasts (Experiment 3,
+      BL/CG/SN/CG+SN). Empty set = baseline (no belief information shared).
+    """
 
     signal_type: SignalType = SignalType.NONE
+    belief_signals: frozenset[BeliefSignal] = frozenset()
 
 
 # ============================================================================
@@ -437,3 +473,12 @@ class Params:
 
     def with_comm(self, signal_type: SignalType) -> "Params":
         return replace(self, comm=replace(self.comm, signal_type=signal_type))
+
+    def with_belief_signals(self, *signals: BeliefSignal) -> "Params":
+        """Set the belief-informing broadcast set (Experiment 3 settings).
+
+        ``with_belief_signals()`` (no args) is the baseline BL case;
+        ``with_belief_signals(BeliefSignal.CONGESTION)`` is CG; pass both for
+        CG+SN.
+        """
+        return replace(self, comm=replace(self.comm, belief_signals=frozenset(signals)))

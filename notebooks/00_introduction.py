@@ -2,7 +2,8 @@
 
 A markdown-only marimo notebook: no simulation, no parameters, no Run button.
 It explains what this repository is, the two-layer model, the pluggable
-controller, and how the experiment notebooks (added later) will be organised.
+controller, the two communication channels, and how the three experiment
+notebooks are organised.
 """
 
 import marimo
@@ -52,20 +53,22 @@ def _(mo):
 
         * **Micro layer (travellers).** Decentralised Active Inference agents,
           reused from the IWAI demonstration. Each agent holds a Gaussian belief
-          over its route's latent travel-time state $(F, C, L)$, observes only the
-          route it took, and chooses by minimising Expected Free Energy. A *social
-          internalisation* $\theta$ controls how much of the broadcast congestion
-          externality each agent folds into its perceived route cost.
+          over its route's latent state $(F, C, L, \phi)$ -- free-flow time,
+          capacity, queue, and the expected **green split** $\phi$ -- observes
+          only the route it took, and chooses by minimising Expected Free
+          Energy. A *social internalisation* $\theta$ controls how much of the
+          congestion externality each agent folds into its perceived route cost.
 
-        * **Macro layer (controller).** A **pluggable** signal controller. Several
+        * **Macro layer (controller).** A **pluggable** signal controller. Four
           controllers share one interface so they can be swapped and compared:
 
           * **fixed-time** -- a constant split (non-adaptive);
           * **reactive** -- shifts green toward the longer queue (SCOOT-like);
           * **anticipatory** -- predictive grid search over the split;
-          * **AIF** -- the Active Inference controller. *Its internal model is an
-            open design question;* for now it is a placeholder that conforms to the
-            interface so the whole pipeline runs end to end.
+          * **AIF** -- the Active Inference controller (implemented): a Gaussian
+            belief over the junction queues $(L_2, L_6)$ and split selection by
+            minimising the Expected Free Energy toward a preferred *empty,
+            balanced* queue observation.
         """
     )
     return
@@ -77,21 +80,43 @@ def _(mo):
         r"""
         ## Communication and compliance
 
-        The controller has a network-wide view and broadcasts an information
-        signal that travellers may fold into their perceived route cost
-        $\zeta_r = TT_r + \theta\, E_r$. Candidate signals: travel time, congestion
-        (queue), congestion externality $E_r$, or marginal social cost. A per-cohort
-        **compliance fraction** sets how many travellers actually read the
-        broadcast; the rest ignore it and choose on private travel time alone.
+        The controller has a network-wide view and can share it through **two
+        distinct channels**:
 
-        Which signal is most effective, and how robust coordination is to
-        travellers ignoring it, are the two questions the experiments will probe.
+        * **Cost-offset advisory** ($\theta$) -- a per-route signal (e.g. the
+          congestion externality $E_r$) folded into the perceived cost
+          $\zeta_r = TT_r + \theta\, E_r$. This shifts route *choice* only.
+        * **Belief-informing broadcast** (CG / SN) -- the controller broadcasts
+          the route queue $\hat L_r$ (**CG**) and/or green split $\hat\phi_r$
+          (**SN**), which compliant travellers fold into their *belief* about
+          routes they did not take, learning about a route without driving it.
 
-        > **Status.** The repository currently ships the *structure*: the network,
-        > the traveller model, the controller abstraction with its baselines, the
-        > communication mechanism, and tests. The experiment notebooks and the
-        > Active Inference controller's formulation are developed next, in step with
-        > the paper's methodology section.
+        A per-cohort **compliance fraction** sets how many travellers read the
+        broadcast; the rest choose on private experience alone.
+        """
+    )
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md(
+        r"""
+        ## The three experiments
+
+        Each notebook isolates one mechanism, and the storyline builds on the
+        previous one:
+
+        1. **`01_social_internalisation`** — fix the AIF controller, sweep the
+           traveller social internalisation $\theta\in\{0,0.25,0.5,0.75,1\}$,
+           tracing the user-equilibrium to system-optimum spectrum. Establishes
+           the behavioural baseline.
+        2. **`02_controller_benchmark`** — compare the AIF controller against
+           fixed-time, reactive, and anticipatory controllers (cost, queues,
+           signal stability). The core result: AIF outperforms the baselines.
+        3. **`03_information_communication`** — having shown AIF performs best,
+           investigate *that* controller further: what should it broadcast?
+           Compare BL / CG / SN / CG+SN and measure the value of information.
         """
     )
     return

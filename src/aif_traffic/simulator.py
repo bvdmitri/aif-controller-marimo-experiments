@@ -25,7 +25,7 @@ from typing import Callable, Iterable, NamedTuple
 import numpy as np
 import pandas as pd
 
-from .communication import build_broadcast, empty_broadcast
+from .communication import build_belief_broadcast, build_broadcast, empty_broadcast
 from .control import build_controller
 from .demand import DemandProfile
 from .inference.population import Population, build_population
@@ -103,10 +103,18 @@ def simulate_one_day(
     N_ab = net.n_delay(sim.dt_min)[sig_ab]
     k_arr = np.minimum(np.arange(sim.K) + N_ab, sim.K - 1)
     green_obs_alpha = np.asarray(phi2, dtype=float)[k_arr]
+    # Belief-informing broadcast (paper Exp 3: CG/SN). Built from THIS day's
+    # realised queues/split and folded into the same end-of-day belief update --
+    # the belief update runs after the queues are known, so (unlike the
+    # cost-offset advisory used at route choice) it needs no one-day lag.
+    # Baseline (BL) yields BeliefBroadcast(None, None): a no-op that draws no
+    # randomness, keeping the belief update bit-identical to no information.
+    belief_broadcast = build_belief_broadcast(params.comm, queues, phi2, phi6, net, sim)
     population.update_beliefs(
         tt_route["alpha"], tt_route["beta"],
         route_q["alpha"], route_q["beta"],
         green_obs_alpha=green_obs_alpha,
+        belief_broadcast=belief_broadcast,
         rng=rng_obs, obs_noise_sd=params.noise.obs_noise_sd,
     )
 

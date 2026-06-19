@@ -1,10 +1,12 @@
-"""Comparing signal controllers.
+"""Experiment 2 -- Controller benchmark comparison.
 
 Runs the same network and demand under all four signal controllers
 (fixed-time, reactive, anticipatory, and the Active Inference controller) and
 compares the most relevant outcomes: total system cost, peak queues, and how
 steadily each controller drives the green split. Scalar day-series are overlaid
-on one chart; the green-split policy is shown one column per controller.
+on one chart; the green-split policy is shown one column per controller. This is
+the core contribution: does the AIF controller outperform established
+non-adaptive, reactive, and predictive strategies?
 """
 
 import marimo
@@ -24,12 +26,12 @@ def _():
 def _(mo):
     mo.md(
         r"""
-        # Comparing signal controllers
+        # Experiment 2 — Controller benchmark comparison
 
         Four controllers, same network and demand, swapping only the control
         strategy: **fixed-time**, **reactive** (SCOOT-like), **anticipatory**
         (predictive), and the **AIF** controller. We keep only the metrics the
-        paper's controller benchmark (RQ3) cares about: total system cost,
+        paper's controller benchmark cares about: total system cost,
         critical-link queues, and the stability of the signal policy.
 
         Set the parameters, click **Run**, and read the comparison below. Push
@@ -261,7 +263,7 @@ def _(
 
 @app.cell
 def _(mo, notebook_explainer):
-    mo.md(notebook_explainer("controller_comparison"))
+    mo.md(notebook_explainer("controller_benchmark"))
     return
 
 

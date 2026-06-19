@@ -2,16 +2,23 @@
 
 Reused from the IWAI route-choice model, with the two routes relabelled to the
 intersection route ``alpha`` (index 0) and the bypass route ``beta`` (index 1),
-and two macro-coupling additions:
+and macro-coupling additions across **two distinct controller->traveller
+channels**:
 
 * a per-agent **compliance** mask (drawn once from ``CohortSpec.compliance_fraction``):
-  compliant agents fold the controller broadcast into their perceived cost,
-  the rest ignore it;
-* ``begin_day(..., broadcast=...)`` turns the broadcast advisory into the EFE
-  ``cost_offset = theta * compliance * E_r`` per (agent, route).
-
-The smoother (``filter.py``) is untouched: ``theta`` and the broadcast affect
-only action selection, never the belief update.
+  compliant agents ingest the controller broadcast, the rest ignore it;
+* **Cost-offset channel** (Experiment 1, ``theta``): ``begin_day(..., broadcast=...)``
+  turns the cost-offset advisory into the EFE
+  ``cost_offset = theta * compliance * E_r`` per (agent, route). This affects
+  *action selection only* -- the smoother (``filter.py``) is untouched by it.
+* **Belief-informing channel** (Experiment 3, CG/SN):
+  ``update_beliefs(..., belief_broadcast=...)`` folds the broadcast route queue
+  (CG) and/or green split (SN) into the smoother as observations of routes the
+  compliant agent did *not* take. This DOES enter the belief update -- a
+  deliberate, documented departure from the IWAI "belief update sees only
+  first-hand, chosen-route observations" property. The gate
+  ``complies * (last_choice != route)`` keeps the chosen route's first-hand
+  observation authoritative (no double counting).
 """
 
 from __future__ import annotations
@@ -162,6 +169,18 @@ class Population:
         self._obs_buffer_phi = np.zeros((self.N, self.W), dtype=float)
         self._obs_buffer_sigma_phi = np.ones((self.N, self.W), dtype=float)
         self._obs_mask = np.zeros((self.N, self.W), dtype=float)
+
+        # Belief-informing broadcast buffers (paper Exp 3: CG/SN). Unlike the
+        # chosen-route buffers above (one value per agent-day), these carry one
+        # value per (agent, route, day): the broadcast informs routes the agent
+        # did NOT take. The masks are choice-independent (set in update_beliefs).
+        self._belief_L = np.zeros((self.N, 2, self.W), dtype=float)
+        self._belief_sigma_L = np.ones((self.N, 2, self.W), dtype=float)
+        self._belief_phi = np.zeros((self.N, 2, self.W), dtype=float)
+        self._belief_sigma_phi = np.ones((self.N, 2, self.W), dtype=float)
+        self._belief_mask_L = np.zeros((self.N, 2, self.W), dtype=float)
+        self._belief_mask_phi = np.zeros((self.N, 2, self.W), dtype=float)
+
         self.day_count: int = 0
 
         self._last_observed_day = np.full((self.N, 2), -1, dtype=int)
@@ -213,6 +232,61 @@ class Population:
             vals = np.asarray(broadcast.value[route], dtype=float)
             offset[:, j] = scale * vals[t_i]
         return offset
+
+    def _append_belief_broadcast(self, belief_broadcast, t_i, rng=None) -> None:
+        """Shift the belief-broadcast buffers and write today's slot.
+
+        The new slot carries, per (agent, route), the broadcast queue (CG) and
+        green split (SN) sampled at the agent's departure minute. The gate
+        ``complies * (last_choice != route)`` is the key correctness invariant:
+        only compliant agents ingest the broadcast, and never for the route
+        they actually took (the first-hand observation wins -- no double
+        counting). When no broadcast is shared the new slot's masks stay zero
+        (a no-op in the smoother).
+
+        The broadcast is treated as a *deterministic message*: the value is the
+        controller's reading and the traveller's trust in it is encoded by the
+        fold variance (``sigma_L_obs`` / ``sigma_phi_obs``), not by injecting
+        random noise into the value. This keeps the pipeline draw-free here, so
+        the baseline (no compliant ingester) is bit-identical to no broadcast.
+        ``rng`` is accepted for signature symmetry but unused.
+        """
+        del rng  # broadcast is a deterministic message (trust encoded by sigma)
+        # Shift every belief buffer/mask left by one day.
+        for buf in (
+            self._belief_L, self._belief_sigma_L,
+            self._belief_phi, self._belief_sigma_phi,
+            self._belief_mask_L, self._belief_mask_phi,
+        ):
+            buf[:, :, :-1] = buf[:, :, 1:]
+        # Default new slot = no broadcast observation (mask 0 ⇒ no-op).
+        self._belief_L[:, :, -1] = 0.0
+        self._belief_sigma_L[:, :, -1] = 1.0
+        self._belief_phi[:, :, -1] = 0.0
+        self._belief_sigma_phi[:, :, -1] = 1.0
+        self._belief_mask_L[:, :, -1] = 0.0
+        self._belief_mask_phi[:, :, -1] = 0.0
+
+        if belief_broadcast is None:
+            return
+
+        comply_f = self.complies.astype(float)  # (N,)
+
+        # CG: route-queue advisory for routes the agent did not take.
+        if getattr(belief_broadcast, "L", None) is not None:
+            for j, route in enumerate(self.route_names):
+                vals = np.asarray(belief_broadcast.L[route], dtype=float)[t_i]
+                self._belief_L[:, j, -1] = vals
+                self._belief_sigma_L[:, j, -1] = np.maximum(self.sigma_L_obs, 1e-3)
+                self._belief_mask_L[:, j, -1] = comply_f * (self.last_choice != j)
+
+        # SN: green-split advisory for the signalised route (index 0) only.
+        if getattr(belief_broadcast, "phi", None) is not None:
+            route0 = self.route_names[0]
+            phi_vals = np.asarray(belief_broadcast.phi[route0], dtype=float)[t_i]
+            self._belief_phi[:, 0, -1] = phi_vals
+            self._belief_sigma_phi[:, 0, -1] = np.maximum(self.sigma_phi_obs, 1e-3)
+            self._belief_mask_phi[:, 0, -1] = comply_f * (self.last_choice != 0)
 
     # ------------------------------------------------------------------ day
     def begin_day(
@@ -269,6 +343,7 @@ class Population:
         L_obs_alpha: np.ndarray,
         L_obs_beta: np.ndarray,
         green_obs_alpha: np.ndarray | None = None,
+        belief_broadcast=None,
         rng: np.random.Generator | None = None,
         obs_noise_sd: float = 0.0,
     ) -> None:
@@ -278,6 +353,14 @@ class Population:
         the traveller's arrival, per departure minute (length ``K``). Only
         agents who chose the intersection observe it; the smoother gates it to
         the signalised route, so others' values are ignored.
+
+        ``belief_broadcast`` is the controller's belief-informing broadcast
+        (paper Exp 3: CG/SN; :class:`communication.BeliefBroadcast`). When
+        present, **compliant** agents additionally fold the broadcast route
+        queue (CG) and/or green split (SN) into their belief about routes they
+        did *not* take that day. ``None`` (or ``BeliefBroadcast(None, None)``,
+        the baseline BL case) draws no randomness and leaves the belief update
+        bit-identical to the chosen-route-only smoother.
         """
         t_i = self.departure_time
         realised_tt_alpha = TT_alpha[t_i]
@@ -317,6 +400,9 @@ class Population:
         self._obs_buffer_sigma_phi[:, -1] = self.sigma_phi_obs
         self._obs_mask[:, :-1] = self._obs_mask[:, 1:]
         self._obs_mask[:, -1] = 1.0
+
+        self._append_belief_broadcast(belief_broadcast, t_i, rng)
+
         self.day_count += 1
 
         self._last_observed_day[np.arange(self.N), self.last_choice] = self.day_count
@@ -343,6 +429,12 @@ class Population:
             obs_mask=jnp.asarray(self._obs_mask),
             signalised=self.signalised_route,
             W=self.W,
+            y_belief_L_window=jnp.asarray(self._belief_L),
+            sigma_belief_L_window=jnp.asarray(self._belief_sigma_L),
+            belief_mask_L_window=jnp.asarray(self._belief_mask_L),
+            y_belief_phi_window=jnp.asarray(self._belief_phi),
+            sigma_belief_phi_window=jnp.asarray(self._belief_sigma_phi),
+            belief_mask_phi_window=jnp.asarray(self._belief_mask_phi),
             n_stale_days=jnp.asarray(n_stale),
             sigma_F_drift=jnp.asarray(self._sigma_F_drift)[:, None],
             sigma_C_drift=jnp.asarray(self._sigma_C_drift)[:, None],

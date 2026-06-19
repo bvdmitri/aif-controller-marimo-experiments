@@ -20,10 +20,23 @@ experiment notebook.
   low-and-balanced goal lives inside `Sigma_pref` (extra precision `omega` along
   the capacity-normalised imbalance direction), not in a hand-built cost. Keep it
   EFE-based: do not reintroduce a hand-crafted scalar cost function.
-- **The communication signal definitions stay open.** `communication.py` uses
-  cheap per-route proxies. The paper-faithful marginal social cost
-  (finite-difference re-roll) and externality are a deferred extension; the
-  *mechanism* is what is concrete for now.
+- **Two communication channels.** `communication.py` carries two distinct
+  controller→traveller channels (paper Sections 4.3 / Experiment 3):
+  - **Cost-offset advisory** (`SignalType`, `build_broadcast`, `Broadcast`):
+    a per-route signal folded into the *perceived cost* `zeta_r = TT_r + theta*E_r`.
+    Affects route choice only (`begin_day`), never the belief update. Carries the
+    `theta` social-internalisation (Experiment 1). MSC/externality use the
+    finite-difference re-roll; travel-time/congestion are direct proxies.
+  - **Belief-informing broadcast** (`BeliefSignal`, `build_belief_broadcast`,
+    `BeliefBroadcast`; settings BL/CG/SN/CG+SN): the controller broadcasts the
+    route queue `L_hat_r` (CG) and/or green split `phi_hat_r` (SN), which
+    *compliant* travellers fold into the smoother as observations of routes they
+    did NOT take. This **intentionally enters the belief update** — a documented
+    departure from "the smoother is reused verbatim / broadcast affects only
+    action selection" (see `filter.py`, `population.py`). The gate
+    `complies * (last_choice != route)` keeps first-hand observations
+    authoritative (no double counting); empty `belief_signals` (BL) is bit-identical
+    to no information.
 
 ## Conventions
 
@@ -51,8 +64,11 @@ experiment notebook.
 ## Run
 
 - Tests: `uv run --extra dev pytest tests/ -q`
+- Full-scale characterization reports (slow, opt-in):
+  `uv run --extra dev pytest tests/test_narrative_reports.py --runslow -s`
 - Headless smoke: `uv run python scripts/smoke_notebooks.py`
-- Both must pass before committing behaviour-changing diffs.
+- The fast tests and the smoke must pass before committing behaviour-changing
+  diffs; read the `--runslow` report narration when a paper claim is in question.
 
 ## Behavioural tests (verbal, self-documenting)
 
@@ -77,26 +93,63 @@ understanding of how the model behaves. Guidelines:
   expectation, the evidence, and a one-line verdict.
 - If a behavioural test starts failing, that is a signal to re-investigate and
   consciously revise the documented understanding — not to silently loosen it.
-- Keep them affordable: share one `run_experiment` via a module-scoped fixture,
-  use a modest day count, and prefer the deterministic (noise-free) path.
+- **Run the real experiment, not a reduced stand-in.** Behavioural tests use the
+  full default configuration — at least 90 days and the default 2000-traveller
+  population (no shrunk `n_agents`/horizon) — so the verdicts reflect the model
+  as actually used. Share one `run_experiment` via a module-scoped fixture and
+  prefer the deterministic (noise-free) path to keep them tractable.
+- Tests that are genuinely expensive at full scale (the externality re-roll, or
+  multi-run sweeps) are marked `@pytest.mark.slow` and **skipped unless** you pass
+  `--runslow` (see `tests/conftest.py`). The fast `pytest tests/` still runs the
+  in-suite behavioural tests; the full-scale reports are run on demand.
 - When the throwaway `/tmp` analysis you wrote to understand a behaviour proves a
   point worth keeping, promote it into `tests/test_behaviour.py`.
 
+### Two flavours of characterization test
+
+Both print their reasoning; they differ in what they assert (this is the classic
+*characterization / golden-master* idea — describe what the code actually does so
+a human or another agent can read it back):
+
+- **Direction-asserting** (`tests/test_behaviour.py`,
+  `tests/test_belief_informing.py`): pin a qualitative fact and assert its
+  direction with a generous margin (e.g. "CG lowers unchosen-route uncertainty").
+- **Report-style** (`tests/test_narrative_reports.py`): assert only *sanity*
+  (finite, in range, not NaN) and **print** whether each paper claim holds —
+  `PAPER CLAIMS … / OBSERVED … / consistent | MISMATCH`. The direction is
+  deliberately NOT asserted, so a discrepancy between the code's behaviour and
+  the paper text gets *surfaced* (for a human to reconcile) rather than asserted
+  away or silently encoded. **If a report reads MISMATCH, that is a finding to
+  raise against the paper, not a test to "fix".** Use this flavour when you are
+  fine with either outcome and want the result reported, not enforced. (As of
+  writing, the communication report flags that CG+SN is *not* the lowest-cost
+  setting, contrary to the Experiment-3 narrative — worth a look.)
+
 ## Notebooks
 
-- `00_introduction.py` — markdown landing page.
-- `01_aif_controller.py` — the AIF-controller experiment: sliders (with
-  explanations), a progress-bar run, within-day and day-to-day charts
-  (`plot_signal_day`, `plot_green_split_heatmap`, `plot_daily_system_cost`,
-  `plot_route_share_over_days`), and an optional per-day gif (`animate_days`,
-  needs `pillow`).
-- `02_controller_comparison.py` — runs all four controllers and compares them
-  (`plotting/comparison.py`): scalar day-series overlaid on one chart
+The three experiment notebooks mirror the paper's Experiment section one-to-one
+(explainer IDs in `explainers.py` match the filenames):
+
+- `00_introduction.py` — markdown landing page (two-layer model, two
+  communication channels, the three experiments).
+- `01_social_internalisation.py` — **Experiment 1**: fix the AIF controller,
+  sweep `theta in {0,0.25,0.5,0.75,1}`. A single-run section (within-day and
+  day-to-day charts: `plot_signal_day`, `plot_green_split_heatmap`,
+  `plot_daily_system_cost`, `plot_route_share_over_days`, optional `animate_days`)
+  plus a `theta`-sweep overlay (`plot_sweep_metrics`).
+- `02_controller_benchmark.py` — **Experiment 2**: runs all four controllers and
+  compares them (`plotting/comparison.py`): scalar day-series overlaid
   (`plot_controller_metrics`: system cost, peak queue, green-split variation),
   per-controller green-split heatmaps (`plot_green_split_heatmaps_by_controller`),
   a `controller_summary` table, and an optional faceted gif
-  (`animate_controller_comparison`). Disruptions / communication sweeps are not
-  in it yet.
+  (`animate_controller_comparison`).
+- `03_information_communication.py` — **Experiment 3**: fix the AIF controller and
+  sweep the belief-informing settings BL/CG/SN/CG+SN via `with_belief_signals(...)`,
+  overlaying outcomes and belief uncertainty (`plot_sweep_metrics`). Per-day
+  route-choice heatmaps / animations are deferred.
+
+Heavy per-experiment analysis charts (e.g. Experiment 2's theta×controller grid,
+Experiment 3's route-choice heatmaps) are scaffolded but not all built yet.
 
 ## Scope reminders
 

@@ -11,8 +11,9 @@ from dataclasses import replace
 
 import numpy as np
 
-from aif_traffic.communication import build_broadcast
+from aif_traffic.communication import build_belief_broadcast, build_broadcast
 from aif_traffic.parameters import (
+    BeliefSignal,
     CohortSpec,
     CommunicationSpec,
     FixedTimeControllerSpec,
@@ -111,3 +112,68 @@ def test_none_broadcast_is_zero():
     )
     assert np.allclose(bc.value["alpha"], 0.0)
     assert np.allclose(bc.value["beta"], 0.0)
+
+
+# --------------------------------------------------------------------------
+# Belief-informing broadcasts (paper Experiment 3: BL / CG / SN / CG+SN)
+# --------------------------------------------------------------------------
+def test_belief_broadcast_baseline_is_empty():
+    """BL (no belief signals) -> both payloads None: no information shared."""
+    net, sim, _inflow, queues, _tt, phi2, phi6 = _congested_alpha_scenario()
+    bb = build_belief_broadcast(CommunicationSpec(), queues, phi2, phi6, net, sim)
+    assert bb.L is None and bb.phi is None
+
+
+def test_belief_broadcast_cg_matches_route_arrival_queues():
+    """CG broadcasts L_hat_r equal to the arrival-aligned route queue -- the
+    same quantity a traveller senses first-hand on the route it takes."""
+    from aif_traffic.network import route_arrival_queues
+
+    net, sim, _inflow, queues, _tt, phi2, phi6 = _congested_alpha_scenario()
+    bb = build_belief_broadcast(
+        CommunicationSpec(belief_signals=frozenset({BeliefSignal.CONGESTION})),
+        queues, phi2, phi6, net, sim,
+    )
+    assert bb.phi is None  # CG only
+    route_q = route_arrival_queues(queues, net, sim)
+    for r in net.traveller_routes:
+        assert np.allclose(bb.L[r], route_q[r])
+    # The oversaturated intersection route carries the larger queue.
+    assert bb.L["alpha"].mean() > bb.L["beta"].mean()
+
+
+def test_belief_broadcast_sn_is_alpha_only_and_arrival_aligned():
+    """SN broadcasts phi_hat for the signalised route only, arrival-aligned."""
+    net, sim, _inflow, queues, _tt, phi2, phi6 = _congested_alpha_scenario()
+    bb = build_belief_broadcast(
+        CommunicationSpec(belief_signals=frozenset({BeliefSignal.GREEN_SPLIT})),
+        queues, phi2, phi6, net, sim,
+    )
+    assert bb.L is None  # SN only
+    assert set(bb.phi.keys()) == {"alpha"}  # phi inert on the bypass
+    sig_ab, _ = net.signalised_links
+    N_ab = net.n_delay(sim.dt_min)[sig_ab]
+    k_arr = np.minimum(np.arange(sim.K) + N_ab, sim.K - 1)
+    assert np.allclose(bb.phi["alpha"], np.asarray(phi2)[k_arr])
+
+
+def test_belief_broadcast_cg_sn_carries_both():
+    net, sim, _inflow, queues, _tt, phi2, phi6 = _congested_alpha_scenario()
+    bb = build_belief_broadcast(
+        CommunicationSpec(belief_signals=frozenset(
+            {BeliefSignal.CONGESTION, BeliefSignal.GREEN_SPLIT})),
+        queues, phi2, phi6, net, sim,
+    )
+    assert bb.L is not None and bb.phi is not None
+
+
+def test_baseline_belief_signals_match_no_information():
+    """An empty belief-signal set is bit-identical to the default (no belief
+    channel): the BL path draws no randomness and folds no observations."""
+    base = _params(SignalType.NONE, theta=0.5, compliance=1.0)
+    res_bl = run_experiment(replace(base, comm=CommunicationSpec()))
+    res_default = run_experiment(base)
+    assert np.allclose(res_bl.step["P_alpha"], res_default.step["P_alpha"])
+    assert np.allclose(
+        res_bl.cohort["sigma_beta_post"], res_default.cohort["sigma_beta_post"]
+    )

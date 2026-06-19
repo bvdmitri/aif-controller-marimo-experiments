@@ -1,10 +1,15 @@
-"""Active Inference signal controller: a first look.
+"""Experiment 1 -- Traveller social internalisation.
 
-Runs the coupled traveller/controller simulation with the **AIF signal
-controller** and visualises how it sets the green split and how the junction
-queues evolve, both within a day and across days. Comparison against the other
-controllers is out of scope here; this notebook is about seeing the AIF
-controller work and reading its behaviour.
+Fixes the **AIF signal controller** and varies how cooperative the travellers
+are. The single run (default ``theta = 0.5``) shows the coupled
+traveller/controller adaptation within a day and across days; the sweep section
+then runs ``theta in {0, 0.25, 0.5, 0.75, 1}`` -- the spectrum from the user
+equilibrium to the system optimum -- and overlays the resulting route shares,
+system cost, queues, and belief uncertainty. The congestion externality ``E_r``
+is communicated so ``theta`` can act on it (perceived cost
+``zeta_r = TT_r + theta * E_r``); the belief-informing CG/SN broadcasts of
+Experiment 3 are not used here. This establishes the behavioural baseline for
+Experiments 2 and 3.
 """
 
 import marimo
@@ -24,15 +29,20 @@ def _():
 def _(mo):
     mo.md(
         r"""
-        # Active Inference signal controller
+        # Experiment 1 — Traveller social internalisation
 
-        The controller keeps a Gaussian belief over the two signalised queues
-        $(L_2, L_6)$, predicts them one control interval ahead under each
-        candidate green split, and picks the split by minimising the **fixed**
-        Expected Free Energy. Its only designed object is a *preferred
-        observation* $\tilde p(o^c)=\mathcal N(0,\Sigma^c_{\mathrm{pref}})$
-        ("prefer empty queues"); the low-and-balanced goal lives inside
-        $\Sigma^c_{\mathrm{pref}}$, not in a hand-built cost.
+        The AIF signal controller is fixed; we vary how cooperative the
+        travellers are through their **social internalisation** $\theta$. A
+        traveller perceives a route as $\zeta_r = TT_r + \theta\,E_r$, where
+        $E_r$ is the congestion externality it imposes: $\theta=0$ is the user
+        equilibrium (purely selfish), $\theta=1$ the system optimum (fully
+        cooperative).
+
+        The single run below shows the coupled adaptation at a chosen $\theta$
+        (default $0.5$). The **sweep** section then runs
+        $\theta\in\{0,0.25,0.5,0.75,1\}$ and overlays the outcomes. The
+        externality $E_r$ is communicated so $\theta$ can act on it; the
+        belief-informing broadcasts (CG/SN) of Experiment 3 are *not* used here.
 
         Set the parameters, click **Run**, and read the charts below.
         """
@@ -51,6 +61,7 @@ def _():
         AIFControllerSpec,
         DemandParams,
         Params,
+        SignalType,
         SimParams,
     )
     from aif_traffic.plotting import (
@@ -63,6 +74,7 @@ def _():
         plot_route_flows,
         plot_route_share_over_days,
         plot_signal_day,
+        plot_sweep_metrics,
         setup_style,
     )
     from aif_traffic.simulator import run_experiment
@@ -73,6 +85,7 @@ def _():
         DemandParams,
         Params,
         Path,
+        SignalType,
         SimParams,
         animate_days,
         explainer_pointer,
@@ -87,6 +100,7 @@ def _():
         plot_route_flows,
         plot_route_share_over_days,
         plot_signal_day,
+        plot_sweep_metrics,
         replace,
         run_experiment,
     )
@@ -104,6 +118,7 @@ def _(mo):
     seed = mo.ui.slider(0, 100, value=42, label="seed")
     control_interval = mo.ui.slider(1, 30, value=10, label="control interval [min]")
     demand_scale = mo.ui.slider(0.5, 2.0, step=0.1, value=1.0, label="demand scale")
+    theta = mo.ui.slider(0.0, 1.0, step=0.05, value=0.5, label="theta")
 
     gamma = mo.ui.slider(0.5, 20.0, step=0.5, value=4.0, label="gamma")
     omega = mo.ui.slider(0.0, 0.2, step=0.005, value=0.02, label="omega")
@@ -125,6 +140,13 @@ def _(mo):
         _row(demand_scale,
              r"Scales peak A--B and C--D demand. $>1$ pushes the junction "
              r"toward saturation and makes the control problem harder."),
+        _row(theta,
+             r"Social internalisation $\theta$ for the single run below: how "
+             r"much travellers add the congestion externality $E_r$ to their "
+             r"perceived cost $\zeta_r = TT_r + \theta E_r$. $0$ = selfish, "
+             r"$1$ = fully cooperative. (The externality is broadcast at full "
+             r"compliance so $\theta$ has an $E_r$ to act on; this re-rolls the "
+             r"day each step, so runs take longer.)"),
         mo.md("---"),
         mo.md("### Controller (Active Inference)"),
         _row(gamma,
@@ -151,6 +173,7 @@ def _(mo):
         run_btn,
         seed,
         sigma_pref,
+        theta,
     )
 
 
@@ -172,6 +195,8 @@ def _(
     run_experiment,
     seed,
     sigma_pref,
+    SignalType,
+    theta,
 ):
     if not run_btn.value:
         params = None
@@ -192,11 +217,17 @@ def _(
             d_AB_max=base_d.d_AB_max * scale,
             d_CD_max=base_d.d_CD_max * scale,
         )
+        # theta enters the perceived cost as zeta_r = TT_r + theta * E_r, so it
+        # only changes behaviour when the externality E_r is communicated. We
+        # broadcast EXTERNALITY at full compliance; with no such signal theta
+        # multiplies a zero offset and every theta gives an identical result.
         params = replace(
             Params(),
             sim=replace(SimParams(), days=int(days.value), seed=int(seed.value)),
             controller=spec,
             demand=demand,
+        ).with_comm(SignalType.EXTERNALITY).with_compliance(1.0).with_theta(
+            float(theta.value)
         )
         results = run_experiment(
             params, seeds=[int(seed.value)], progress=mo.status.progress_bar,
@@ -343,8 +374,52 @@ def _(animate_days, is_deployed, make_gif, mo, outputs_dir, results):
 
 
 @app.cell
+def _(mo):
+    mo.md(
+        r"""
+        ## Sweep social internalisation $\theta$
+
+        Re-runs the same network and AIF controller for
+        $\theta\in\{0,0.25,0.5,0.75,1\}$ and overlays the day-to-day outcomes.
+        Higher $\theta$ is expected to spread demand more evenly and lower the
+        system cost. Each run broadcasts the externality at full compliance (so
+        $\theta$ actually bites — see the note on the $\theta$ slider); with no
+        externality channel every curve would coincide. This is heavy (five
+        full experiments, each re-rolling the day per minute), so it is gated
+        behind its own button.
+        """
+    )
+    return
+
+
+@app.cell
+def _(mo):
+    sweep_btn = mo.ui.run_button(label="Run theta sweep")
+    sweep_btn
+    return (sweep_btn,)
+
+
+@app.cell
+def _(mo, params, plot_sweep_metrics, run_experiment, sweep_btn):
+    if not sweep_btn.value or params is None:
+        fig_sweep = mo.md(
+            "_Run the single experiment above, then click **Run theta sweep**._"
+        )
+    else:
+        _thetas = [0.0, 0.25, 0.5, 0.75, 1.0]
+        _results_by_theta = {}
+        for _th in mo.status.progress_bar(_thetas, title="theta sweep"):
+            _results_by_theta[f"theta={_th:g}"] = run_experiment(
+                params.with_theta(_th), seeds=[params.sim.seed],
+            )
+        fig_sweep = plot_sweep_metrics(_results_by_theta)
+    fig_sweep
+    return
+
+
+@app.cell
 def _(mo, notebook_explainer):
-    mo.md(notebook_explainer("aif_controller"))
+    mo.md(notebook_explainer("social_internalisation"))
     return
 
 

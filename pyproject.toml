@@ -30,3 +30,6 @@ packages = ["src/aif_traffic"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+markers = [
+    "slow: full-scale characterization tests (real 90-day experiment, default 2000-traveller population). Skipped unless --runslow is given. Run with: pytest --runslow -s",
+]
