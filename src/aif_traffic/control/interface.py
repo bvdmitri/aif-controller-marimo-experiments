@@ -23,7 +23,31 @@ formulation is an open question and lives behind this same interface.
 
 from __future__ import annotations
 
-from typing import Mapping, Protocol, runtime_checkable
+from typing import Mapping, NamedTuple, Protocol, runtime_checkable
+
+import numpy as np
+
+
+class QueueForecast(NamedTuple):
+    """A controller's forward-predicted belief for an upcoming day, broadcast to
+    travellers for decision-time fusion (paper Experiment 3 / 4).
+
+    All arrays are length ``K`` (per within-day minute), indexed by the minute
+    the queue/split refers to (the communication layer applies the traveller's
+    arrival alignment ``k + N_l``):
+
+    * ``mu_L`` / ``var_L`` -- the controller's predicted belief over the
+      signalised A--B queue ``L_2`` (mean and variance; the variance grows over
+      the horizon since the prediction is uncorrected by observations).
+    * ``phi2`` -- the controller's *planned* green split for the A--B movement.
+    * ``var_phi`` -- the (scalar) variance the controller attaches to its
+      planned split when shared.
+    """
+
+    mu_L: np.ndarray
+    var_L: np.ndarray
+    phi2: np.ndarray
+    var_phi: float
 
 
 def project_to_constraint(
@@ -48,10 +72,12 @@ class Controller(Protocol):
 
     def snapshot(self) -> dict: ...
 
+    def forecast(self, context: Mapping) -> QueueForecast | None: ...
+
 
 class BaseController:
-    """Convenience base providing no-op ``prepare_day`` / ``observe`` and a
-    default ``snapshot``. Concrete controllers override ``decide``."""
+    """Convenience base providing no-op ``prepare_day`` / ``observe`` / ``forecast``
+    and a default ``snapshot``. Concrete controllers override ``decide``."""
 
     name: str = "base"
 
@@ -66,3 +92,8 @@ class BaseController:
 
     def snapshot(self) -> dict:
         return {"name": self.name}
+
+    def forecast(self, context: Mapping) -> QueueForecast | None:  # noqa: D401
+        """Controllers that maintain a shareable belief override this; baselines
+        have no belief to broadcast, so they forecast nothing."""
+        return None

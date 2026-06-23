@@ -1,18 +1,19 @@
 """Experiment 3 -- System information communication.
 
 Fixes the AIF signal controller and a single traveller population, and varies
-only the **belief-informing broadcast**: what the controller shares with
-travellers about routes they did not take.
+only **what the controller shares from its own belief** before travellers
+choose.
 
-* **BL** -- baseline: travellers observe only their own realised travel time.
-* **CG** -- the controller broadcasts route queues ``L_hat_r``.
-* **SN** -- the controller broadcasts the green split ``phi_hat_r``.
-* **CG+SN** -- both.
+* **BL** -- baseline: the controller shares nothing.
+* **QB** -- the controller shares its forward-predicted queue belief
+  ``N(L_hat, var)``.
+* **SP** -- the controller shares its planned green split ``phi_hat``.
+* **QB+SP** -- both.
 
-Compliant travellers fold the broadcast into their belief about the unchosen
-routes, so richer information should sharpen beliefs (lower posterior
-uncertainty), smooth route choice, and lower system cost. CG+SN is expected to
-be best. This notebook runs the four settings and overlays the outcomes.
+A compliant traveller fuses the shared Gaussian into its own posterior at
+decision time (a transient fusion that never enters the smoother); richer
+information sharpens its anticipation of the day. This notebook runs the four
+settings at full compliance and overlays the outcomes.
 """
 
 import marimo
@@ -35,16 +36,16 @@ def _(mo):
         # Experiment 3 — System information communication
 
         The AIF controller and the traveller population are fixed; we vary only
-        what the controller **broadcasts** to travellers about routes they did
-        not take that day. A compliant traveller folds the broadcast queue
-        ($\hat L_r$, **CG**) and/or green split ($\hat\phi_r$, **SN**) into its
-        belief, so it can learn about a route without driving it. The first-hand
-        observation on the route actually taken always wins (no double
-        counting), and non-compliant travellers ignore the broadcast.
+        **what the controller shares from its own belief** before travellers
+        choose. The controller forward-predicts the day and shares its queue
+        belief ($\mathcal N(\hat L,\widehat{\mathrm{var}})$, **QB**) and/or its
+        planned green split ($\hat\phi$, **SP**). A compliant traveller *fuses*
+        that distribution into its own posterior to decide — a transient fusion
+        that never enters its smoother; non-compliant travellers ignore it.
 
         Set the parameters, click **Run**, and read the overlay below. The
-        expectation is that **CG+SN** gives the most stable route choice and the
-        lowest system cost.
+        question is whether richer shared anticipation gives more stable route
+        choice and lower system cost.
         """
     )
     return
@@ -64,6 +65,7 @@ def _():
     )
     from aif_traffic.plotting import (
         figure_placeholder,
+        plot_route_choice_heatmaps,
         plot_sweep_metrics,
         setup_style,
     )
@@ -79,6 +81,7 @@ def _():
         explainer_pointer,
         figure_placeholder,
         notebook_explainer,
+        plot_route_choice_heatmaps,
         plot_sweep_metrics,
         replace,
         run_experiment,
@@ -159,10 +162,10 @@ def _(
 
         _settings = {
             "BL": _base.with_belief_signals(),
-            "CG": _base.with_belief_signals(BeliefSignal.CONGESTION),
-            "SN": _base.with_belief_signals(BeliefSignal.GREEN_SPLIT),
-            "CG+SN": _base.with_belief_signals(
-                BeliefSignal.CONGESTION, BeliefSignal.GREEN_SPLIT
+            "QB": _base.with_belief_signals(BeliefSignal.QUEUE_BELIEF),
+            "SP": _base.with_belief_signals(BeliefSignal.SPLIT_PLAN),
+            "QB+SP": _base.with_belief_signals(
+                BeliefSignal.QUEUE_BELIEF, BeliefSignal.SPLIT_PLAN
             ),
         }
         results_by_setting = {}
@@ -181,6 +184,33 @@ def _(figure_placeholder, plot_sweep_metrics, results_by_setting):
         else plot_sweep_metrics(results_by_setting)
     )
     fig_comm
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md(
+        r"""
+        ### Route-choice patterns within the day
+
+        The overlay above shows *what* each setting converges to; the heatmaps
+        below show *when within the day* travellers pick the intersection route
+        $\alpha$ (share $P_\alpha$ over day $\times$ time-of-day), one column per
+        setting. Richer information should settle the pattern faster across the
+        learning days and reduce the mid-day diversion swing.
+        """
+    )
+    return
+
+
+@app.cell
+def _(figure_placeholder, plot_route_choice_heatmaps, results_by_setting):
+    fig_routes = (
+        figure_placeholder("Route-choice heatmaps")
+        if results_by_setting is None
+        else plot_route_choice_heatmaps(results_by_setting)
+    )
+    fig_routes
     return
 
 

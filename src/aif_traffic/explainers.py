@@ -19,6 +19,7 @@ NOTEBOOK_IDS: tuple[str, ...] = (
     "social_internalisation",
     "controller_benchmark",
     "information_communication",
+    "compliance_robustness",
 )
 
 
@@ -69,13 +70,17 @@ network-wide view and can share it in two distinct ways.
   social internalisation ($0$ = purely selfish / user equilibrium, $1$ = fully
   cooperative / system optimum). This shifts route *choice* only; it never
   touches the belief update.
-- *Belief-informing broadcast* (CG / SN): the controller broadcasts the route
-  queue $\hat L_r$ (**CG**) and/or the green split $\hat\phi_r$ (**SN**), which
-  **compliant** travellers fold into their belief about routes they did *not*
-  take that day -- so they can learn about a route without driving it. The
-  baseline (**BL**) shares nothing. The first-hand observation on the route a
-  traveller actually took always wins (the broadcast is suppressed there, so no
-  double counting), and non-compliant travellers ignore the broadcast entirely.
+- *Controller-belief broadcast* (QB / SP): the controller has its own
+  *belief* (a probability distribution) about the upcoming day. Before
+  travellers choose, it shares its forward-predicted queue belief
+  $\mathcal N(\hat L,\widehat{\mathrm{var}})$ (**QB**) and/or its planned green
+  split $\hat\phi$ (**SP**). A **compliant** traveller *fuses* that Gaussian into
+  its own posterior (precision-weighted) to make the route decision; a
+  non-compliant traveller uses only its own posterior. The fusion is
+  **transient** -- it shapes the choice but is never written back into the
+  smoother, so the traveller's first-hand belief is untouched. The baseline
+  (**BL**) shares nothing, and at zero compliance every setting collapses onto
+  BL exactly.
 """
 
 _CONTROLLER = r"""
@@ -149,7 +154,11 @@ per day.
 
 A good controller reaches **low cost and low queues** without paying for it with
 **erratic signal switching**; read the cost/queue panels together with the
-variation panel.
+variation panel. Finally, a *$\theta\times$controller grid* re-runs every
+controller across the social-internalisation sweep
+$\theta\in\{0,0.25,0.5,0.75,1\}$ and shows the steady-state system cost as a
+heatmap, so the controller's advantage can be read off across the whole
+user-equilibrium-to-system-optimum spectrum, not just at one $\theta$.
 """
 
 _SOCIAL = r"""
@@ -174,39 +183,74 @@ belief-informing CG/SN broadcasts of Experiment 3 are not used here.
 """
 
 _COMMUNICATION = r"""
-### What information should the controller share?
+### What belief should the controller share?
 
 This experiment fixes the AIF controller and a single traveller population, and
-varies only the **belief-informing broadcast** (the second communication channel
-described above), comparing four settings:
+varies only **what the controller shares from its own belief** before travellers
+choose, comparing four settings:
 
-- **BL (baseline)** -- travellers observe only the realised travel time on the
-  route they took. No broadcast.
-- **CG (congestion)** -- the controller broadcasts the route queues $\hat L_r$.
-- **SN (signal)** -- the controller broadcasts the green split $\hat\phi_r$ of
-  the signalised route.
-- **CG+SN** -- both.
+- **BL (baseline)** -- the controller shares nothing; travellers decide on their
+  own posterior alone.
+- **QB (queue belief)** -- the controller shares its forward-predicted belief
+  over the intersection queue, $\mathcal N(\hat L,\widehat{\mathrm{var}})$.
+- **SP (split plan)** -- the controller shares its *planned* green split
+  $\hat\phi$ for the upcoming day.
+- **QB+SP** -- both.
 
-Compliant travellers fold the broadcast into their belief about routes they did
-*not* take, so a broadcast sharpens the belief (and shrinks the posterior
-uncertainty) about the otherwise-unobserved route. CG mainly improves awareness
-of the current network imbalance; SN lets travellers anticipate how the signal
-will shape the intersection's future travel time.
+The controller produces these by rolling its generative model forward over the
+next day under its planned policy and a persistence forecast of demand (so the
+queue belief's variance grows with the horizon -- honest predictive
+uncertainty). A compliant traveller **fuses** the shared Gaussian into its own
+posterior over the intersection-route latent at decision time (precision-weighted
+by the controller's variance: a confident forecast pulls harder). The fusion is
+transient -- it never enters the smoother. QB tells travellers what queue to
+expect; SP lets them anticipate the intersection's effective capacity, which they
+cannot observe first-hand without driving it.
 
 **What the charts show.** Day-to-day *route share* and *total system cost*
-overlay the four settings (does richer information converge faster, to a lower
-cost?); *queue evolution on the critical links* checks whether the broadcast
-reduces imbalance; *green-split evolution* shows how the controller responds
-under each information setting; and a *belief-uncertainty* panel compares the
-posterior SD across settings -- the direct readout of the "value of
-information". The expectation is that **CG+SN** yields the most stable
-route-choice patterns and the lowest system cost.
+overlay the four settings; *queue evolution on the critical links* checks whether
+the shared belief reduces imbalance; *green-split evolution* shows the
+controller's policy; a *belief-uncertainty* panel compares the traveller
+posterior SD across settings; and a row of *route-choice heatmaps* (one per
+setting) shows the intersection share $P_\alpha$ over (day $\times$ time-of-day).
+
+A caveat the model makes explicit: sharing the controller's belief sharpens each
+traveller's *private* travel-time anticipation, which drives behaviour toward the
+**user equilibrium** -- it carries no externality/social term, so (unlike the
+cost-offset $\theta\,E_r$ channel of Experiments 1 and 4) there is no guarantee
+that QB/SP alone reach the lowest *system* cost. Better anticipation can still
+help by reducing over-/under-reaction; read the value-of-information question as
+empirical, not assumed.
+"""
+
+_COMPLIANCE = r"""
+### Sweeping traveller compliance
+
+This experiment fixes the AIF controller and shares the controller's full belief
+(**QB+SP** -- queue belief and planned split) before travellers choose, then
+sweeps the **compliance fraction**: the share of travellers that actually fuse
+the controller's belief into their decision. The rest ignore it and decide on
+their own posterior alone.
+
+At compliance $0$ nobody fuses, so the broadcast is an exact no-op and the
+setting is **bit-identical** to the baseline; at compliance $1$ every traveller
+anticipates the day using the controller's shared belief. This isolates *who
+listens* (the complement of Experiment 3, which fixes full compliance and varies
+*what* is shared).
+
+**What the charts show.** The same four overlay panels as the sweep experiments,
+one line per compliance level: day-to-day *system cost* (does it change smoothly
+as more travellers listen, or jump at a threshold?), *intersection route share*,
+*peak queue* $L_2+L_6$, and traveller *belief uncertainty*. The question is
+whether the coordination effect of shared anticipation degrades **gracefully**
+with compliance -- fading smoothly rather than collapsing at a cliff.
 """
 
 _ADDENDA: dict[str, str] = {
     "social_internalisation": _CONTROLLER + "\n" + _SOCIAL,
     "controller_benchmark": _COMPARISON,
     "information_communication": _CONTROLLER + "\n" + _COMMUNICATION,
+    "compliance_robustness": _CONTROLLER + "\n" + _COMPLIANCE,
 }
 
 

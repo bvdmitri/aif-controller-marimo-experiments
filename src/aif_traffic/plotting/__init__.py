@@ -15,6 +15,7 @@ from .animation import animate_controller_comparison, animate_days
 from .comparison import (
     controller_summary,
     plot_controller_metrics,
+    plot_controller_theta_grid,
     plot_green_split_heatmaps_by_controller,
 )
 from .demand import plot_demand_profile
@@ -27,7 +28,7 @@ from .network import (
     plot_signal_day,
 )
 from .primitives import TEXT_W, TEXT_W_HALF, figure_placeholder
-from .sweep import plot_sweep_metrics
+from .sweep import plot_route_choice_heatmaps, plot_sweep_metrics
 
 
 def setup_style() -> None:
@@ -66,7 +67,9 @@ __all__ = [
     "animate_days",
     "plot_controller_metrics",
     "plot_green_split_heatmaps_by_controller",
+    "plot_controller_theta_grid",
     "controller_summary",
     "animate_controller_comparison",
     "plot_sweep_metrics",
+    "plot_route_choice_heatmaps",
 ]

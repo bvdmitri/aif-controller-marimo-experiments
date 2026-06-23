@@ -10,8 +10,10 @@ from __future__ import annotations
 from dataclasses import replace
 
 import numpy as np
+import pytest
 
 from aif_traffic.communication import build_belief_broadcast, build_broadcast
+from aif_traffic.control.interface import QueueForecast
 from aif_traffic.parameters import (
     BeliefSignal,
     CohortSpec,
@@ -115,56 +117,83 @@ def test_none_broadcast_is_zero():
 
 
 # --------------------------------------------------------------------------
-# Belief-informing broadcasts (paper Experiment 3: BL / CG / SN / CG+SN)
+# Controller-belief broadcasts for decision-time fusion (Exp 3: BL/QB/SP/QB+SP)
 # --------------------------------------------------------------------------
+def _toy_forecast(K: int) -> QueueForecast:
+    """A synthetic controller forecast: a ramping queue belief with growing
+    variance and a sweeping planned split."""
+    return QueueForecast(
+        mu_L=np.linspace(0.0, 100.0, K),
+        var_L=np.linspace(25.0, 400.0, K),
+        phi2=np.linspace(0.3, 0.5, K),
+        var_phi=0.0004,
+    )
+
+
 def test_belief_broadcast_baseline_is_empty():
-    """BL (no belief signals) -> both payloads None: no information shared."""
-    net, sim, _inflow, queues, _tt, phi2, phi6 = _congested_alpha_scenario()
-    bb = build_belief_broadcast(CommunicationSpec(), queues, phi2, phi6, net, sim)
-    assert bb.L is None and bb.phi is None
+    """BL (no belief signals) -> empty payload, even given a forecast."""
+    net = NetworkParams()
+    sim = SimParams(h_min=10, dt_min=1)
+    bb = build_belief_broadcast(CommunicationSpec(), _toy_forecast(sim.K), net, sim)
+    assert bb.is_empty()
 
 
-def test_belief_broadcast_cg_matches_route_arrival_queues():
-    """CG broadcasts L_hat_r equal to the arrival-aligned route queue -- the
-    same quantity a traveller senses first-hand on the route it takes."""
-    from aif_traffic.network import route_arrival_queues
-
-    net, sim, _inflow, queues, _tt, phi2, phi6 = _congested_alpha_scenario()
+def test_belief_broadcast_none_forecast_is_empty():
+    """A controller that forecasts nothing (e.g. a baseline) yields BL."""
+    net = NetworkParams()
+    sim = SimParams(h_min=10, dt_min=1)
     bb = build_belief_broadcast(
-        CommunicationSpec(belief_signals=frozenset({BeliefSignal.CONGESTION})),
-        queues, phi2, phi6, net, sim,
+        CommunicationSpec(belief_signals=frozenset({BeliefSignal.QUEUE_BELIEF})),
+        None, net, sim,
     )
-    assert bb.phi is None  # CG only
-    route_q = route_arrival_queues(queues, net, sim)
-    for r in net.traveller_routes:
-        assert np.allclose(bb.L[r], route_q[r])
-    # The oversaturated intersection route carries the larger queue.
-    assert bb.L["alpha"].mean() > bb.L["beta"].mean()
+    assert bb.is_empty()
 
 
-def test_belief_broadcast_sn_is_alpha_only_and_arrival_aligned():
-    """SN broadcasts phi_hat for the signalised route only, arrival-aligned."""
-    net, sim, _inflow, queues, _tt, phi2, phi6 = _congested_alpha_scenario()
+def test_belief_broadcast_qb_is_arrival_aligned_queue_belief():
+    """QB carries the controller's predicted queue belief (mean+variance),
+    arrival-aligned (k + N_2); the split is not shared."""
+    net = NetworkParams()
+    sim = SimParams(h_min=10, dt_min=1)
+    fc = _toy_forecast(sim.K)
     bb = build_belief_broadcast(
-        CommunicationSpec(belief_signals=frozenset({BeliefSignal.GREEN_SPLIT})),
-        queues, phi2, phi6, net, sim,
+        CommunicationSpec(belief_signals=frozenset({BeliefSignal.QUEUE_BELIEF})),
+        fc, net, sim,
     )
-    assert bb.L is None  # SN only
-    assert set(bb.phi.keys()) == {"alpha"}  # phi inert on the bypass
+    assert bb.phi is None and bb.var_phi is None  # QB only
     sig_ab, _ = net.signalised_links
     N_ab = net.n_delay(sim.dt_min)[sig_ab]
     k_arr = np.minimum(np.arange(sim.K) + N_ab, sim.K - 1)
-    assert np.allclose(bb.phi["alpha"], np.asarray(phi2)[k_arr])
+    assert np.allclose(bb.mu_L, fc.mu_L[k_arr])
+    assert np.allclose(bb.var_L, fc.var_L[k_arr])
 
 
-def test_belief_broadcast_cg_sn_carries_both():
-    net, sim, _inflow, queues, _tt, phi2, phi6 = _congested_alpha_scenario()
+def test_belief_broadcast_sp_is_arrival_aligned_split_plan():
+    """SP carries the planned split (and its variance), arrival-aligned; the
+    queue belief is not shared."""
+    net = NetworkParams()
+    sim = SimParams(h_min=10, dt_min=1)
+    fc = _toy_forecast(sim.K)
+    bb = build_belief_broadcast(
+        CommunicationSpec(belief_signals=frozenset({BeliefSignal.SPLIT_PLAN})),
+        fc, net, sim,
+    )
+    assert bb.mu_L is None and bb.var_L is None  # SP only
+    sig_ab, _ = net.signalised_links
+    N_ab = net.n_delay(sim.dt_min)[sig_ab]
+    k_arr = np.minimum(np.arange(sim.K) + N_ab, sim.K - 1)
+    assert np.allclose(bb.phi, fc.phi2[k_arr])
+    assert bb.var_phi == pytest.approx(fc.var_phi)
+
+
+def test_belief_broadcast_qb_sp_carries_both():
+    net = NetworkParams()
+    sim = SimParams(h_min=10, dt_min=1)
     bb = build_belief_broadcast(
         CommunicationSpec(belief_signals=frozenset(
-            {BeliefSignal.CONGESTION, BeliefSignal.GREEN_SPLIT})),
-        queues, phi2, phi6, net, sim,
+            {BeliefSignal.QUEUE_BELIEF, BeliefSignal.SPLIT_PLAN})),
+        _toy_forecast(sim.K), net, sim,
     )
-    assert bb.L is not None and bb.phi is not None
+    assert bb.mu_L is not None and bb.phi is not None
 
 
 def test_baseline_belief_signals_match_no_information():

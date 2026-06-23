@@ -37,18 +37,12 @@ posterior is deterministic given the inputs. For an unobserved route
 the Kalman updates apply no information and the posterior equals the
 (inflated) prior exactly; no "clamp" needed.
 
-**Belief-informing broadcast (paper Experiment 3, CG/SN).** In addition to
-the chosen-route observations above, the smoother optionally folds in
-controller *broadcast* observations of the route queue (``y_belief_L``) and
-green split (``y_belief_phi``) via a **second, choice-independent mask**
-(``belief_mask_L``/``belief_mask_phi``). This lets a compliant traveller learn
-about routes it did *not* take that day -- an intentional, documented departure
-from the "unchosen routes get no information" property above. The mask is
-constructed (in :mod:`inference.population`) to be zero on the route actually
-chosen (the first-hand observation wins; no double counting) and zero
-everywhere when no broadcast is shared (then these folds are exact no-ops and
-the smoother is bit-identical to the chosen-route-only model). The ``phi``
-broadcast is additionally gated to signalised routes.
+This smoother is **first-hand only** (IWAI-verbatim): it folds in observations
+of the route a traveller actually took, and nothing else. The controller's
+broadcast does not enter here -- it is fused transiently into the route-choice
+belief at decision time (:mod:`inference.population`) and never persists into
+the smoother. The reusable rank-1 update :func:`_kalman_one_obs` is shared with
+that decision-time fusion.
 """
 
 from __future__ import annotations
@@ -250,12 +244,6 @@ def _laplace_iter_step(
     sigma_phi_window: jnp.ndarray,
     obs_mask: jnp.ndarray,
     signalised: jnp.ndarray,
-    y_belief_L_window: jnp.ndarray,
-    sigma_belief_L_window: jnp.ndarray,
-    belief_mask_L_window: jnp.ndarray,
-    y_belief_phi_window: jnp.ndarray,
-    sigma_belief_phi_window: jnp.ndarray,
-    belief_mask_phi_window: jnp.ndarray,
     phi_lo: float,
     phi_hi: float,
     W: int,
@@ -264,19 +252,9 @@ def _laplace_iter_step(
 
     Linearises the TT forward map around ``mu_lin`` and folds in all W
     chosen-route observations (TT, L, and -- on signalised routes -- the green
-    split ``phi``) starting from the prior.
-
-    In addition to the chosen-route observations, it folds in any
-    *belief-informing broadcast* observations (CG: ``y_belief_L``; SN:
-    ``y_belief_phi``) gated by a **choice-independent** mask
-    (``belief_mask_L``/``belief_mask_phi``). These carry the controller's
-    broadcast of route queue / green split into routes the traveller did *not*
-    take; the masks are zero on the chosen route (the first-hand observation
-    wins) and zero everywhere when no broadcast is shared, in which case these
-    folds are exact no-ops. The ``belief_mask_*`` arrays are ``(N, R, W)`` --
-    one value per route -- so, unlike the chosen-route ``y_L``/``y_phi``
-    (``(N, W)`` broadcast via the ``chosen`` one-hot), they do not use the
-    ``chosen`` selector.
+    split ``phi``) starting from the prior. First-hand only: an unchosen route
+    receives no information (the controller's broadcast is fused transiently at
+    route-choice time, not here -- see :mod:`inference.population`).
     """
     N, R, _ = prior_mu.shape
     F_lin = mu_lin[..., F_IDX]
@@ -344,22 +322,6 @@ def _laplace_iter_step(
 
         mu, Sigma = _kalman_one_obs(mu, Sigma, H_phi, innov_phi, R_var_phi, active_phi)
 
-        # --- belief-informing broadcast obs (choice-INDEPENDENT) -------------
-        # CG: y_belief_L,d is a per-route queue advisory; reuse the linear H_L
-        # (one-hot at L_IDX). Gated by belief_mask_L (already excludes the
-        # chosen route, so no double counting with the first-hand y_L above).
-        innov_bL = y_belief_L_window[..., d] - mu[..., L_IDX]     # (N, R)
-        R_var_bL = (sigma_belief_L_window[..., d]) ** 2           # (N, R)
-        active_bL = belief_mask_L_window[..., d]                  # (N, R)
-        mu, Sigma = _kalman_one_obs(mu, Sigma, H_L, innov_bL, R_var_bL, active_bL)
-
-        # SN: y_belief_phi,d is a per-route green-split advisory; reuse H_phi.
-        # Gated by belief_mask_phi AND the signalised mask (phi inert on bypass).
-        innov_bphi = y_belief_phi_window[..., d] - mu[..., PHI_IDX]  # (N, R)
-        R_var_bphi = (sigma_belief_phi_window[..., d]) ** 2          # (N, R)
-        active_bphi = belief_mask_phi_window[..., d] * sig           # (N, R)
-        mu, Sigma = _kalman_one_obs(mu, Sigma, H_phi, innov_bphi, R_var_bphi, active_bphi)
-
     # Symmetrise Σ for numerical safety (rank-1 updates preserve symmetry
     # in exact arithmetic; float rounding can drift).
     Sigma = 0.5 * (Sigma + jnp.swapaxes(Sigma, -1, -2))
@@ -379,12 +341,6 @@ def window_step(
     obs_mask: jnp.ndarray,
     signalised: jnp.ndarray,
     W: int,
-    y_belief_L_window: jnp.ndarray | None = None,
-    sigma_belief_L_window: jnp.ndarray | None = None,
-    belief_mask_L_window: jnp.ndarray | None = None,
-    y_belief_phi_window: jnp.ndarray | None = None,
-    sigma_belief_phi_window: jnp.ndarray | None = None,
-    belief_mask_phi_window: jnp.ndarray | None = None,
     n_stale_days: jnp.ndarray | None = None,
     sigma_F_drift: jnp.ndarray | float = 0.0,
     sigma_C_drift: jnp.ndarray | float = 0.0,
@@ -473,23 +429,6 @@ def window_step(
 
     prior_Sigma = prior.scale_tril @ jnp.swapaxes(prior.scale_tril, -1, -2)
 
-    # Belief-informing broadcast windows default to all-zero masks (a no-op):
-    # callers that share no CG/SN information (or pre-belief-channel callers)
-    # leave these None and recover the exact chosen-route-only smoother.
-    belief_shape = (*prior.mu.shape[:2], W)  # (N, R, W)
-    if belief_mask_L_window is None:
-        belief_mask_L_window = jnp.zeros(belief_shape)
-    if y_belief_L_window is None:
-        y_belief_L_window = jnp.zeros(belief_shape)
-    if sigma_belief_L_window is None:
-        sigma_belief_L_window = jnp.ones(belief_shape)
-    if belief_mask_phi_window is None:
-        belief_mask_phi_window = jnp.zeros(belief_shape)
-    if y_belief_phi_window is None:
-        y_belief_phi_window = jnp.zeros(belief_shape)
-    if sigma_belief_phi_window is None:
-        sigma_belief_phi_window = jnp.ones(belief_shape)
-
     mu = prior.mu
     Sigma = prior_Sigma
     for _ in range(n_laplace_iters):
@@ -506,12 +445,6 @@ def window_step(
             sigma_phi_window=sigma_phi_window,
             obs_mask=obs_mask,
             signalised=signalised,
-            y_belief_L_window=y_belief_L_window,
-            sigma_belief_L_window=sigma_belief_L_window,
-            belief_mask_L_window=belief_mask_L_window,
-            y_belief_phi_window=y_belief_phi_window,
-            sigma_belief_phi_window=sigma_belief_phi_window,
-            belief_mask_phi_window=belief_mask_phi_window,
             phi_lo=phi_lo,
             phi_hi=phi_hi,
             W=W,

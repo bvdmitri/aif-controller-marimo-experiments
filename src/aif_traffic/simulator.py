@@ -25,7 +25,12 @@ from typing import Callable, Iterable, NamedTuple
 import numpy as np
 import pandas as pd
 
-from .communication import build_belief_broadcast, build_broadcast, empty_broadcast
+from .communication import (
+    build_belief_broadcast,
+    build_broadcast,
+    empty_belief_broadcast,
+    empty_broadcast,
+)
 from .control import build_controller
 from .demand import DemandProfile
 from .inference.population import Population, build_population
@@ -65,13 +70,18 @@ def simulate_one_day(
     rng_choice: np.random.Generator,
     rng_obs: np.random.Generator | None,
     broadcast_prev,
+    belief_broadcast_prev=None,
     demand_factor: np.ndarray | None = None,
 ) -> dict:
-    """Run one coupled day; return per-step arrays and the next-day broadcast."""
+    """Run one coupled day; return per-step arrays and the next-day broadcasts."""
     net, sim, signal = params.network, params.sim, params.signal
     prior_state = _prior_predictive_summary(population)
 
-    population.begin_day(params.efe, rng_choice, broadcast=broadcast_prev)
+    population.begin_day(
+        params.efe, rng_choice,
+        broadcast=broadcast_prev,
+        belief_broadcast=belief_broadcast_prev,
+    )
     P_alpha = population.aggregate_route_share(
         smooth_window=params.population.route_share_smooth_window,
     )
@@ -103,18 +113,12 @@ def simulate_one_day(
     N_ab = net.n_delay(sim.dt_min)[sig_ab]
     k_arr = np.minimum(np.arange(sim.K) + N_ab, sim.K - 1)
     green_obs_alpha = np.asarray(phi2, dtype=float)[k_arr]
-    # Belief-informing broadcast (paper Exp 3: CG/SN). Built from THIS day's
-    # realised queues/split and folded into the same end-of-day belief update --
-    # the belief update runs after the queues are known, so (unlike the
-    # cost-offset advisory used at route choice) it needs no one-day lag.
-    # Baseline (BL) yields BeliefBroadcast(None, None): a no-op that draws no
-    # randomness, keeping the belief update bit-identical to no information.
-    belief_broadcast = build_belief_broadcast(params.comm, queues, phi2, phi6, net, sim)
+    # First-hand belief update only (the controller's broadcast is fused at
+    # decision time in begin_day, never here).
     population.update_beliefs(
         tt_route["alpha"], tt_route["beta"],
         route_q["alpha"], route_q["beta"],
         green_obs_alpha=green_obs_alpha,
-        belief_broadcast=belief_broadcast,
         rng=rng_obs, obs_noise_sd=params.noise.obs_noise_sd,
     )
 
@@ -126,6 +130,21 @@ def simulate_one_day(
         "day": day_index, "queues": queues, "tt_route": tt_route,
         "phi2": phi2, "phi6": phi6, "SC": SC,
     })
+
+    # Controller-belief broadcast for the NEXT day's route choice (Experiment
+    # 3/4): the controller forward-predicts tomorrow's queue belief + planned
+    # split using today's realised inflows as a persistence forecast, and shares
+    # it (one-day lag, mirroring the cost-offset advisory). Skip the (costly)
+    # forecast entirely when no belief is being shared.
+    if params.comm.belief_signals:
+        forecast = controller.forecast(
+            {"inflow_by_route": inflow_by_route, "net": net, "sim": sim}
+        )
+        belief_broadcast_next = build_belief_broadcast(
+            params.comm, forecast, net, sim,
+        )
+    else:
+        belief_broadcast_next = empty_belief_broadcast()
 
     return {
         "day": day_index,
@@ -144,6 +163,7 @@ def simulate_one_day(
         "SC": SC,
         "prior": prior_state,
         "broadcast_next": broadcast_next,
+        "belief_broadcast_next": belief_broadcast_next,
     }
 
 
@@ -225,6 +245,7 @@ def run_experiment(
         )
 
         broadcast_prev = empty_broadcast(net, sim)
+        belief_broadcast_prev = empty_belief_broadcast()
         signal_name = params_seed.comm.signal_type.value
 
         all_iter = range(total_days)
@@ -237,9 +258,12 @@ def run_experiment(
             out = simulate_one_day(
                 population, controller, d, params_seed, demand,
                 rng_choice=choice_rng, rng_obs=obs_rng,
-                broadcast_prev=broadcast_prev, demand_factor=factor,
+                broadcast_prev=broadcast_prev,
+                belief_broadcast_prev=belief_broadcast_prev,
+                demand_factor=factor,
             )
             broadcast_prev = out["broadcast_next"]
+            belief_broadcast_prev = out["belief_broadcast_next"]
 
             if i < burn_in:
                 continue

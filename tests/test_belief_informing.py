@@ -1,27 +1,25 @@
-"""Behavioural characterization of the belief-informing communication channel.
+"""Behavioural characterization of the controller-belief communication channel.
 
-Paper Experiment 3 (BL / CG / SN / CG+SN). Unlike the cost-offset advisory
-(which only nudges route *choice* via theta), these broadcasts feed the
-traveller's *belief update*: a compliant traveller folds the controller's
-broadcast of route queue (CG) and/or green split (SN) into its Gaussian belief
-about routes it did NOT take that day.
+Paper Experiment 3 (BL / QB / SP / QB+SP), redesigned. The controller
+forward-predicts the upcoming day's queue belief (QB) and its planned green
+split (SP) and broadcasts them *before* travellers choose. A **compliant**
+traveller fuses the controller's Gaussian into its own posterior at decision
+time; a non-compliant traveller ignores it. Crucially the fusion is
+**transient** -- it informs the route choice but never enters the smoother, so
+the traveller's first-hand belief is untouched.
 
 WHAT THESE PIN DOWN
-    1. CG lowers a traveller's uncertainty about the route it usually avoids
-       (it now hears that route's queue without driving it).
-    2. SN lowers uncertainty about the intersection green split for travellers
-       who habitually take the bypass.
+    1. Sharing the controller's queue belief (QB) measurably shifts route
+       choice vs. the baseline (the channel is not inert).
+    2. Sharing the planned split (SP) likewise shifts route choice.
     3. Non-compliant travellers ignore the broadcast -> identical to baseline.
-    4. The broadcast never overrides first-hand experience: on the route a
-       traveller actually took, the broadcast observation is suppressed (no
-       double counting). This is the key correctness invariant.
+    4. The fusion is transient: ``begin_day`` does not mutate ``self.state``
+       (the smoother stays first-hand-only).
 
 HOW TO READ THE OUTPUT
     Run with ``-s`` to see the narration:
 
         uv run --extra dev pytest tests/test_belief_informing.py -s
-
-    Each test prints what it expected, the observed numbers, and a verdict.
 """
 
 from __future__ import annotations
@@ -50,99 +48,76 @@ def _narrate(title, lines):
 
 @pytest.fixture(scope="module")
 def runs():
-    """BL / CG / SN / CG+SN experiments sharing one base config (full
-    compliance), snapshotting the last day for belief-uncertainty readouts."""
+    """BL / QB / SP / QB+SP experiments sharing one base config (full
+    compliance, fixed AIF controller)."""
     base = Params.default().with_days(DAYS).with_seed(SEED).with_compliance(1.0)
-    last = DAYS - 1
-    out = {}
-    for name, params in {
-        "BL": base.with_belief_signals(),
-        "CG": base.with_belief_signals(BeliefSignal.CONGESTION),
-        "SN": base.with_belief_signals(BeliefSignal.GREEN_SPLIT),
-        "CGSN": base.with_belief_signals(
-            BeliefSignal.CONGESTION, BeliefSignal.GREEN_SPLIT
-        ),
-    }.items():
-        out[name] = run_experiment(params, seeds=[SEED], snapshot_days=[last])
-    return out, last
+    out = {
+        "BL": run_experiment(base.with_belief_signals(), seeds=[SEED]),
+        "QB": run_experiment(
+            base.with_belief_signals(BeliefSignal.QUEUE_BELIEF), seeds=[SEED]),
+        "SP": run_experiment(
+            base.with_belief_signals(BeliefSignal.SPLIT_PLAN), seeds=[SEED]),
+        "QBSP": run_experiment(
+            base.with_belief_signals(
+                BeliefSignal.QUEUE_BELIEF, BeliefSignal.SPLIT_PLAN), seeds=[SEED]),
+    }
+    return out
 
 
-def _last_day_mean(res, col, day):
-    return float(res.cohort.loc[res.cohort["day"] == day, col].mean())
+def _max_abs_dP(a, b) -> float:
+    return float(np.max(np.abs(a.step["P_alpha"].values - b.step["P_alpha"].values)))
 
 
-def test_cg_lowers_uncertainty_about_the_avoided_route(runs):
-    """CG broadcasts route queues. The intersection (alpha) is congested and
-    many travellers divert to the bypass, so alpha is the route they seldom
-    take -- and therefore the route they are most uncertain about. Hearing its
-    queue should shrink that uncertainty relative to baseline."""
-    out, last = runs
-    bl = _last_day_mean(out["BL"], "sigma_alpha_post", last)
-    cg = _last_day_mean(out["CG"], "sigma_alpha_post", last)
+def test_qb_shifts_route_choice(runs):
+    """Broadcasting the controller's predicted queue belief (QB) measurably
+    changes compliant travellers' route choice vs. the baseline."""
+    d = _max_abs_dP(runs["QB"], runs["BL"])
     _narrate(
-        "CG reduces uncertainty about the usually-avoided intersection route",
+        "QB (queue belief) shifts route choice vs baseline",
         [
-            f"alpha predictive SD on day {last}:  BL = {bl:.3f}   CG = {cg:.3f}",
-            "Expectation: CG < BL (the broadcast queue informs the route most",
-            "travellers do not drive, so their alpha belief sharpens).",
-            f"Verdict: {'PASS' if cg < bl else 'FAIL'} "
-            f"(reduction = {bl - cg:.3f}).",
+            f"max |P_alpha(QB) - P_alpha(BL)| = {d:.4f}",
+            "Expectation: clearly non-zero -- compliant travellers fold the",
+            "controller's predicted intersection queue into their decision.",
+            f"Verdict: {'PASS' if d > 1e-3 else 'FAIL'}.",
         ],
     )
-    assert cg < bl
+    assert d > 1e-3
 
 
-def test_sn_lowers_green_split_uncertainty_for_bypass_users(runs):
-    """SN broadcasts the intersection green split. Travellers who habitually
-    take the bypass never observe the split first-hand, so their phi belief is
-    diffuse under baseline; the broadcast should sharpen it."""
-    out, last = runs
-    snap_bl = out["BL"].snapshots[(SEED, last)]
-    snap_sn = out["SN"].snapshots[(SEED, last)]
-    # Restrict to travellers who took the bypass (alpha is unchosen for them).
-    bypass_bl = snap_bl["last_choice"] == 1
-    bypass_sn = snap_sn["last_choice"] == 1
-    sd_bl = float(snap_bl["phi_sd_alpha"][bypass_bl].mean())
-    sd_sn = float(snap_sn["phi_sd_alpha"][bypass_sn].mean())
+def test_sp_shifts_route_choice(runs):
+    """Broadcasting the planned green split (SP) measurably changes route
+    choice vs. the baseline -- travellers anticipate the intersection's
+    effective capacity they could not otherwise observe."""
+    d = _max_abs_dP(runs["SP"], runs["BL"])
     _narrate(
-        "SN sharpens the green-split belief of habitual bypass users",
+        "SP (planned split) shifts route choice vs baseline",
         [
-            f"alpha green-split belief SD (bypass users, day {last}):",
-            f"    BL = {sd_bl:.4f}   SN = {sd_sn:.4f}",
-            "Expectation: SN < BL (they hear the split they would otherwise",
-            "only learn by taking the intersection).",
-            f"Verdict: {'PASS' if sd_sn < sd_bl else 'FAIL'} "
-            f"(reduction = {sd_bl - sd_sn:.4f}).",
+            f"max |P_alpha(SP) - P_alpha(BL)| = {d:.4f}",
+            "Expectation: clearly non-zero.",
+            f"Verdict: {'PASS' if d > 1e-3 else 'FAIL'}.",
         ],
     )
-    assert sd_sn < sd_bl
+    assert d > 1e-3
 
 
-def test_non_compliant_population_recovers_baseline(runs):
-    """If no-one reads the broadcast, CG must be bit-identical to BL."""
-    out, _last = runs
+def test_non_compliant_population_recovers_baseline():
+    """With zero compliance, QB+SP must be bit-identical to BL: nobody fuses
+    the broadcast, so it is an exact no-op."""
     base = Params.default().with_days(DAYS).with_seed(SEED).with_compliance(0.0)
-    cg_nc = run_experiment(
-        base.with_belief_signals(BeliefSignal.CONGESTION), seeds=[SEED]
-    )
+    qbsp_nc = run_experiment(
+        base.with_belief_signals(
+            BeliefSignal.QUEUE_BELIEF, BeliefSignal.SPLIT_PLAN), seeds=[SEED])
     bl_nc = run_experiment(base.with_belief_signals(), seeds=[SEED])
-    max_dP = float(
-        np.max(np.abs(cg_nc.step["P_alpha"].values - bl_nc.step["P_alpha"].values))
-    )
-    max_dsig = float(
-        np.max(
-            np.abs(
-                cg_nc.cohort["sigma_alpha_post"].values
-                - bl_nc.cohort["sigma_alpha_post"].values
-            )
-        )
-    )
+    max_dP = _max_abs_dP(qbsp_nc, bl_nc)
+    max_dsig = float(np.max(np.abs(
+        qbsp_nc.cohort["sigma_alpha_post"].values
+        - bl_nc.cohort["sigma_alpha_post"].values)))
     _narrate(
-        "Zero compliance -> CG collapses onto the baseline",
+        "Zero compliance -> QB+SP collapses onto the baseline",
         [
-            f"max |dP_alpha|        = {max_dP:.2e}",
-            f"max |d sigma_alpha|   = {max_dsig:.2e}",
-            "Expectation: both ~0 (non-compliant travellers ignore the signal).",
+            f"max |dP_alpha|       = {max_dP:.2e}",
+            f"max |d sigma_alpha|  = {max_dsig:.2e}",
+            "Expectation: both ~0 (non-compliant travellers ignore the broadcast).",
             f"Verdict: {'PASS' if max_dP < 1e-9 and max_dsig < 1e-9 else 'FAIL'}.",
         ],
     )
@@ -150,37 +125,41 @@ def test_non_compliant_population_recovers_baseline(runs):
     assert max_dsig < 1e-9
 
 
-def test_broadcast_for_chosen_route_is_suppressed():
-    """Double-count guard: a compliant traveller's broadcast observation is
-    masked OFF on the route it actually took (first-hand experience wins) and
-    ON for the route it did not. Verified directly on the gate."""
+def test_fusion_is_transient_smoother_state_untouched():
+    """The decision-time fusion must NOT mutate the traveller's persistent
+    posterior: ``begin_day`` with a belief broadcast leaves ``self.state``
+    bit-identical (the smoother stays first-hand-only)."""
     p = Params.default()
     sim = p.sim
     demand = DemandProfile.from_params(sim, p.demand)
-    rng = np.random.default_rng(0)
     pop = build_population(
-        p.population, sim, demand, rng,
+        p.population, sim, demand, np.random.default_rng(0),
         route_names=p.network.traveller_routes, signal=p.signal,
     )
     pop.complies[:] = True
-    pop.last_choice = np.zeros(pop.N, dtype=int)  # everyone took alpha (route 0)
+    before_mu = np.asarray(pop.state.mu).copy()
+    before_tril = np.asarray(pop.state.scale_tril).copy()
+
     K = sim.K
     bb = BeliefBroadcast(
-        L={"alpha": np.full(K, 9999.0), "beta": np.full(K, 10.0)}, phi=None,
+        mu_L=np.full(K, 60.0), var_L=np.full(K, 9.0),
+        phi=np.full(K, 0.3), var_phi=0.0004,
     )
-    pop._append_belief_broadcast(bb, pop.departure_time, rng=None)
-    mask_alpha = pop._belief_mask_L[:, 0, -1]  # chosen route
-    mask_beta = pop._belief_mask_L[:, 1, -1]   # unchosen route
+    pop.begin_day(p.efe, np.random.default_rng(1), broadcast=None, belief_broadcast=bb)
+
+    same_mu = np.array_equal(before_mu, np.asarray(pop.state.mu))
+    same_tril = np.array_equal(before_tril, np.asarray(pop.state.scale_tril))
+    chose_each = int((pop.last_choice == 0).sum()), int((pop.last_choice == 1).sum())
     _narrate(
-        "Broadcast is suppressed on the route the traveller actually took",
+        "Decision-time fusion is transient (smoother state untouched)",
         [
-            "Everyone chose alpha; controller broadcasts queues for both routes.",
-            f"belief mask on alpha (chosen)   = {mask_alpha.mean():.2f} (want 0)",
-            f"belief mask on beta  (unchosen) = {mask_beta.mean():.2f} (want 1)",
-            "Expectation: chosen-route broadcast masked off (no double counting);",
-            "unchosen-route broadcast active for compliant travellers.",
-            f"Verdict: {'PASS' if mask_alpha.max() == 0 and mask_beta.min() == 1 else 'FAIL'}.",
+            f"self.state.mu unchanged:        {same_mu}",
+            f"self.state.scale_tril unchanged: {same_tril}",
+            f"agents choosing (alpha, beta):   {chose_each}",
+            "Expectation: the fusion informs the choice but never persists.",
+            f"Verdict: {'PASS' if same_mu and same_tril else 'FAIL'}.",
         ],
     )
-    assert np.all(mask_alpha == 0.0)
-    assert np.all(mask_beta == 1.0)
+    assert same_mu and same_tril
+    # Sanity: the broadcast actually drove a non-degenerate split of choices.
+    assert chose_each[0] > 0 and chose_each[1] > 0

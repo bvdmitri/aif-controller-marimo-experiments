@@ -167,15 +167,16 @@ def test_report_theta_effect_on_system_cost():
 # Report 2 -- Experiment 3: value of information communication
 # ---------------------------------------------------------------------------
 def test_report_communication_value():
-    """Does sharing information (CG / SN / CG+SN) lower system cost and belief
-    uncertainty vs the baseline, with CG+SN best, as Experiment 3 claims?"""
+    """Does sharing the controller's belief (QB / SP / QB+SP) lower system cost
+    and belief uncertainty vs the baseline, with QB+SP best, as Experiment 3
+    claims?"""
     base = _full_base().with_compliance(1.0)
     settings = {
         "BL": base.with_belief_signals(),
-        "CG": base.with_belief_signals(BeliefSignal.CONGESTION),
-        "SN": base.with_belief_signals(BeliefSignal.GREEN_SPLIT),
-        "CG+SN": base.with_belief_signals(
-            BeliefSignal.CONGESTION, BeliefSignal.GREEN_SPLIT
+        "QB": base.with_belief_signals(BeliefSignal.QUEUE_BELIEF),
+        "SP": base.with_belief_signals(BeliefSignal.SPLIT_PLAN),
+        "QB+SP": base.with_belief_signals(
+            BeliefSignal.QUEUE_BELIEF, BeliefSignal.SPLIT_PLAN
         ),
     }
     cost, sd = {}, {}
@@ -186,7 +187,7 @@ def test_report_communication_value():
 
     best_cost = min(cost, key=cost.get)
     best_sd = min(sd, key=sd.get)
-    any_helps = any(cost[k] < cost["BL"] for k in ("CG", "SN", "CG+SN"))
+    any_helps = any(cost[k] < cost["BL"] for k in ("QB", "SP", "QB+SP"))
 
     lines = [
         "Steady-state system cost and intersection belief SD by setting:",
@@ -199,9 +200,9 @@ def test_report_communication_value():
         f"Lowest belief uncertainty: {best_sd}",
         f"Any information beats BL on cost: {any_helps}",
         *_verdict(
-            "richer information lowers cost and uncertainty; CG+SN is best",
+            "richer shared belief lowers cost and uncertainty; QB+SP is best",
             f"cheapest={best_cost}, least-uncertain={best_sd}, any-helps={any_helps}",
-            holds=(best_cost == "CG+SN"),
+            holds=(best_cost == "QB+SP"),
         ),
     ]
     _narrate("REPORT: value of information communication", lines)

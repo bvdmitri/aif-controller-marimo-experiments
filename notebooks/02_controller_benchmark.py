@@ -62,6 +62,7 @@ def _():
         controller_summary,
         figure_placeholder,
         plot_controller_metrics,
+        plot_controller_theta_grid,
         plot_green_split_heatmaps_by_controller,
         setup_style,
     )
@@ -84,6 +85,7 @@ def _():
         notebook_explainer,
         outputs_dir,
         plot_controller_metrics,
+        plot_controller_theta_grid,
         plot_green_split_heatmaps_by_controller,
         replace,
         run_experiment,
@@ -258,6 +260,102 @@ def _(
         )
         gif_view = mo.image(str(gif_path))
     gif_view
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md(
+        r"""
+        ## Sensitivity to social internalisation $\theta$
+
+        The comparison above fixes the travellers' behaviour. This grid asks a
+        sharper question: does the AIF controller's advantage survive across the
+        whole user-equilibrium-to-system-optimum spectrum? It re-runs **every
+        controller at every** $\theta\in\{0,0.25,0.5,0.75,1\}$ and reports the
+        steady-state system cost as a heatmap (lower = better).
+
+        This is **20 full runs**, so it has its own button.
+        """
+    )
+    return
+
+
+@app.cell
+def _(mo):
+    grid_btn = mo.ui.run_button(label="Run theta x controller grid (20 runs)")
+    grid_btn
+    return (grid_btn,)
+
+
+@app.cell
+def _(
+    AIFControllerSpec,
+    AnticipatoryControllerSpec,
+    FixedTimeControllerSpec,
+    Params,
+    ReactiveControllerSpec,
+    SimParams,
+    control_interval,
+    days,
+    demand_scale,
+    gamma,
+    grid_btn,
+    k_L,
+    mo,
+    omega,
+    replace,
+    run_experiment,
+    seed,
+    sigma_pref,
+):
+    if not grid_btn.value:
+        results_by_ctrl_theta = None
+    else:
+        _ci = int(control_interval.value)
+        _specs = {
+            "fixed_time": FixedTimeControllerSpec(control_interval_min=_ci),
+            "reactive": ReactiveControllerSpec(
+                control_interval_min=_ci, k_L=float(k_L.value)),
+            "anticipatory": AnticipatoryControllerSpec(control_interval_min=_ci),
+            "aif": AIFControllerSpec(
+                control_interval_min=_ci, horizon_min=_ci,
+                gamma=float(gamma.value), omega=float(omega.value),
+                sigma_pref=float(sigma_pref.value)),
+        }
+        _base = Params()
+        _scale = float(demand_scale.value)
+        _demand = replace(
+            _base.demand,
+            d_AB_max=_base.demand.d_AB_max * _scale,
+            d_CD_max=_base.demand.d_CD_max * _scale,
+        )
+        _thetas = [0.0, 0.25, 0.5, 0.75, 1.0]
+        _cells = [(n, s, t) for n, s in _specs.items() for t in _thetas]
+        results_by_ctrl_theta = {n: {} for n in _specs}
+        for _name, _spec, _theta in mo.status.progress_bar(
+            _cells, title="theta x controller",
+        ):
+            _p = replace(
+                _base,
+                sim=replace(SimParams(), days=int(days.value), seed=int(seed.value)),
+                controller=_spec,
+                demand=_demand,
+            ).with_theta(_theta)
+            results_by_ctrl_theta[_name][_theta] = run_experiment(
+                _p, seeds=[int(seed.value)],
+            )
+    return (results_by_ctrl_theta,)
+
+
+@app.cell
+def _(figure_placeholder, plot_controller_theta_grid, results_by_ctrl_theta):
+    fig_theta_grid = (
+        figure_placeholder("System cost over theta x controller")
+        if results_by_ctrl_theta is None
+        else plot_controller_theta_grid(results_by_ctrl_theta)
+    )
+    fig_theta_grid
     return
 
 

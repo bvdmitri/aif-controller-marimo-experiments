@@ -154,6 +154,55 @@ def plot_green_split_heatmaps_by_controller(
     return fig
 
 
+def plot_controller_theta_grid(
+    results_by_ctrl_theta: Mapping[str, Mapping[float, object]],
+    n_last: int = 15,
+):
+    """Heatmap of steady-state mean system cost over (theta x controller).
+
+    ``results_by_ctrl_theta`` is a nested mapping
+    ``{controller_name: {theta: ExperimentResult}}`` -- one full run per
+    (controller, theta) cell. Rows are the social-internalisation values theta
+    (ascending), columns the controllers in canonical order; each cell is the
+    mean daily system cost over the last ``n_last`` recorded days (lower is
+    better). A single shared colour scale makes both axes comparable, and the
+    numeric value is annotated in every cell.
+    """
+    ctrls = [k for k in _CTRL_ORDER if k in results_by_ctrl_theta]
+    thetas = sorted({t for c in ctrls for t in results_by_ctrl_theta[c]})
+
+    grid = np.full((len(thetas), len(ctrls)), np.nan)
+    for j, c in enumerate(ctrls):
+        for t, res in results_by_ctrl_theta[c].items():
+            i = thetas.index(t)
+            cost = _daily_cost(res.step)
+            grid[i, j] = float(cost.iloc[-n_last:].mean())
+
+    fig, ax = plt.subplots(figsize=(TEXT_W, TEXT_W * 0.62))
+    im = ax.imshow(grid, cmap="viridis_r", aspect="auto", origin="lower")
+
+    ax.set_xticks(range(len(ctrls)))
+    ax.set_xticklabels([_CTRL_LABELS.get(c, c) for c in ctrls],
+                       rotation=20, ha="right", fontsize=7.5)
+    ax.set_yticks(range(len(thetas)))
+    ax.set_yticklabels([f"{t:g}" for t in thetas])
+    ax.set_ylabel(r"social internalisation $\theta$")
+
+    # Annotate each cell; pick a legible text colour against the cell shade.
+    finite = grid[np.isfinite(grid)]
+    mid = float(finite.mean()) if finite.size else 0.0
+    for i in range(len(thetas)):
+        for j in range(len(ctrls)):
+            if not np.isfinite(grid[i, j]):
+                continue
+            ax.text(j, i, f"{grid[i, j]:.0f}", ha="center", va="center",
+                    fontsize=7, color="white" if grid[i, j] > mid else "black")
+
+    fig.colorbar(im, ax=ax, pad=0.02, label="system cost [veh-min]", fraction=0.046)
+    fig.tight_layout()
+    return fig
+
+
 def controller_summary(results_by_ctrl: Mapping[str, object]) -> pd.DataFrame:
     """One row per controller: mean cost, day-to-day cost stability (std),
     mean green-split variation, and mean daily peak total queue."""

@@ -2,7 +2,7 @@
 
 A markdown-only marimo notebook: no simulation, no parameters, no Run button.
 It explains what this repository is, the two-layer model, the pluggable
-controller, the two communication channels, and how the three experiment
+controller, the two communication channels, and how the four experiment
 notebooks are organised.
 """
 
@@ -86,13 +86,15 @@ def _(mo):
         * **Cost-offset advisory** ($\theta$) -- a per-route signal (e.g. the
           congestion externality $E_r$) folded into the perceived cost
           $\zeta_r = TT_r + \theta\, E_r$. This shifts route *choice* only.
-        * **Belief-informing broadcast** (CG / SN) -- the controller broadcasts
-          the route queue $\hat L_r$ (**CG**) and/or green split $\hat\phi_r$
-          (**SN**), which compliant travellers fold into their *belief* about
-          routes they did not take, learning about a route without driving it.
+        * **Controller-belief broadcast** (QB / SP) -- the controller shares its
+          own *belief* before travellers choose: its forward-predicted queue
+          belief $\mathcal N(\hat L,\widehat{\mathrm{var}})$ (**QB**) and/or its
+          planned green split $\hat\phi$ (**SP**). A compliant traveller *fuses*
+          that distribution with its own posterior to decide; the fusion is
+          transient and never enters the smoother.
 
-        A per-cohort **compliance fraction** sets how many travellers read the
-        broadcast; the rest choose on private experience alone.
+        A per-cohort **compliance fraction** sets how many travellers fuse the
+        controller's belief; the rest choose on their own posterior alone.
         """
     )
     return
@@ -102,7 +104,7 @@ def _(mo):
 def _(mo):
     mo.md(
         r"""
-        ## The three experiments
+        ## The four experiments
 
         Each notebook isolates one mechanism, and the storyline builds on the
         previous one:
@@ -115,8 +117,13 @@ def _(mo):
            fixed-time, reactive, and anticipatory controllers (cost, queues,
            signal stability). The core result: AIF outperforms the baselines.
         3. **`03_information_communication`** — having shown AIF performs best,
-           investigate *that* controller further: what should it broadcast?
-           Compare BL / CG / SN / CG+SN and measure the value of information.
+           investigate *that* controller further: what should it share from its
+           own belief? Compare BL / QB / SP / QB+SP (queue belief and/or planned
+           split, fused at decision time) and measure the value of information.
+        4. **`04_compliance_robustness`** — fix the AIF controller and share its
+           full belief (QB+SP), then sweep the **compliance fraction**: how the
+           coordination effect changes as fewer travellers fuse the controller's
+           belief. Tests whether it degrades *gracefully*.
         """
     )
     return

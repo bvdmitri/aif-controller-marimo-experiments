@@ -36,8 +36,10 @@ from aif_traffic.parameters import (
     SimParams,
 )
 from aif_traffic.plotting import (
+    plot_controller_theta_grid,
     plot_demand_profile,
     plot_network_state,
+    plot_route_choice_heatmaps,
     plot_route_flows,
     plot_route_share_over_days,
     plot_signal_day,
@@ -99,16 +101,16 @@ def smoke_communication() -> None:
 
 
 def smoke_belief_communication() -> None:
-    """Run the four belief-informing settings (BL/CG/SN/CG+SN, Experiment 3)
+    """Run the four controller-belief settings (BL/QB/SP/QB+SP, Experiment 3)
     with a fully-compliant cohort and render the sweep overlay. Also checks
     that the baseline is bit-identical to sharing no belief signals."""
     base = _small_params(AIFControllerSpec()).with_compliance(1.0)
     settings = {
         "BL": base.with_belief_signals(),
-        "CG": base.with_belief_signals(BeliefSignal.CONGESTION),
-        "SN": base.with_belief_signals(BeliefSignal.GREEN_SPLIT),
-        "CG+SN": base.with_belief_signals(
-            BeliefSignal.CONGESTION, BeliefSignal.GREEN_SPLIT
+        "QB": base.with_belief_signals(BeliefSignal.QUEUE_BELIEF),
+        "SP": base.with_belief_signals(BeliefSignal.SPLIT_PLAN),
+        "QB+SP": base.with_belief_signals(
+            BeliefSignal.QUEUE_BELIEF, BeliefSignal.SPLIT_PLAN
         ),
     }
     results = {}
@@ -126,6 +128,45 @@ def smoke_belief_communication() -> None:
     ), "BL belief broadcast is not bit-identical to no information"
 
     _save_figure(plot_sweep_metrics(results), "belief_communication_sweep.png")
+    _save_figure(plot_route_choice_heatmaps(results), "belief_route_choice.png")
+
+
+def smoke_compliance() -> None:
+    """Experiment 4: the controller's shared belief (QB+SP) swept over compliance
+    fractions. Renders the sweep overlay and checks that zero compliance is
+    bit-identical to the baseline (nobody fuses the broadcast)."""
+    import numpy as np
+
+    base = _small_params(AIFControllerSpec()).with_belief_signals(
+        BeliefSignal.QUEUE_BELIEF, BeliefSignal.SPLIT_PLAN
+    )
+    results = {
+        f"{int(round(f * 100))}%": run_experiment(base.with_compliance(f))
+        for f in (0.0, 0.5, 1.0)
+    }
+    for name, res in results.items():
+        assert not res.step.empty, f"compliance {name}: empty step frame"
+    _save_figure(plot_sweep_metrics(results), "compliance_sweep.png")
+
+    # Zero compliance must collapse onto the no-broadcast baseline.
+    none = run_experiment(_small_params(AIFControllerSpec()).with_compliance(0.0))
+    assert np.array_equal(
+        results["0%"].step["P_alpha"].values, none.step["P_alpha"].values
+    ), "zero-compliance belief broadcast is not bit-identical to baseline"
+
+
+def smoke_theta_grid() -> None:
+    """Experiment 2 extension: steady-state cost over (theta x controller).
+    A small 2x2 grid exercises the heatmap end-to-end."""
+    grid = {}
+    for cname, spec in (("fixed_time", FixedTimeControllerSpec()),
+                        ("aif", AIFControllerSpec())):
+        grid[cname] = {}
+        for theta in (0.0, 1.0):
+            grid[cname][theta] = run_experiment(
+                _small_params(spec).with_theta(theta)
+            )
+    _save_figure(plot_controller_theta_grid(grid), "theta_controller_grid.png")
 
 
 def smoke_demand() -> None:
@@ -140,6 +181,8 @@ def main() -> int:
         "controllers": smoke_controllers,
         "communication": smoke_communication,
         "belief_communication": smoke_belief_communication,
+        "compliance": smoke_compliance,
+        "theta_grid": smoke_theta_grid,
     }
     failures: list[str] = []
     for name, fn in smokes.items():

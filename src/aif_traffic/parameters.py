@@ -346,6 +346,12 @@ class AIFControllerSpec:
     gamma: float = 4.0       # action precision
     info_gain_weight: float = 1.0
     """Weight on the EFE epistemic (information-gain) term, EFE = risk - lambda*info."""
+    sigma_phi_plan: float = 0.02
+    """SD (green-split fraction) the controller attaches to its *planned* split
+    when it broadcasts it to travellers (decision-time belief fusion, Experiment
+    3 SPLIT_PLAN). Small: the controller knows its own intended action, but its
+    realised split may still drift as it adapts to queues. Used as the fusion
+    observation variance ``sigma_phi_plan**2``."""
 
 
 ControllerSpecLike = (
@@ -378,26 +384,27 @@ class SignalType(enum.Enum):
 
 
 class BeliefSignal(enum.Enum):
-    """What the controller broadcasts to travellers as a *belief-informing*
-    observation (paper Experiment 3 settings BL/CG/SN/CG+SN).
+    """What the controller shares from its *own belief* with travellers, for
+    decision-time fusion (paper Experiment 3 settings BL/QB/SP/QB+SP).
 
-    Unlike :class:`SignalType` (a cost-offset that only shifts action
-    selection), these signals enter the traveller's belief update: compliant
-    travellers fold the broadcast into their Gaussian posterior over the latent
-    ``(F, C, L, phi)`` for routes they did *not* take that day. This is a
-    deliberate, documented departure from the "smoother reused verbatim"
-    invariant -- see ``inference/filter.py`` and ``inference/population.py``.
+    Unlike :class:`SignalType` (a cost-offset that shifts the perceived cost),
+    these are the controller's forward-predicted belief about the upcoming day:
+    a **distribution**, not a realised reading. Before travellers choose, a
+    *compliant* traveller fuses the controller's Gaussian into its own posterior
+    (precision-weighted) for the route-choice decision only; the fusion is
+    **transient** -- it never enters the traveller's smoother (see
+    ``inference/population.begin_day`` and ``control/aif_controller.forecast``).
 
     Experiment-3 settings map to subsets of this enum::
 
-        BL    -> frozenset()                       (baseline, no info)
-        CG    -> {CONGESTION}                       (broadcast queue \hat{L}_r)
-        SN    -> {GREEN_SPLIT}                      (broadcast green split \hat{phi}_r)
-        CG+SN -> {CONGESTION, GREEN_SPLIT}          (both)
+        BL    -> frozenset()                  (baseline, no info shared)
+        QB    -> {QUEUE_BELIEF}               (share queue belief N(mu_L, var_L))
+        SP    -> {SPLIT_PLAN}                 (share the planned green split)
+        QB+SP -> {QUEUE_BELIEF, SPLIT_PLAN}   (both)
     """
 
-    CONGESTION = "cg"     # \hat{L}_r for all traveller routes
-    GREEN_SPLIT = "sn"    # \hat{phi}_r for the signalised route only
+    QUEUE_BELIEF = "qb"   # controller's predicted queue belief N(mu_L, var_L)
+    SPLIT_PLAN = "sp"     # controller's planned green split (with its variance)
 
 
 @dataclass(frozen=True)
@@ -407,8 +414,9 @@ class CommunicationSpec:
     Two orthogonal channels that can be combined:
 
     * ``signal_type`` -- the cost-offset advisory (Experiment 1, theta);
-    * ``belief_signals`` -- the belief-informing broadcasts (Experiment 3,
-      BL/CG/SN/CG+SN). Empty set = baseline (no belief information shared).
+    * ``belief_signals`` -- the controller's belief shared for decision-time
+      fusion (Experiment 3, BL/QB/SP/QB+SP). Empty set = baseline (nothing
+      shared).
     """
 
     signal_type: SignalType = SignalType.NONE
@@ -475,10 +483,11 @@ class Params:
         return replace(self, comm=replace(self.comm, signal_type=signal_type))
 
     def with_belief_signals(self, *signals: BeliefSignal) -> "Params":
-        """Set the belief-informing broadcast set (Experiment 3 settings).
+        """Set which parts of the controller's belief are shared for
+        decision-time fusion (Experiment 3 settings).
 
         ``with_belief_signals()`` (no args) is the baseline BL case;
-        ``with_belief_signals(BeliefSignal.CONGESTION)`` is CG; pass both for
-        CG+SN.
+        ``with_belief_signals(BeliefSignal.QUEUE_BELIEF)`` is QB; pass both for
+        QB+SP.
         """
         return replace(self, comm=replace(self.comm, belief_signals=frozenset(signals)))

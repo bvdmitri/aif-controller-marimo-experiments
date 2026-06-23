@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from .comparison import _daily_cost, _daily_peak_total_queue
+from .network import _edges
 from .primitives import TEXT_W, light_borders
 
 
@@ -69,4 +70,54 @@ def plot_sweep_metrics(results_by_label: Mapping[str, object]):
                ncol=min(len(items), 5), frameon=False,
                bbox_to_anchor=(0.5, 1.01), fontsize=7.5)
     fig.tight_layout(rect=(0, 0, 1, 0.965))
+    return fig
+
+
+def plot_route_choice_heatmaps(
+    results_by_label: Mapping[str, object], value: str = "P_alpha",
+):
+    """One heatmap column per sweep variant: the intersection-route share
+    ``P_alpha`` over (day x time-of-day), on a shared colour scale.
+
+    Companion to :func:`plot_sweep_metrics` for the information-communication
+    experiment (variants = BL/CG/SN/CG+SN): the day-series overlay shows *what*
+    each setting converges to, this shows *when within the day* travellers pick
+    the intersection and how that pattern settles across the learning days.
+    ``results_by_label`` is an ordered mapping ``{label: ExperimentResult}``;
+    insertion order sets the column order.
+    """
+    items = list(results_by_label.items())
+    n = len(items)
+    fig, axes = plt.subplots(
+        1, n, figsize=(TEXT_W, TEXT_W * 0.5), sharex=True, sharey=True,
+        squeeze=False,
+    )
+    axes = axes[0]
+
+    pivots = []
+    for _label, res in items:
+        step = res.step
+        sd = (
+            step if "seed" not in step.columns
+            else step[step["seed"] == step["seed"].min()]
+        )
+        pivots.append(
+            sd.pivot_table(index="tau", columns="day", values=value, aggfunc="mean")
+        )
+    # P_alpha is a share in [0, 1]; pin the scale so columns are comparable.
+    vmin, vmax = (0.0, 1.0) if value == "P_alpha" else (
+        0.0, float(max(p.values.max() for p in pivots))
+    )
+
+    im = None
+    for ax, (label, _res), hm in zip(axes, items, pivots):
+        taus = hm.index.to_numpy(dtype=float)
+        days = hm.columns.to_numpy(dtype=float)
+        im = ax.pcolormesh(_edges(days), _edges(taus), hm.values,
+                           cmap="magma", vmin=vmin, vmax=vmax, shading="flat")
+        ax.set_title(str(label), fontsize=7.5)
+        ax.set_xlabel("day")
+    axes[0].set_ylabel("time of day [min]")
+    label_txt = {"P_alpha": r"intersection share $P_\alpha$"}.get(value, value)
+    fig.colorbar(im, ax=list(axes), pad=0.02, label=label_txt, fraction=0.046)
     return fig
