@@ -1,11 +1,16 @@
 """Active-Inference signal controller.
 
-The controller is an AIF agent that allocates green time between the two
-signalised movements (link 2 for A--B, link 6 for C--D). It keeps a Gaussian
-belief over the junction queue state ``(L_2, L_6)`` -- a genuine recursive
-Gaussian filter, carried across control epochs -- predicts the queues one
-control interval ahead under each candidate green split, and scores the splits
-with the Expected-Free-Energy functional ``G = risk - epistemic``.
+The controller is **one big AIF agent** that allocates green time between the two
+signalised movements (link 2 for A--B, link 6 for C--D) -- the macro analogue of
+the thousands of tiny traveller agents, under the same inference scheme. Its
+latent is the **entire within-day queue trajectory** ``(L_2(t), L_6(t))_t``, which
+it estimates from the per-interval queue observations with a **rolling-window
+Gaussian smoother over the last few days** (full covariance, capturing temporal
+correlations -- see :mod:`control.controller_smoother`). It still **acts** at each
+control interval: it predicts the queues one interval ahead under each candidate
+split (seeded by its learned belief) and scores the splits with the
+Expected-Free-Energy functional ``G = risk - epistemic``. The smoother posterior
+is also what it broadcasts to travellers (:meth:`AIFController.forecast`).
 
 Its preference is a preferred-observation distribution ``N(0, Sigma_pref)`` over
 the queues ("prefer empty queues"), mirroring the traveller's preferred-
@@ -33,6 +38,7 @@ import numpy as np
 
 from ..network import link_inflows
 from ..parameters import AIFControllerSpec, SignalParams
+from . import controller_smoother as cs
 from .interface import BaseController, QueueForecast, project_to_constraint
 
 
@@ -81,6 +87,22 @@ class AIFController(BaseController):
         self._last_info = float("nan")
         self._last_efe = float("nan")
 
+        # -- Trajectory-state rolling-window smoother (the controller's belief).
+        # Grid (M nodes) and node<-minute map are set in _setup_context.
+        self._minute_res = (spec.controller_state_resolution != "epoch")
+        self._ci = max(1, int(spec.control_interval_min))
+        self._M = 0
+        self._W = max(1, int(spec.controller_window_size))
+        # Window buffers per movement (0 = L_2/sig_ab, 1 = L_6/sig_cd), filled by
+        # observe(); the smoother posterior carried across days.
+        self._traj_buf: np.ndarray | None = None     # (W, 2, M) realised queue
+        self._objvar_buf: np.ndarray | None = None    # (W, 2, M) obs variance R
+        self._mask_buf: np.ndarray | None = None       # (W,) slot active
+        self._day_count = 0
+        self._post_mu: np.ndarray | None = None        # (2, M) posterior mean
+        self._post_var: np.ndarray | None = None       # (2, M) posterior marginal var
+        self._last_phi2: np.ndarray | None = None       # last realised split schedule (K,)
+
     # -- preference -------------------------------------------------------
     def _build_sigma_pref(self) -> None:
         """``Sigma_pref^{-1} = sigma_pref^{-2} I + omega n n^T`` with ``n`` the
@@ -121,6 +143,42 @@ class AIFController(BaseController):
         self._N2 = nd[self.sig_ab]
         self._N6 = nd[self.sig_cd]
         self._build_sigma_pref()
+        self._setup_grid()
+
+    def _setup_grid(self) -> None:
+        """Set the trajectory grid (``M`` nodes) and allocate the W-day window
+        buffers once ``K`` is known. ``M = K`` at minute resolution, or one node
+        per control interval at epoch resolution."""
+        K = self._K
+        M = K if self._minute_res else (K + self._ci - 1) // self._ci
+        if M == self._M and self._traj_buf is not None:
+            return
+        self._M = M
+        self._traj_buf = np.zeros((self._W, 2, M), dtype=float)
+        self._objvar_buf = np.ones((self._W, 2, M), dtype=float)
+        self._mask_buf = np.zeros(self._W, dtype=float)
+        self._day_count = 0
+        self._post_mu = None
+        self._post_var = None
+
+    def _node_of_minute(self, k: int) -> int:
+        """Map within-day minute ``k`` to its trajectory node."""
+        if self._minute_res:
+            return min(k, self._M - 1)
+        return min(k // self._ci, self._M - 1)
+
+    def _node_minutes(self) -> np.ndarray:
+        """The within-day minute index at each node (for downsampling per-minute
+        arrays to the node grid)."""
+        if self._minute_res:
+            return np.arange(self._M)
+        return np.minimum(np.arange(self._M) * self._ci, self._K - 1)
+
+    def _q_proc(self) -> float:
+        """Per-node random-walk process variance: per-minute process variance
+        scaled by the minutes per node, plus the optional across-day inflation."""
+        minutes_per_node = 1 if self._minute_res else self._ci
+        return self.spec.sigma_proc ** 2 * minutes_per_node + self.spec.sigma_proc_day ** 2
 
     def prepare_day(self, context: Mapping) -> None:
         self._setup_context(context)
@@ -214,11 +272,21 @@ class AIFController(BaseController):
             float(queue_obs.get(self.sig_cd, 0.0)),
         ])
 
-        # -- Perception: Bayesian correction of the carried prior by the new
-        #    observation. The observation precision reflects the split that was
-        #    actually applied over the elapsed interval (more green -> sharper).
+        # -- Perception: Bayesian correction of the prior by the new observation.
+        #    The observation precision reflects the split actually applied over
+        #    the elapsed interval (more green -> sharper). The PRIOR is the
+        #    controller's one belief: when the rolling-window smoother has a
+        #    posterior, the prior over (L_2, L_6) at this interval is its learned
+        #    typical-trajectory marginal at the corresponding node (posterior-as-
+        #    prior); otherwise fall back to the within-day carried belief.
         R_app = self._obs_var(self.phi2_prev, sat - self.phi2_prev)
-        if self._mu is None:  # first epoch of the day: posterior = observation
+        if self._post_mu is not None:
+            node = self._node_of_minute(k)
+            m_prior = self._post_mu[:, node]
+            v_prior = self._post_var[:, node]
+            var_b = 1.0 / (1.0 / v_prior + 1.0 / R_app)
+            mu_b = var_b * (m_prior / v_prior + obs / R_app)
+        elif self._mu is None:  # cold start, first epoch: posterior = observation
             mu_b = obs.copy()
             var_b = R_app.copy()
         else:
@@ -241,59 +309,102 @@ class AIFController(BaseController):
         self._last_risk, self._last_info, self._last_efe = best
         return project_to_constraint(best_phi2, sat, self.signal.phi_min)
 
+    # -- learning: fold the realised day into the rolling-window smoother -----
+    def observe(self, day_state: Mapping) -> None:
+        """End-of-day learning: append the realised within-day queue trajectory
+        to the W-day window and refit the trajectory belief (the controller
+        analogue of the travellers' end-of-day smoother). ``day_state`` carries
+        the per-link ``queues`` (each length ``K``) and the realised splits
+        ``phi2``/``phi6``. The split-dependent observation precision uses the
+        realised split. After this the carried posterior ``_post_mu``/``_post_var``
+        is the controller's belief over the typical within-day queue trajectory."""
+        if self._traj_buf is None:
+            return  # prepare_day not called (bare unit test)
+        queues = day_state["queues"]
+        phi2 = np.asarray(day_state["phi2"], dtype=float)
+        phi6 = np.asarray(day_state["phi6"], dtype=float)
+        self._last_phi2 = phi2.copy()
+
+        nodes = self._node_minutes()
+        ref = self._phi_ref
+        sob2 = self.spec.sigma_obs ** 2
+        L2 = np.asarray(queues[self.sig_ab], dtype=float)[nodes]
+        L6 = np.asarray(queues[self.sig_cd], dtype=float)[nodes]
+        # Observation variance per node from the realised split (more green ->
+        # sharper), mirroring _obs_var; clip the split to keep it bounded.
+        phi2_lo = np.clip(phi2[nodes], self.signal.phi_min, self.signal.phi_sat)
+        phi6_lo = np.clip(phi6[nodes], self.signal.phi_min, self.signal.phi_sat)
+        R2 = sob2 * ref / phi2_lo
+        R6 = sob2 * ref / phi6_lo
+
+        # Shift the W-day window left and write today's trajectory into slot W-1.
+        for buf in (self._traj_buf, self._objvar_buf):
+            buf[:-1] = buf[1:]
+        self._mask_buf[:-1] = self._mask_buf[1:]
+        self._traj_buf[-1, 0, :] = L2
+        self._traj_buf[-1, 1, :] = L6
+        self._objvar_buf[-1, 0, :] = R2
+        self._objvar_buf[-1, 1, :] = R6
+        self._mask_buf[-1] = 1.0
+        self._day_count += 1
+
+        # Refit each movement's trajectory belief over the window. A zero-anchored
+        # random-walk prior (mean 0) supplies the temporal smoothing + full
+        # covariance; the windowed observations supply the profile.
+        q = self._q_proc()
+        sigma0 = self.spec.sigma0
+        prior_mean = np.zeros(self._M)
+        post_mu = np.empty((2, self._M))
+        post_var = np.empty((2, self._M))
+        for mv in (0, 1):
+            mu_p, var_p = cs.window_smoother(
+                prior_mean, q, sigma0,
+                self._traj_buf[:, mv, :], self._objvar_buf[:, mv, :], self._mask_buf,
+            )
+            post_mu[mv] = mu_p
+            post_var[mv] = var_p
+        self._post_mu = post_mu
+        self._post_var = post_var
+
     # -- forecast (belief broadcast for decision-time fusion) -------------
     def forecast(self, context: Mapping) -> QueueForecast:
-        """Forward-predict the day's queue belief and planned split, to be
-        broadcast to travellers for decision-time fusion (Experiment 3 / 4).
+        """Broadcast the controller's belief over the upcoming day for
+        decision-time fusion (Experiment 3 / 4).
 
-        Given the **expected** inflows for the upcoming day (``context`` carries
-        ``inflow_by_route`` -- the simulator passes the most recent realised
-        inflows as a persistence forecast), closed-loop dry-run the controller's
-        own policy across the day **without** observation correction: start from
-        empty queues, and at each control epoch pick the split via the same EFE
-        scoring as :meth:`decide`, holding it until the next epoch. The queue
-        belief is propagated by the generative model only, so its variance grows
-        over the horizon -- the controller's honest predictive uncertainty.
-
-        Returns a :class:`QueueForecast` with per-minute ``mu_L``/``var_L`` over
-        the A--B queue ``L_2`` and the planned split ``phi2`` (length ``K``); the
-        communication layer applies the traveller's arrival alignment. Uses only
-        local state, so it does not disturb the running belief or snapshot."""
+        This is the **rolling-window smoother posterior** over the within-day
+        queue trajectory (built in :meth:`observe` by injecting the realised
+        per-interval observations and running inference) -- a genuine inference
+        object, not a prior-predictive rollout. Returns a :class:`QueueForecast`
+        with the per-minute posterior mean/variance of the A--B queue ``L_2``
+        (expanded from the node grid), the controller's planned split (the most
+        recent realised schedule, persistence), and ``var_phi``. Before any day
+        has been observed it falls back to a flat (empty-queue) prior."""
         self._setup_context(context)
         s = self.spec
         sat = self.signal.phi_sat
         K = self._K
-        ci = max(1, int(s.control_interval_min))
-        H = max(1, int(s.horizon_min))
-
-        mu = np.zeros(2)
-        var = np.full(2, s.sigma_obs ** 2)
-        phi2_plan_prev = sat / 2.0
-        cur_phi2 = sat / 2.0
-
-        mu_L = np.zeros(K)
-        var_L = np.zeros(K)
-        phi_plan = np.zeros(K)
-        for k in range(K):
-            if k % ci == 0:
-                var_state = var + H * (s.sigma_proc ** 2)
-                cur_phi2, _ = self._score_best_split(mu, var_state, k, phi2_plan_prev)
-                phi2_plan_prev = cur_phi2
-            # Record the belief about the queue / the planned split AT minute k.
-            mu_L[k] = mu[0]
-            var_L[k] = var[0]
-            phi_plan[k] = cur_phi2
-            # Predict one minute ahead under the planned split (no observation,
-            # so the variance only grows).
-            mu = self._rollout_mean(mu, cur_phi2, sat - cur_phi2, k, 1)
-            var = var + (s.sigma_proc ** 2)
-
+        if self._post_mu is None:  # cold start: no observed day yet
+            mu_L = np.zeros(K)
+            var_L = np.full(K, s.sigma0 ** 2)
+            phi_plan = np.full(K, sat / 2.0)
+        else:
+            mu_L = cs.expand_to_minutes(self._post_mu[0], self._ci, K)
+            var_L = cs.expand_to_minutes(self._post_var[0], self._ci, K)
+            phi_plan = (
+                self._last_phi2 if self._last_phi2 is not None
+                else np.full(K, sat / 2.0)
+            )
         return QueueForecast(
-            mu_L=mu_L, var_L=var_L, phi2=phi_plan,
+            mu_L=mu_L, var_L=var_L, phi2=np.asarray(phi_plan, dtype=float),
             var_phi=float(s.sigma_phi_plan ** 2),
         )
 
     def snapshot(self) -> dict:
+        total_var = (
+            float(np.mean(self._post_var)) if self._post_var is not None
+            else float("nan")
+        )
         return {"name": self.name, "phi2_last": self.phi2_prev,
                 "risk_last": self._last_risk, "info_last": self._last_info,
-                "efe_last": self._last_efe}
+                "efe_last": self._last_efe,
+                "belief_var_mean": total_var, "days_observed": self._day_count}

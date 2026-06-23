@@ -9,17 +9,24 @@ controller abstraction with baselines, the **implemented Active Inference
 controller**, the communication + compliance mechanism, and the first
 experiment notebook.
 
-- **The AIF controller is implemented** in `control/aif_controller.py` (numpy),
-  following the corrected paper Section 4.2. It keeps a Gaussian belief over the
-  two signalised queues `(L_2, L_6)` and selects the green split by minimising
-  the **fixed** Expected Free Energy: a pragmatic term that is the multivariate
-  Gaussian KL from the predicted-queue belief to a preferred observation
-  `N(0, Sigma_pref)` ("prefer empty queues"), minus an epistemic term that is
-  *inert* here (queues are observed every interval at fixed precision, so it
-  cannot distinguish splits). The only designed object is the preference; the
+- **The AIF controller is implemented** in `control/aif_controller.py` (numpy)
+  as **one big Active-Inference agent**, the macro analogue of the (thousands of)
+  tiny traveller agents. Its latent is the **entire within-day queue trajectory**
+  of both signalised movements `(L_2(t), L_6(t))_t` (a large state), estimated
+  from the per-interval queue observations by a **rolling-window Gaussian
+  smoother over the last `controller_window_size` days** (mirroring the
+  travellers' smoother), with a **full covariance** capturing temporal
+  correlations. The smoother is in `control/controller_smoother.py`: a random-walk
+  trajectory prior (tridiagonal precision) + linear identity observations →
+  banded `O(M)` solve + `O(M)` marginal variances (a dense reference validates
+  it). The controller still **acts** each control interval by minimising the
+  **fixed** Expected Free Energy (pragmatic MVN-KL from the predicted queue to the
+  preferred `N(0, Sigma_pref)`, minus a split-dependent epistemic info gain, plus
+  a smoothness prior on the split), now using its smoother posterior as the prior
+  (posterior-as-prior). The only designed object is the preference; the
   low-and-balanced goal lives inside `Sigma_pref` (extra precision `omega` along
-  the capacity-normalised imbalance direction), not in a hand-built cost. Keep it
-  EFE-based: do not reintroduce a hand-crafted scalar cost function.
+  the unit capacity-normalised imbalance direction), not in a hand-built cost.
+  Keep it EFE-based; do not reintroduce a hand-crafted scalar cost.
 - **Two communication channels.** `communication.py` carries two distinct
   controller→traveller channels (paper Sections 4.3 / Experiment 3):
   - **Cost-offset advisory** (`SignalType`, `build_broadcast`, `Broadcast`):
@@ -27,16 +34,16 @@ experiment notebook.
     Affects route choice only (`begin_day`), never the belief update. Carries the
     `theta` social-internalisation (Experiment 1). MSC/externality use the
     finite-difference re-roll; travel-time/congestion are direct proxies.
-  - **Belief-informing broadcast** (`BeliefSignal`, `build_belief_broadcast`,
-    `BeliefBroadcast`; settings BL/CG/SN/CG+SN): the controller broadcasts the
-    route queue `L_hat_r` (CG) and/or green split `phi_hat_r` (SN), which
-    *compliant* travellers fold into the smoother as observations of routes they
-    did NOT take. This **intentionally enters the belief update** — a documented
-    departure from "the smoother is reused verbatim / broadcast affects only
-    action selection" (see `filter.py`, `population.py`). The gate
-    `complies * (last_choice != route)` keeps first-hand observations
-    authoritative (no double counting); empty `belief_signals` (BL) is bit-identical
-    to no information.
+  - **Controller-belief broadcast** (`BeliefSignal` = `QUEUE_BELIEF` / `SPLIT_PLAN`,
+    `build_belief_broadcast`, `BeliefBroadcast`; settings BL/QB/SP/QB+SP): the
+    controller shares its **smoother posterior** over the upcoming day — its queue
+    belief `N(L_hat, var)` (QB) and/or its planned green split (SP) — *before*
+    travellers choose. A *compliant* traveller **fuses** that Gaussian into a
+    **copy** of its own posterior at decision time (`population._fuse_controller_belief`,
+    reusing `filter._kalman_one_obs`), gated by compliance. The fusion is
+    **transient** — it informs the choice but is never written back, so the
+    traveller smoother stays **first-hand-only** (IWAI-verbatim). Empty
+    `belief_signals` (BL), or zero compliance, is bit-identical to no information.
 
 ## Conventions
 
@@ -113,7 +120,8 @@ a human or another agent can read it back):
 
 - **Direction-asserting** (`tests/test_behaviour.py`,
   `tests/test_belief_informing.py`): pin a qualitative fact and assert its
-  direction with a generous margin (e.g. "CG lowers unchosen-route uncertainty").
+  direction with a generous margin (e.g. "sharing the controller's queue belief
+  QB shifts route choice; non-compliant travellers ignore it").
 - **Report-style** (`tests/test_narrative_reports.py`): assert only *sanity*
   (finite, in range, not NaN) and **print** whether each paper claim holds —
   `PAPER CLAIMS … / OBSERVED … / consistent | MISMATCH`. The direction is
@@ -122,7 +130,7 @@ a human or another agent can read it back):
   away or silently encoded. **If a report reads MISMATCH, that is a finding to
   raise against the paper, not a test to "fix".** Use this flavour when you are
   fine with either outcome and want the result reported, not enforced. (As of
-  writing, the communication report flags that CG+SN is *not* the lowest-cost
+  writing, the communication report flags that QB+SP is *not* the lowest-cost
   setting, contrary to the Experiment-3 narrative — worth a look.)
 
 ## Notebooks
@@ -144,9 +152,10 @@ The three experiment notebooks mirror the paper's Experiment section one-to-one
   a `controller_summary` table, and an optional faceted gif
   (`animate_controller_comparison`).
 - `03_information_communication.py` — **Experiment 3**: fix the AIF controller and
-  sweep the belief-informing settings BL/CG/SN/CG+SN via `with_belief_signals(...)`,
-  overlaying outcomes and belief uncertainty (`plot_sweep_metrics`). Per-day
-  route-choice heatmaps / animations are deferred.
+  sweep what it shares from its belief, BL/QB/SP/QB+SP, via `with_belief_signals(...)`,
+  overlaying outcomes and belief uncertainty (`plot_sweep_metrics`) plus per-day
+  route-choice heatmaps (`plot_route_choice_heatmaps`). A fourth notebook
+  `04_compliance_robustness.py` sweeps the compliance fraction that gates the fusion.
 
 Heavy per-experiment analysis charts (e.g. Experiment 2's theta×controller grid,
 Experiment 3's route-choice heatmaps) are scaffolded but not all built yet.

@@ -353,6 +353,26 @@ class AIFControllerSpec:
     realised split may still drift as it adapts to queues. Used as the fusion
     observation variance ``sigma_phi_plan**2``."""
 
+    # -- Trajectory-state rolling-window smoother (the controller's belief) ----
+    # The controller is one big AIF agent whose latent is the within-day queue
+    # trajectory of both signalised movements; it estimates that trajectory from
+    # the per-interval observations via a rolling-window Gaussian smoother over
+    # the last ``controller_window_size`` days (the macro analogue of the
+    # travellers' window smoother). The smoothed posterior is what it broadcasts.
+    controller_window_size: int = 10
+    """Number of past days the controller smooths over (its window ``W``)."""
+    controller_state_resolution: str = "minute"
+    """Grid for the trajectory latent: ``"minute"`` (one node per within-day
+    minute -- a genuinely big state) or ``"epoch"`` (one node per control
+    interval, coarser/cheaper; the broadcast is then zero-order-hold expanded)."""
+    sigma0: float = 5.0
+    """SD (veh) of the start-of-day anchor ``L(0) ~ N(0, sigma0^2)`` that makes
+    the random-walk trajectory prior proper."""
+    sigma_proc_day: float = 0.0
+    """Optional extra per-day random-walk drift SD (veh) inflating the trajectory
+    prior across the window, so the smoother can track non-stationarity. ``0``
+    disables it (the within-day process noise still couples adjacent nodes)."""
+
 
 ControllerSpecLike = (
     "FixedTimeControllerSpec | ReactiveControllerSpec | "

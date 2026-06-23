@@ -87,10 +87,15 @@ _CONTROLLER = r"""
 ### The Active Inference signal controller
 
 The controller is the same kind of agent as the travellers, differing only in
-its preferred observation. It runs a genuine recursive Gaussian filter over the
-two signalised queues $(L_2, L_6)$ -- correcting its belief from each new
-observation and carrying it across control epochs -- and selects the split by
-minimising the expected free energy
+its preferred observation -- and, like them, it **learns with a rolling-window
+Gaussian smoother**. Its latent is the **entire within-day queue trajectory** of
+both signalised movements $(L_2(t), L_6(t))_t$ (one big state), which it estimates
+from the per-interval queue observations over a window of the last few days, with
+a full covariance capturing the temporal correlations. So the macro layer is one
+big AIF agent and the micro layer is thousands of tiny ones, under the same
+inference scheme. Within the day it acts at each control interval, using its
+learned belief as the prior, and selects the split by minimising the expected
+free energy
 
 $$G(\phi)=\underbrace{\mathrm{KL}\!\big[q(o^c\mid\phi)\,\|\,\tilde p(o^c)\big]}_{\text{pragmatic (risk)}}
 -\underbrace{\mathbb E\big[\mathrm{KL}(q(s^c\mid o^c,\phi)\,\|\,q(s^c\mid\phi))\big]}_{\text{epistemic (info gain)}},\qquad
@@ -197,15 +202,19 @@ choose, comparing four settings:
   $\hat\phi$ for the upcoming day.
 - **QB+SP** -- both.
 
-The controller produces these by rolling its generative model forward over the
-next day under its planned policy and a persistence forecast of demand (so the
-queue belief's variance grows with the horizon -- honest predictive
-uncertainty). A compliant traveller **fuses** the shared Gaussian into its own
-posterior over the intersection-route latent at decision time (precision-weighted
-by the controller's variance: a confident forecast pulls harder). The fusion is
-transient -- it never enters the smoother. QB tells travellers what queue to
-expect; SP lets them anticipate the intersection's effective capacity, which they
-cannot observe first-hand without driving it.
+The controller is itself **one big Active-Inference agent**: its latent is the
+whole within-day queue trajectory of both signalised movements, and it estimates
+it from the per-interval queue observations with a **rolling-window Gaussian
+smoother over the last few days** (the macro analogue of the travellers' window
+smoother), with a full covariance capturing the temporal correlations between
+intervals. QB is therefore the controller's **smoother posterior** over the queue
+(mean + variance, the variance shrinking as the window fills) -- a genuine
+inference object, not a forward guess. A compliant traveller **fuses** the shared
+Gaussian into its own posterior over the intersection-route latent at decision
+time (precision-weighted by the controller's variance: a confident belief pulls
+harder). The fusion is transient -- it never enters the *traveller's* smoother.
+QB tells travellers what queue to expect; SP lets them anticipate the
+intersection's effective capacity, which they cannot observe first-hand.
 
 **What the charts show.** Day-to-day *route share* and *total system cost*
 overlay the four settings; *queue evolution on the critical links* checks whether

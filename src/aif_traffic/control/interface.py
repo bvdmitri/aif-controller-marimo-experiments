@@ -29,16 +29,19 @@ import numpy as np
 
 
 class QueueForecast(NamedTuple):
-    """A controller's forward-predicted belief for an upcoming day, broadcast to
-    travellers for decision-time fusion (paper Experiment 3 / 4).
+    """A controller's belief over an upcoming day, broadcast to travellers for
+    decision-time fusion (paper Experiment 3 / 4).
 
-    All arrays are length ``K`` (per within-day minute), indexed by the minute
-    the queue/split refers to (the communication layer applies the traveller's
-    arrival alignment ``k + N_l``):
+    For the AIF controller this is its **rolling-window smoother posterior** over
+    the within-day queue trajectory (built by injecting the realised per-interval
+    observations and running inference -- :mod:`control.controller_smoother`), not
+    a prior-predictive rollout. All arrays are length ``K`` (per within-day
+    minute), indexed by the minute the queue/split refers to (the communication
+    layer applies the traveller's arrival alignment ``k + N_l``):
 
-    * ``mu_L`` / ``var_L`` -- the controller's predicted belief over the
-      signalised A--B queue ``L_2`` (mean and variance; the variance grows over
-      the horizon since the prediction is uncorrected by observations).
+    * ``mu_L`` / ``var_L`` -- the controller's posterior belief over the
+      signalised A--B queue ``L_2`` (mean and per-interval marginal variance; the
+      variance shrinks as the window fills with observations).
     * ``phi2`` -- the controller's *planned* green split for the A--B movement.
     * ``var_phi`` -- the (scalar) variance the controller attaches to its
       planned split when shared.
