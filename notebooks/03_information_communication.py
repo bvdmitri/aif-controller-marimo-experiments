@@ -101,6 +101,8 @@ def _(mo):
     demand_scale = mo.ui.slider(0.5, 2.0, step=0.1, value=1.0, label="demand scale")
     theta = mo.ui.slider(0.0, 1.0, step=0.05, value=0.5, label="theta")
     compliance = mo.ui.slider(0.0, 1.0, step=0.05, value=1.0, label="compliance")
+    traveller_window = mo.ui.slider(1, 30, value=10, label="traveller window [days]")
+    controller_window = mo.ui.slider(1, 30, value=10, label="controller window [days]")
 
     run_btn = mo.ui.run_button(label="Run all communication settings")
 
@@ -120,10 +122,25 @@ def _(mo):
         _row(compliance,
              r"Fraction of travellers that read the broadcast. At $0$ every "
              r"setting collapses onto the baseline."),
+        _row(traveller_window,
+             "Days each traveller's rolling-window smoother remembers when "
+             "forming route beliefs (held fixed across settings)."),
+        _row(controller_window,
+             "Days of past queue observations the AIF controller smooths over "
+             "before acting and broadcasting its belief."),
         run_btn,
     ], gap=0.5)
     controls
-    return compliance, days, demand_scale, run_btn, seed, theta
+    return (
+        compliance,
+        controller_window,
+        days,
+        demand_scale,
+        run_btn,
+        seed,
+        theta,
+        traveller_window,
+    )
 
 
 @app.cell
@@ -134,6 +151,7 @@ def _(
     Params,
     SimParams,
     compliance,
+    controller_window,
     days,
     demand_scale,
     mo,
@@ -142,6 +160,7 @@ def _(
     run_experiment,
     seed,
     theta,
+    traveller_window,
 ):
     if not run_btn.value:
         results_by_setting = None
@@ -156,9 +175,12 @@ def _(
         _base = replace(
             Params(),
             sim=replace(SimParams(), days=int(days.value), seed=int(seed.value)),
-            controller=AIFControllerSpec(),
+            controller=AIFControllerSpec(
+                controller_window_size=int(controller_window.value)),
             demand=_demand,
-        ).with_theta(float(theta.value)).with_compliance(float(compliance.value))
+        ).with_theta(float(theta.value)).with_compliance(
+            float(compliance.value)
+        ).with_window_size(int(traveller_window.value))
 
         _settings = {
             "BL": _base.with_belief_signals(),

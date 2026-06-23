@@ -496,6 +496,12 @@ class Params:
                         for c in self.population.cohorts)
         return self.with_cohorts(cohorts)
 
+    def with_window_size(self, window_size: int) -> "Params":
+        """Set the same rolling-window smoother length on every cohort."""
+        cohorts = tuple(replace(c, window_size=int(window_size))
+                        for c in self.population.cohorts)
+        return self.with_cohorts(cohorts)
+
     def with_controller(self, spec: object) -> "Params":
         return replace(self, controller=spec)
 

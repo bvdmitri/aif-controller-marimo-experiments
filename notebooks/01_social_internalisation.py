@@ -119,11 +119,13 @@ def _(mo):
     control_interval = mo.ui.slider(1, 30, value=10, label="control interval [min]")
     demand_scale = mo.ui.slider(0.5, 2.0, step=0.1, value=1.0, label="demand scale")
     theta = mo.ui.slider(0.0, 1.0, step=0.05, value=0.5, label="theta")
+    traveller_window = mo.ui.slider(1, 30, value=10, label="traveller window [days]")
 
     gamma = mo.ui.slider(0.5, 20.0, step=0.5, value=4.0, label="gamma")
     omega = mo.ui.slider(0.0, 0.2, step=0.005, value=0.02, label="omega")
     sigma_pref = mo.ui.slider(5.0, 60.0, step=1.0, value=20.0, label="sigma_pref [veh]")
     phi_grid = mo.ui.slider(3, 21, value=9, label="candidate splits K")
+    controller_window = mo.ui.slider(1, 30, value=10, label="controller window [days]")
 
     run_btn = mo.ui.run_button(label="Run experiment")
 
@@ -147,6 +149,10 @@ def _(mo):
              r"$1$ = fully cooperative. (The externality is broadcast at full "
              r"compliance so $\theta$ has an $E_r$ to act on; this re-rolls the "
              r"day each step, so runs take longer.)"),
+        _row(traveller_window,
+             "Days each traveller's rolling-window smoother remembers when "
+             r"forming route beliefs. Shorter $\to$ more reactive day-to-day "
+             "choices; longer → steadier but slower to adapt."),
         mo.md("---"),
         mo.md("### Controller (Active Inference)"),
         _row(gamma,
@@ -160,11 +166,16 @@ def _(mo):
              r"Preferred-queue tolerance (veh): the SD of the *empty queues* "
              r"preference. Smaller $\to$ less tolerant of any residual queue."),
         _row(phi_grid, "Number of candidate green splits scored each decision."),
+        _row(controller_window,
+             "Days of past queue observations the macro AIF controller smooths "
+             r"over before acting. Shorter $\to$ reacts faster but noisier; "
+             "longer → steadier."),
         run_btn,
     ], gap=0.5)
     controls
     return (
         control_interval,
+        controller_window,
         days,
         demand_scale,
         gamma,
@@ -174,6 +185,7 @@ def _(mo):
         seed,
         sigma_pref,
         theta,
+        traveller_window,
     )
 
 
@@ -184,6 +196,7 @@ def _(
     Params,
     SimParams,
     control_interval,
+    controller_window,
     days,
     demand_scale,
     gamma,
@@ -197,6 +210,7 @@ def _(
     sigma_pref,
     SignalType,
     theta,
+    traveller_window,
 ):
     if not run_btn.value:
         params = None
@@ -209,6 +223,7 @@ def _(
             omega=float(omega.value),
             sigma_pref=float(sigma_pref.value),
             phi_grid_size=int(phi_grid.value),
+            controller_window_size=int(controller_window.value),
         )
         base_d = DemandParams()
         scale = float(demand_scale.value)
@@ -228,7 +243,7 @@ def _(
             demand=demand,
         ).with_comm(SignalType.EXTERNALITY).with_compliance(1.0).with_theta(
             float(theta.value)
-        )
+        ).with_window_size(int(traveller_window.value))
         results = run_experiment(
             params, seeds=[int(seed.value)], progress=mo.status.progress_bar,
         )

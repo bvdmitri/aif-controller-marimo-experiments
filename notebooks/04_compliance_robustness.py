@@ -98,6 +98,8 @@ def _(mo):
     days = mo.ui.slider(10, 180, value=90, label="days")
     seed = mo.ui.slider(0, 100, value=42, label="seed")
     demand_scale = mo.ui.slider(0.5, 2.0, step=0.1, value=1.0, label="demand scale")
+    traveller_window = mo.ui.slider(1, 30, value=10, label="traveller window [days]")
+    controller_window = mo.ui.slider(1, 30, value=10, label="controller window [days]")
 
     run_btn = mo.ui.run_button(label="Run all compliance settings")
 
@@ -111,10 +113,23 @@ def _(mo):
         _row(demand_scale,
              r"Scales peak A--B and C--D demand. $>1$ loads the junction and "
              r"sharpens the gap between high- and low-compliance outcomes."),
+        _row(traveller_window,
+             "Days each traveller's rolling-window smoother remembers when "
+             "forming route beliefs (held fixed across settings)."),
+        _row(controller_window,
+             "Days of past queue observations the AIF controller smooths over "
+             "before acting and broadcasting its belief."),
         run_btn,
     ], gap=0.5)
     controls
-    return days, demand_scale, run_btn, seed
+    return (
+        controller_window,
+        days,
+        demand_scale,
+        run_btn,
+        seed,
+        traveller_window,
+    )
 
 
 @app.cell
@@ -124,6 +139,7 @@ def _(
     DemandParams,
     Params,
     SimParams,
+    controller_window,
     days,
     demand_scale,
     mo,
@@ -131,6 +147,7 @@ def _(
     run_btn,
     run_experiment,
     seed,
+    traveller_window,
 ):
     if not run_btn.value:
         results_by_compliance = None
@@ -148,9 +165,12 @@ def _(
         _base = replace(
             Params(),
             sim=replace(SimParams(), days=int(days.value), seed=int(seed.value)),
-            controller=AIFControllerSpec(),
+            controller=AIFControllerSpec(
+                controller_window_size=int(controller_window.value)),
             demand=_demand,
-        ).with_belief_signals(BeliefSignal.QUEUE_BELIEF, BeliefSignal.SPLIT_PLAN)
+        ).with_belief_signals(
+            BeliefSignal.QUEUE_BELIEF, BeliefSignal.SPLIT_PLAN
+        ).with_window_size(int(traveller_window.value))
 
         _fractions = [0.0, 0.25, 0.5, 0.75, 1.0]
         _settings = {

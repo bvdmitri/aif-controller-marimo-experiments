@@ -104,11 +104,13 @@ def _(mo):
     seed = mo.ui.slider(0, 100, value=42, label="seed")
     control_interval = mo.ui.slider(1, 30, value=10, label="control interval [min]")
     demand_scale = mo.ui.slider(0.5, 2.5, step=0.1, value=1.0, label="demand scale")
+    traveller_window = mo.ui.slider(1, 30, value=10, label="traveller window [days]")
 
     gamma = mo.ui.slider(0.5, 20.0, step=0.5, value=4.0, label="AIF gamma")
     omega = mo.ui.slider(0.0, 0.2, step=0.005, value=0.02, label="AIF omega")
     sigma_pref = mo.ui.slider(5.0, 60.0, step=1.0, value=20.0, label="AIF sigma_pref [veh]")
     k_L = mo.ui.slider(1e-4, 5e-3, step=1e-4, value=1e-3, label="reactive k_L")
+    controller_window = mo.ui.slider(1, 30, value=10, label="AIF controller window [days]")
 
     run_btn = mo.ui.run_button(label="Run experiment")
 
@@ -124,17 +126,24 @@ def _(mo):
         _row(demand_scale,
              r"Scales peak A--B and C--D demand. $>1$ loads the junction; the "
              r"controllers differ most under load."),
+        _row(traveller_window,
+             "Days each traveller's rolling-window smoother remembers when "
+             r"forming route beliefs (applied to every controller)."),
         mo.md("---"),
         mo.md("### Controller knobs (baselines otherwise use their defaults)"),
         _row(gamma, r"AIF action precision $\gamma^c$."),
         _row(omega, r"AIF balance weight in the preference $\Sigma^c_{\mathrm{pref}}$."),
         _row(sigma_pref, r"AIF preferred-queue tolerance (veh)."),
         _row(k_L, r"Reactive feedback gain on the queue imbalance $L_2-L_6$."),
+        _row(controller_window,
+             "Days of past queue observations the AIF controller smooths over "
+             "before acting (AIF controller only)."),
         run_btn,
     ], gap=0.5)
     controls
     return (
         control_interval,
+        controller_window,
         days,
         demand_scale,
         gamma,
@@ -143,6 +152,7 @@ def _(mo):
         run_btn,
         seed,
         sigma_pref,
+        traveller_window,
     )
 
 
@@ -155,6 +165,7 @@ def _(
     ReactiveControllerSpec,
     SimParams,
     control_interval,
+    controller_window,
     days,
     demand_scale,
     gamma,
@@ -166,6 +177,7 @@ def _(
     run_experiment,
     seed,
     sigma_pref,
+    traveller_window,
 ):
     if not run_btn.value:
         results_by_ctrl = None
@@ -179,7 +191,8 @@ def _(
             "aif": AIFControllerSpec(
                 control_interval_min=ci, horizon_min=ci,
                 gamma=float(gamma.value), omega=float(omega.value),
-                sigma_pref=float(sigma_pref.value)),
+                sigma_pref=float(sigma_pref.value),
+                controller_window_size=int(controller_window.value)),
         }
         base = Params()
         scale = float(demand_scale.value)
@@ -195,7 +208,7 @@ def _(
                 sim=replace(SimParams(), days=int(days.value), seed=int(seed.value)),
                 controller=_spec,
                 demand=demand,
-            )
+            ).with_window_size(int(traveller_window.value))
             results_by_ctrl[_name] = run_experiment(
                 _p, seeds=[int(seed.value)], progress=mo.status.progress_bar,
             )
@@ -297,6 +310,7 @@ def _(
     ReactiveControllerSpec,
     SimParams,
     control_interval,
+    controller_window,
     days,
     demand_scale,
     gamma,
@@ -308,6 +322,7 @@ def _(
     run_experiment,
     seed,
     sigma_pref,
+    traveller_window,
 ):
     if not grid_btn.value:
         results_by_ctrl_theta = None
@@ -321,7 +336,8 @@ def _(
             "aif": AIFControllerSpec(
                 control_interval_min=_ci, horizon_min=_ci,
                 gamma=float(gamma.value), omega=float(omega.value),
-                sigma_pref=float(sigma_pref.value)),
+                sigma_pref=float(sigma_pref.value),
+                controller_window_size=int(controller_window.value)),
         }
         _base = Params()
         _scale = float(demand_scale.value)
@@ -341,7 +357,7 @@ def _(
                 sim=replace(SimParams(), days=int(days.value), seed=int(seed.value)),
                 controller=_spec,
                 demand=_demand,
-            ).with_theta(_theta)
+            ).with_theta(_theta).with_window_size(int(traveller_window.value))
             results_by_ctrl_theta[_name][_theta] = run_experiment(
                 _p, seeds=[int(seed.value)],
             )
