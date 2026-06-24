@@ -55,6 +55,7 @@ def _(mo):
 def _():
     from dataclasses import replace
 
+    from aif_traffic import notebook_controls as nc
     from aif_traffic.explainers import explainer_pointer, notebook_explainer
     from aif_traffic.parameters import (
         AIFControllerSpec,
@@ -81,6 +82,7 @@ def _():
         SimParams,
         explainer_pointer,
         figure_placeholder,
+        nc,
         notebook_explainer,
         plot_queue_belief_day,
         plot_route_choice_heatmaps,
@@ -97,50 +99,38 @@ def _(explainer_pointer, mo):
 
 
 @app.cell
-def _(mo):
-    days = mo.ui.slider(10, 180, value=90, label="days")
-    seed = mo.ui.slider(0, 100, value=42, label="seed")
-    demand_scale = mo.ui.slider(0.5, 2.0, step=0.1, value=1.0, label="demand scale")
-    theta = mo.ui.slider(0.0, 1.0, step=0.05, value=0.0, label="theta")
-    compliance = mo.ui.slider(0.0, 1.0, step=0.05, value=1.0, label="compliance")
-    traveller_window = mo.ui.slider(0, 60, value=30, label="traveller window [days]")
-    controller_window = mo.ui.slider(0, 60, value=30, label="controller window [days]")
+def _(mo, nc):
+    # All controls come from aif_traffic.notebook_controls (shared across the
+    # experiments; see CLAUDE.md). This experiment is about the belief broadcast,
+    # so it exposes compliance (gates the belief fusion) but not theta (the
+    # externality channel is not used here) nor the AIF-tuning knobs.
+    days = nc.days()
+    seed = nc.seed()
+    control_interval = nc.control_interval()
+    demand_scale = nc.demand_scale()
+    traveller_window = nc.traveller_window()
+    controller_window = nc.controller_window()
+    learn_noise = nc.learn_noise()
+    compliance = nc.compliance()
 
     run_btn = mo.ui.run_button(label="Run all communication settings")
 
-    def _row(widget, desc):
-        return mo.hstack([widget, mo.md(desc)], widths=[2, 3], align="center", gap=1)
-
-    controls = mo.vstack([
-        mo.md("### Parameters you can play with"),
-        _row(days, "Total days to simulate (the first warm-up days are discarded)."),
-        _row(seed, "Master seed; redraws all stochastic elements."),
-        _row(demand_scale,
-             r"Scales peak A--B and C--D demand. $>1$ loads the junction and "
-             r"sharpens the differences between communication settings."),
-        _row(theta,
-             r"Social internalisation $\theta$, held fixed across the four "
-             r"settings so the comparison isolates the broadcast."),
-        _row(compliance,
-             r"Fraction of travellers that read the broadcast. At $0$ every "
-             r"setting collapses onto the baseline."),
-        _row(traveller_window,
-             "Days each traveller's rolling-window smoother remembers when "
-             "forming route beliefs (held fixed across settings)."),
-        _row(controller_window,
-             "Days of past queue observations the AIF controller smooths over "
-             "before acting and broadcasting its belief."),
-        run_btn,
-    ], gap=0.5)
+    controls = nc.standard_panel({
+        "days": days, "seed": seed, "control_interval": control_interval,
+        "demand_scale": demand_scale, "traveller_window": traveller_window,
+        "controller_window": controller_window, "learn_noise": learn_noise,
+        "compliance": compliance,
+    }, run_btn)
     controls
     return (
         compliance,
+        control_interval,
         controller_window,
         days,
         demand_scale,
+        learn_noise,
         run_btn,
         seed,
-        theta,
         traveller_window,
     )
 
@@ -153,15 +143,16 @@ def _(
     Params,
     SimParams,
     compliance,
+    control_interval,
     controller_window,
     days,
     demand_scale,
+    learn_noise,
     mo,
     replace,
     run_btn,
     run_experiment,
     seed,
-    theta,
     traveller_window,
 ):
     if not run_btn.value:
@@ -174,15 +165,22 @@ def _(
             d_AB_max=base_d.d_AB_max * _scale,
             d_CD_max=base_d.d_CD_max * _scale,
         )
+        # This experiment is about the belief broadcast, so theta stays at its
+        # default 0 (the externality channel is not used here); compliance gates
+        # the belief fusion.
         _base = replace(
             Params(),
             sim=replace(SimParams(), days=int(days.value), seed=int(seed.value)),
             controller=AIFControllerSpec(
+                control_interval_min=int(control_interval.value),
+                horizon_min=int(control_interval.value),
                 controller_window_size=int(controller_window.value)),
             demand=_demand,
-        ).with_theta(float(theta.value)).with_compliance(
+        ).with_compliance(
             float(compliance.value)
-        ).with_window_size(int(traveller_window.value))
+        ).with_window_size(int(traveller_window.value)).with_learn_obs_noise(
+            bool(learn_noise.value)
+        )
 
         _settings = {
             "BL": _base.with_belief_signals(),

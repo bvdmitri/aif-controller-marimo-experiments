@@ -94,6 +94,54 @@ def _fill_window(route, y_tt, sigma_tt, y_L, sigma_L, mask, slot,
     )
 
 
+def test_vb_recovers_per_agent_L_observation_noise():
+    """With observation-noise learning on, the per-agent Gamma posterior over the
+    queue-channel precision recovers the SD the data were generated with -- moving
+    from the prior centre (30) toward the injected 15, despite only W per-agent
+    observations (the shared weakly-informative prior gives shrinkage)."""
+    import numpy as np
+    N, W = 8, 30
+    priors = _cohort_priors(N=N, L_sigma=200.0)        # diffuse L state prior
+    state = init_variational_state(cohort_priors=priors)
+    rng = np.random.default_rng(0)
+    true_L, sd_L = 50.0, 15.0
+    route = jnp.zeros((N, W), dtype=jnp.int32)         # all take route 0
+    y_L = jnp.asarray(true_L + rng.normal(0, sd_L, size=(N, W)))
+    # Make TT uninformative (huge SD) so the learned L-noise is what we test.
+    y_tt = jnp.full((N, W), 16.0 + 60.0 * true_L / 4000.0)
+    sigma_tt = jnp.full((N, W), 1e4)
+    sigma_L = jnp.full((N, W), 30.0)                   # prior centre for L noise
+    y_phi = jnp.full((N, W), 0.45)
+    sigma_phi = jnp.full((N, W), 0.05)
+    mask = jnp.ones((N, W))
+    _, obs = _window_step_impl(
+        state, priors, route_chosen_window=route, y_tt_window=y_tt,
+        sigma_tt_window=sigma_tt, y_L_window=y_L, sigma_L_window=sigma_L,
+        y_phi_window=y_phi, sigma_phi_window=sigma_phi, obs_mask=mask,
+        signalised=SIGNALISED, W=W, learn_obs_noise=True, obs_noise_a0=1.0,
+        obs_noise_vb_iters=10, return_obs_noise=True)
+    learned = float(jnp.sqrt(obs.b_L / (obs.a_L - 1.0)).mean())
+    print(f"\nInjected L obs SD = {sd_L}; learned (cohort mean) = {learned:.2f}"
+          f"  (prior centre 30) -> {'PASS' if 8 < learned < 20 else 'FAIL'}")
+    assert 8.0 < learned < 20.0                        # moved toward the truth
+    assert abs(learned - sd_L) < abs(learned - 30.0)   # closer to truth than prior
+
+
+def test_learn_obs_noise_off_is_identical_to_default():
+    """With ``learn_obs_noise=False`` the smoother is bit-identical to not passing
+    the flag at all -- the opt-in path never perturbs the default model."""
+    N, W = 4, W_DEFAULT
+    state, priors = _init_state(N=N)
+    route, y_tt, sigma_tt, y_L, sigma_L, mask = _empty_window(N, W)
+    route, y_tt, sigma_tt, y_L, sigma_L, mask = _fill_window(
+        route, y_tt, sigma_tt, y_L, sigma_L, mask, 0, 0, 18.0, 60.0)
+    base = window_step(state, priors, route, y_tt, sigma_tt, y_L, sigma_L, mask, W=W)
+    off = window_step(state, priors, route, y_tt, sigma_tt, y_L, sigma_L, mask,
+                      W=W, learn_obs_noise=False)
+    assert jnp.allclose(base.mu, off.mu)
+    assert jnp.allclose(base.scale_tril, off.scale_tril)
+
+
 def test_init_variational_state_cohort_priors():
     """Initial state stores natural-space (F, C, L) means at the right slots."""
     state, priors = _init_state(N=2, F_mu=16.0, C_mu=4000.0, C_sigma=1500.0)

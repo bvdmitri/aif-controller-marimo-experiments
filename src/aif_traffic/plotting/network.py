@@ -107,6 +107,30 @@ def plot_queue_belief_day(step: pd.DataFrame, day: int | None = None):
     return fig
 
 
+def plot_learned_obs_noise(controller: pd.DataFrame):
+    """The controller's *learned* queue observation-noise SD over days, per
+    signalised movement (``sigma_obs_l2`` / ``sigma_obs_l6`` from the controller
+    snapshot). Only meaningful when ``learn_obs_noise`` is on; with it off the
+    series sit flat at the fixed ``sigma_obs`` default. A dashed line marks that
+    fixed default for comparison."""
+    c = controller if "seed" not in controller else (
+        controller[controller["seed"] == controller["seed"].min()])
+    c = c.sort_values("day")
+    fig, ax = plt.subplots(figsize=(TEXT_W, TEXT_W * 0.5))
+    if "sigma_obs_l2" in c.columns:
+        ax.plot(c["day"], c["sigma_obs_l2"], color="tab:blue",
+                label=r"learned $\sigma_{obs}$, $L_2$ (A--B)")
+        ax.plot(c["day"], c["sigma_obs_l6"], color="tab:orange",
+                label=r"learned $\sigma_{obs}$, $L_6$ (C--D)")
+    ax.set_xlabel("day")
+    ax.set_ylabel(r"obs-noise SD [veh]")
+    ax.set_title("Controller's learned queue observation noise")
+    ax.legend()
+    ax.grid(alpha=0.25)
+    fig.tight_layout()
+    return fig
+
+
 def plot_route_flows(step: pd.DataFrame, day: int | None = None):
     """Within-day traveller flow on each route, for a single day.
 

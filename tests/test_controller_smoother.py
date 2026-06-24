@@ -45,6 +45,60 @@ def _setup(M=40, W=6, seed=0):
     return prior_mean, obs_traj, obs_var, obs_mask, true
 
 
+def test_vb_recovers_injected_observation_noise():
+    """The variational smoother learns the observation-noise scale: with data
+    generated at a known SD, the Gamma posterior mean ``E[sigma_obs]`` recovers
+    it (and tightens as the window grows). Tested across a range and under a
+    split-dependent observation weight (the known structure VB factors out)."""
+    M = 60
+    t = np.arange(M)
+    true_L = 40.0 * np.exp(-((t - 30) ** 2) / (2 * 12.0 ** 2))
+    a0, sigma_guess = 1.0, 5.0           # weakly-informative prior, centred at 5
+    b0 = a0 * sigma_guess ** 2
+    lines, ok = [], True
+    for W, true_sigma in [(30, 2.0), (30, 8.0), (30, 20.0), (60, 8.0)]:
+        rng = np.random.default_rng(int(true_sigma) * 100 + W)
+        w = np.ones((W, M))
+        obs = true_L[None, :] + rng.normal(0, true_sigma, size=(W, M))
+        _, _, a_p, b_p = cs.window_smoother_vb(
+            np.zeros(M), 4.0, 50.0, obs, w, np.ones(W), a0=a0, b0=b0, n_iters=10)
+        learned = float(np.sqrt(b_p / (a_p - 1.0)))
+        rel = abs(learned - true_sigma) / true_sigma
+        ok = ok and rel < 0.12
+        lines.append(f"W={W:3d} true sigma={true_sigma:5.1f} -> learned {learned:6.2f}"
+                     f"  (rel err {rel:.1%})")
+
+    # Split-dependent weight: per-node SD = scale / sqrt(w); recover the scale.
+    W = 40
+    rng = np.random.default_rng(7)
+    w = np.tile(np.linspace(0.4, 1.0, M), (W, 1))
+    obs = true_L[None, :] + rng.normal(0, 1, size=(W, M)) * (6.0 / np.sqrt(w))
+    _, _, a_p, b_p = cs.window_smoother_vb(
+        np.zeros(M), 4.0, 50.0, obs, w, np.ones(W), a0=a0, b0=b0, n_iters=10)
+    learned_scale = float(np.sqrt(b_p / (a_p - 1.0)))
+    ok = ok and abs(learned_scale - 6.0) / 6.0 < 0.12
+    lines.append(f"split-weighted: true scale 6.0 -> learned {learned_scale:.2f}")
+    _narrate("Controller VB recovers the injected observation-noise scale", lines
+             + [f"Verdict: {'PASS' if ok else 'FAIL'}."])
+    assert ok
+
+
+def test_vb_reduces_to_fixed_smoother_when_prior_is_dominant():
+    """With a very strong prior (huge shape) pinning the precision, the VB
+    posterior mean equals the fixed-noise smoother at that sigma_obs."""
+    prior_mean, obs_traj, _, obs_mask, _ = _setup(M=40, W=6)
+    q, sigma0, sigma_fixed = 4.0, 5.0, 5.0
+    W, M = obs_traj.shape
+    w = np.ones((W, M))                              # unit weight
+    obs_var = np.full((W, M), sigma_fixed ** 2)      # matching fixed variance
+    mu_fix, _ = cs.window_smoother(prior_mean, q, sigma0, obs_traj, obs_var, obs_mask)
+    a0 = 1e8                                          # prior pins E[tau]=1/25
+    b0 = a0 * sigma_fixed ** 2
+    mu_vb, _, _, _ = cs.window_smoother_vb(
+        prior_mean, q, sigma0, obs_traj, w, obs_mask, a0=a0, b0=b0, n_iters=5)
+    assert np.allclose(mu_fix, mu_vb, atol=1e-6), float(np.max(np.abs(mu_fix - mu_vb)))
+
+
 def test_banded_solver_matches_dense_reference():
     """The O(M) banded LDL solve + inverse-diagonal recursion must reproduce the
     dense linear-algebra posterior exactly."""

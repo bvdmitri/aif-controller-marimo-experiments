@@ -164,6 +164,65 @@ def window_smoother(
     return mu_post, var_post
 
 
+def window_smoother_vb(
+    prior_mean: np.ndarray,
+    q: float,
+    sigma0: float,
+    obs_traj: np.ndarray,
+    obs_weight: np.ndarray,
+    obs_mask: np.ndarray,
+    a0: float,
+    b0: float,
+    n_iters: int = 8,
+) -> tuple[np.ndarray, np.ndarray, float, float]:
+    """Like :func:`window_smoother`, but **learns the observation noise** by
+    mean-field coordinate-ascent variational Bayes.
+
+    The observation precision is factored as ``prec_d[t] = tau * w_d[t]`` where
+    ``w_d[t] = obs_weight[d, t]`` is the **known** structural weight (the
+    split-dependent ``phi/phi_ref``: more green -> sharper) and ``tau = 1/sigma_obs^2``
+    is a single unknown precision *scale* shared across the window, with a
+    conjugate prior ``tau ~ Gamma(a0, b0)``. We seek the mean-field posterior
+    ``q(L_traj) q(tau)`` with ``q(tau) = Gamma(a_post, b_post)``.
+
+    Coordinate ascent (closed-form, deterministic):
+
+    * **state step** -- fix ``E[tau] = a/b``; the per-node observation variance is
+      ``R_d[t] = 1/(E[tau] * w_d[t])`` and the trajectory posterior is the banded
+      :func:`window_smoother` solve (reused verbatim);
+    * **noise step** -- fix ``q(L)``; the conjugate Gamma update over the active
+      observations is ``a_post = a0 + 1/2 * N_active`` and
+      ``b_post = b0 + 1/2 * sum_{d,t active} w_d[t] * E[(o_d[t] - L(t))^2]`` with
+      ``E[(o - L)^2] = (o - mu_post[t])^2 + var_post[t]`` (the residual expectation
+      includes the state posterior variance).
+
+    Args mirror :func:`window_smoother`, with ``obs_weight`` (``(W, M)`` known
+    weights) replacing ``obs_var``, plus the Gamma prior ``(a0, b0)`` and the
+    iteration count. Returns ``(mu_post, var_post, a_post, b_post)``; the learned
+    noise scale is ``E[tau] = a_post / b_post`` and ``E[sigma_obs^2] = b_post /
+    (a_post - 1)`` (for ``a_post > 1``).
+    """
+    M = prior_mean.shape[0]
+    w = np.maximum(np.asarray(obs_weight, dtype=float), 1e-12)   # (W, M)
+    n_active = float(obs_mask.sum()) * M                          # scalar obs count
+    a_post = a0 + 0.5 * n_active
+
+    e_tau = a0 / b0
+    mu_post = prior_mean
+    var_post = np.zeros(M)
+    b_post = b0
+    for _ in range(max(1, int(n_iters))):
+        obs_var = 1.0 / (e_tau * w)
+        mu_post, var_post = window_smoother(prior_mean, q, sigma0, obs_traj,
+                                            obs_var, obs_mask)
+        # Weighted residual sum of squares, with the state posterior variance.
+        resid2 = (obs_traj - mu_post[None, :]) ** 2 + var_post[None, :]   # (W, M)
+        ss = float((obs_mask[:, None] * w * resid2).sum())
+        b_post = b0 + 0.5 * ss
+        e_tau = a_post / b_post
+    return mu_post, var_post, a_post, b_post
+
+
 def dense_reference(
     prior_mean: np.ndarray,
     q: float,

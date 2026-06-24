@@ -97,11 +97,21 @@ class AIFController(BaseController):
         # observe(); the smoother posterior carried across days.
         self._traj_buf: np.ndarray | None = None     # (W, 2, M) realised queue
         self._objvar_buf: np.ndarray | None = None    # (W, 2, M) obs variance R
+        self._objweight_buf: np.ndarray | None = None  # (W, 2, M) split weight phi/ref
         self._mask_buf: np.ndarray | None = None       # (W,) slot active
         self._day_count = 0
         self._post_mu: np.ndarray | None = None        # (2, M) posterior mean
         self._post_var: np.ndarray | None = None       # (2, M) posterior marginal var
         self._last_phi2: np.ndarray | None = None       # last realised split schedule (K,)
+
+        # -- Optional learned observation noise (variational Gamma on precision).
+        # Per movement (0 = L_2, 1 = L_6): the learned E[sigma_obs^2] that
+        # _obs_var uses, plus the posterior Gamma(a, b) over the precision for
+        # diagnostics. Seeded at the fixed default; updated each day in observe().
+        self._learn_obs_noise = bool(spec.learn_obs_noise)
+        self._sigma_obs2 = np.full(2, float(spec.sigma_obs) ** 2)
+        self._obs_a = np.full(2, float("nan"))
+        self._obs_b = np.full(2, float("nan"))
 
     # -- preference -------------------------------------------------------
     def _build_sigma_pref(self) -> None:
@@ -156,6 +166,7 @@ class AIFController(BaseController):
         self._M = M
         self._traj_buf = np.zeros((self._W, 2, M), dtype=float)
         self._objvar_buf = np.ones((self._W, 2, M), dtype=float)
+        self._objweight_buf = np.ones((self._W, 2, M), dtype=float)
         self._mask_buf = np.zeros(self._W, dtype=float)
         self._day_count = 0
         self._post_mu = None
@@ -195,10 +206,16 @@ class AIFController(BaseController):
         accurately, so its queue observation is more precise:
         ``R_m(phi_m) = sigma_obs^2 * phi_ref / phi_m`` (decreasing in ``phi_m``).
         This is what makes the EFE epistemic term discriminate between splits.
+
+        When ``learn_obs_noise`` is on, the per-movement scale ``sigma_obs^2`` is
+        the value *learned* by the smoother (``self._sigma_obs2``) rather than the
+        fixed ``spec.sigma_obs``; the split-dependent structure is unchanged.
         """
-        s = self.spec
         ref = self._phi_ref
-        return (s.sigma_obs ** 2) * np.array([ref / phi2, ref / phi6])
+        sob2 = self._sigma_obs2 if self._learn_obs_noise else (
+            np.full(2, self.spec.sigma_obs ** 2)
+        )
+        return sob2 * np.array([ref / phi2, ref / phi6])
 
     def _rollout_mean(
         self, L0: np.ndarray, phi2: float, phi6: float, k: int, n_steps: int,
@@ -330,21 +347,25 @@ class AIFController(BaseController):
         sob2 = self.spec.sigma_obs ** 2
         L2 = np.asarray(queues[self.sig_ab], dtype=float)[nodes]
         L6 = np.asarray(queues[self.sig_cd], dtype=float)[nodes]
-        # Observation variance per node from the realised split (more green ->
-        # sharper), mirroring _obs_var; clip the split to keep it bounded.
+        # Split weight per node from the realised split (more green -> sharper):
+        # the KNOWN structure ``w = phi/phi_ref``. The fixed-noise observation
+        # variance is ``sigma_obs^2 / w`` (== sigma_obs^2 * ref/phi, as before);
+        # the VB path keeps ``w`` and learns only the scale. Clip phi to bound it.
         phi2_lo = np.clip(phi2[nodes], self.signal.phi_min, self.signal.phi_sat)
         phi6_lo = np.clip(phi6[nodes], self.signal.phi_min, self.signal.phi_sat)
-        R2 = sob2 * ref / phi2_lo
-        R6 = sob2 * ref / phi6_lo
+        w2 = phi2_lo / ref
+        w6 = phi6_lo / ref
 
-        # Shift the W-day window left and write today's trajectory into slot W-1.
-        for buf in (self._traj_buf, self._objvar_buf):
+        # Shift the W-day window left and write today into slot W-1.
+        for buf in (self._traj_buf, self._objvar_buf, self._objweight_buf):
             buf[:-1] = buf[1:]
         self._mask_buf[:-1] = self._mask_buf[1:]
         self._traj_buf[-1, 0, :] = L2
         self._traj_buf[-1, 1, :] = L6
-        self._objvar_buf[-1, 0, :] = R2
-        self._objvar_buf[-1, 1, :] = R6
+        self._objvar_buf[-1, 0, :] = sob2 / w2
+        self._objvar_buf[-1, 1, :] = sob2 / w6
+        self._objweight_buf[-1, 0, :] = w2
+        self._objweight_buf[-1, 1, :] = w6
         self._mask_buf[-1] = 1.0
         self._day_count += 1
 
@@ -357,10 +378,29 @@ class AIFController(BaseController):
         post_mu = np.empty((2, self._M))
         post_var = np.empty((2, self._M))
         for mv in (0, 1):
-            mu_p, var_p = cs.window_smoother(
-                prior_mean, q, sigma0,
-                self._traj_buf[:, mv, :], self._objvar_buf[:, mv, :], self._mask_buf,
-            )
+            if self._learn_obs_noise:
+                # Joint VB: learn the per-movement observation-noise scale
+                # (Gamma posterior over the precision) together with the
+                # trajectory. The split weight is the fixed known structure.
+                a0 = float(self.spec.obs_noise_prior_shape)
+                b0 = a0 * sob2  # prior mean precision = 1/sigma_obs^2
+                mu_p, var_p, a_p, b_p = cs.window_smoother_vb(
+                    prior_mean, q, sigma0,
+                    self._traj_buf[:, mv, :], self._objweight_buf[:, mv, :],
+                    self._mask_buf, a0=a0, b0=b0,
+                    n_iters=int(self.spec.obs_noise_vb_iters),
+                )
+                self._obs_a[mv] = a_p
+                self._obs_b[mv] = b_p
+                # E[sigma_obs^2] = b/(a-1) (posterior mean variance); fall back to
+                # 1/E[tau] = b/a if a <= 1 (improper-prior guard).
+                self._sigma_obs2[mv] = b_p / (a_p - 1.0) if a_p > 1.0 else b_p / a_p
+            else:
+                mu_p, var_p = cs.window_smoother(
+                    prior_mean, q, sigma0,
+                    self._traj_buf[:, mv, :], self._objvar_buf[:, mv, :],
+                    self._mask_buf,
+                )
             post_mu[mv] = mu_p
             post_var[mv] = var_p
         self._post_mu = post_mu
@@ -427,7 +467,13 @@ class AIFController(BaseController):
             float(np.mean(self._post_var)) if self._post_var is not None
             else float("nan")
         )
+        # Learned observation-noise SD per movement (NaN until learning has run);
+        # sigma_obs_last is the fixed default when learning is off.
+        sigma_obs2 = self._sigma_obs2 if self._learn_obs_noise else np.full(
+            2, self.spec.sigma_obs ** 2)
         return {"name": self.name, "phi2_last": self.phi2_prev,
                 "risk_last": self._last_risk, "info_last": self._last_info,
                 "efe_last": self._last_efe,
-                "belief_var_mean": total_var, "days_observed": self._day_count}
+                "belief_var_mean": total_var, "days_observed": self._day_count,
+                "sigma_obs_l2": float(np.sqrt(sigma_obs2[0])),
+                "sigma_obs_l6": float(np.sqrt(sigma_obs2[1]))}

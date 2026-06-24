@@ -115,6 +115,16 @@ information gain pulls green toward the movement the controller is least certain
 about. The travellers' exploration, by contrast, arises because a route is seen
 only when chosen; both layers act under one expected-free-energy objective.
 
+**Learning the observation noise (optional).** By default the queue
+observation-noise SD $\sigma_{obs}$ is a fixed knob. With *learn observation
+noise* on, it is instead **inferred**: a conjugate $\mathrm{Gamma}$ prior on the
+precision $\tau=1/\sigma_{obs}^2$, fit by mean-field coordinate-ascent
+variational Bayes inside the smoother (the controller learns one scale per
+movement; each traveller learns one per observation channel). The split-dependent
+structure is kept; only the magnitude is learned. The belief band below then
+becomes *data-driven* — and the learned-noise chart shows how it settles over
+days. (Off by default, so the fixed-noise model is unchanged.)
+
 **What the charts show.** *Within-day queues and green split* trace one day's
 $L_2,L_6$ and $\phi_2,\phi_6$. *Controller belief vs realised queue* overlays the
 controller's learned belief -- its rolling-window smoother posterior over the

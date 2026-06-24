@@ -38,6 +38,7 @@ from aif_traffic.parameters import (
 from aif_traffic.plotting import (
     plot_controller_theta_grid,
     plot_demand_profile,
+    plot_learned_obs_noise,
     plot_network_state,
     plot_queue_belief_day,
     plot_route_choice_heatmaps,
@@ -171,6 +172,49 @@ def smoke_theta_grid() -> None:
     _save_figure(plot_controller_theta_grid(grid), "theta_controller_grid.png")
 
 
+def smoke_learn_obs_noise() -> None:
+    """Variational observation-noise learning on both layers (controller per
+    movement, travellers per agent). Exercises the VB path end-to-end and checks
+    the learned controller sigma_obs is finite and positive."""
+    import numpy as np
+
+    params = _small_params(AIFControllerSpec()).with_learn_obs_noise(True)
+    res = run_experiment(params, snapshot_days=range(params.sim.days))
+    assert not res.step.empty, "learn_obs_noise: empty step frame"
+    c = res.controller
+    assert {"sigma_obs_l2", "sigma_obs_l6"} <= set(c.columns)
+    last = c[c["day"] == c["day"].max()]
+    assert np.isfinite(last["sigma_obs_l2"]).all() and (last["sigma_obs_l2"] > 0).all()
+    _save_figure(plot_learned_obs_noise(res.controller), "learned_obs_noise.png")
+
+
+def smoke_controls() -> None:
+    """Build each experiment's parameter panel from the shared
+    ``notebook_controls`` module (catches drift/breakage without the marimo
+    runtime). Mirrors the per-notebook control sets."""
+    from aif_traffic import notebook_controls as nc
+
+    panels = {
+        "exp1": ["days", "seed", "control_interval", "demand_scale",
+                 "traveller_window", "controller_window", "learn_noise",
+                 "theta", "compliance", "gamma", "omega", "sigma_pref", "phi_grid"],
+        "exp2": ["days", "seed", "control_interval", "demand_scale",
+                 "traveller_window", "controller_window", "learn_noise",
+                 "theta", "compliance", "gamma", "omega", "sigma_pref",
+                 "phi_grid", "k_L"],
+        "exp3": ["days", "seed", "control_interval", "demand_scale",
+                 "traveller_window", "controller_window", "learn_noise", "compliance"],
+        "exp4": ["days", "seed", "control_interval", "demand_scale",
+                 "traveller_window", "controller_window", "learn_noise"],
+    }
+    import marimo as mo
+
+    for name, keys in panels.items():
+        widgets = {k: getattr(nc, k)() for k in keys}
+        panel = nc.standard_panel(widgets, mo.ui.run_button(label="Run"))
+        assert panel is not None, f"{name}: standard_panel returned None"
+
+
 def smoke_demand() -> None:
     params = _small_params(FixedTimeControllerSpec())
     _save_figure(plot_demand_profile(params), "demand.png")
@@ -185,6 +229,8 @@ def main() -> int:
         "belief_communication": smoke_belief_communication,
         "compliance": smoke_compliance,
         "theta_grid": smoke_theta_grid,
+        "learn_obs_noise": smoke_learn_obs_noise,
+        "controls": smoke_controls,
     }
     failures: list[str] = []
     for name, fn in smokes.items():

@@ -18,11 +18,17 @@ Public entry points:
 """
 
 from .efe import efe_route_probabilities
-from .filter import VariationalState, init_variational_state, window_step
+from .filter import (
+    ObsNoisePosterior,
+    VariationalState,
+    init_variational_state,
+    window_step,
+)
 from .population import Population, build_population
 
 __all__ = [
     "VariationalState",
+    "ObsNoisePosterior",
     "init_variational_state",
     "window_step",
     "efe_route_probabilities",

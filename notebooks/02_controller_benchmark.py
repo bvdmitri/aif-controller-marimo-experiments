@@ -47,6 +47,7 @@ def _():
     from dataclasses import replace
     from pathlib import Path
 
+    from aif_traffic import notebook_controls as nc
     from aif_traffic.explainers import explainer_pointer, notebook_explainer
     from aif_traffic.notebook_io import is_deployed, outputs_dir
     from aif_traffic.parameters import (
@@ -55,6 +56,7 @@ def _():
         FixedTimeControllerSpec,
         Params,
         ReactiveControllerSpec,
+        SignalType,
         SimParams,
     )
     from aif_traffic.plotting import (
@@ -64,6 +66,7 @@ def _():
         plot_controller_metrics,
         plot_controller_theta_grid,
         plot_green_split_heatmaps_by_controller,
+        plot_learned_obs_noise,
         setup_style,
     )
     from aif_traffic.simulator import run_experiment
@@ -76,17 +79,20 @@ def _():
         Params,
         Path,
         ReactiveControllerSpec,
+        SignalType,
         SimParams,
         animate_controller_comparison,
         controller_summary,
         explainer_pointer,
         figure_placeholder,
         is_deployed,
+        nc,
         notebook_explainer,
         outputs_dir,
         plot_controller_metrics,
         plot_controller_theta_grid,
         plot_green_split_heatmaps_by_controller,
+        plot_learned_obs_noise,
         replace,
         run_experiment,
     )
@@ -99,59 +105,52 @@ def _(explainer_pointer, mo):
 
 
 @app.cell
-def _(mo):
-    days = mo.ui.slider(20, 180, step=10, value=90, label="days")
-    seed = mo.ui.slider(0, 100, value=42, label="seed")
-    control_interval = mo.ui.slider(1, 30, value=10, label="control interval [min]")
-    demand_scale = mo.ui.slider(0.5, 2.5, step=0.1, value=1.0, label="demand scale")
-    traveller_window = mo.ui.slider(0, 60, value=30, label="traveller window [days]")
-
-    gamma = mo.ui.slider(0.5, 20.0, step=0.5, value=4.0, label="AIF gamma")
-    omega = mo.ui.slider(0.0, 0.2, step=0.005, value=0.02, label="AIF omega")
-    sigma_pref = mo.ui.slider(5.0, 60.0, step=1.0, value=20.0, label="AIF sigma_pref [veh]")
-    k_L = mo.ui.slider(1e-4, 5e-3, step=1e-4, value=1e-3, label="reactive k_L")
-    controller_window = mo.ui.slider(0, 60, value=30, label="AIF controller window [days]")
+def _(mo, nc):
+    # All controls come from aif_traffic.notebook_controls (shared across the
+    # experiments; see CLAUDE.md). theta + compliance are live here because the
+    # benchmark broadcasts the externality advisory (so the controllers are
+    # compared at a chosen social-internalisation level, matching the theta-grid).
+    days = nc.days()
+    seed = nc.seed()
+    control_interval = nc.control_interval()
+    demand_scale = nc.demand_scale()
+    traveller_window = nc.traveller_window()
+    controller_window = nc.controller_window()
+    learn_noise = nc.learn_noise()
+    theta = nc.theta()
+    compliance = nc.compliance()
+    gamma = nc.gamma()
+    omega = nc.omega()
+    sigma_pref = nc.sigma_pref()
+    phi_grid = nc.phi_grid()
+    k_L = nc.k_L()
 
     run_btn = mo.ui.run_button(label="Run experiment")
 
-    def _row(widget, desc):
-        return mo.hstack([widget, mo.md(desc)], widths=[2, 3], align="center", gap=1)
-
-    controls = mo.vstack([
-        mo.md("### Shared parameters"),
-        _row(days, "Total days simulated (first warm-up days are discarded)."),
-        _row(seed, "Master seed; redraws all stochastic elements."),
-        _row(control_interval,
-             "Minutes between green-split decisions (applied to every controller)."),
-        _row(demand_scale,
-             r"Scales peak A--B and C--D demand. $>1$ loads the junction; the "
-             r"controllers differ most under load."),
-        _row(traveller_window,
-             "Days each traveller's rolling-window smoother remembers when "
-             r"forming route beliefs (applied to every controller)."),
-        mo.md("---"),
-        mo.md("### Controller knobs (baselines otherwise use their defaults)"),
-        _row(gamma, r"AIF action precision $\gamma^c$."),
-        _row(omega, r"AIF balance weight in the preference $\Sigma^c_{\mathrm{pref}}$."),
-        _row(sigma_pref, r"AIF preferred-queue tolerance (veh)."),
-        _row(k_L, r"Reactive feedback gain on the queue imbalance $L_2-L_6$."),
-        _row(controller_window,
-             "Days of past queue observations the AIF controller smooths over "
-             "before acting (AIF controller only)."),
-        run_btn,
-    ], gap=0.5)
+    controls = nc.standard_panel({
+        "days": days, "seed": seed, "control_interval": control_interval,
+        "demand_scale": demand_scale, "traveller_window": traveller_window,
+        "controller_window": controller_window, "learn_noise": learn_noise,
+        "theta": theta, "compliance": compliance,
+        "gamma": gamma, "omega": omega, "sigma_pref": sigma_pref,
+        "phi_grid": phi_grid, "k_L": k_L,
+    }, run_btn)
     controls
     return (
+        compliance,
         control_interval,
         controller_window,
         days,
         demand_scale,
         gamma,
         k_L,
+        learn_noise,
         omega,
+        phi_grid,
         run_btn,
         seed,
         sigma_pref,
+        theta,
         traveller_window,
     )
 
@@ -163,20 +162,25 @@ def _(
     FixedTimeControllerSpec,
     Params,
     ReactiveControllerSpec,
+    SignalType,
     SimParams,
+    compliance,
     control_interval,
     controller_window,
     days,
     demand_scale,
     gamma,
     k_L,
+    learn_noise,
     mo,
     omega,
+    phi_grid,
     replace,
     run_btn,
     run_experiment,
     seed,
     sigma_pref,
+    theta,
     traveller_window,
 ):
     if not run_btn.value:
@@ -192,6 +196,7 @@ def _(
                 control_interval_min=ci, horizon_min=ci,
                 gamma=float(gamma.value), omega=float(omega.value),
                 sigma_pref=float(sigma_pref.value),
+                phi_grid_size=int(phi_grid.value),
                 controller_window_size=int(controller_window.value)),
         }
         base = Params()
@@ -203,12 +208,19 @@ def _(
         )
         results_by_ctrl = {}
         for _name, _spec in specs.items():
+            # Broadcast the externality advisory at the chosen theta/compliance so
+            # the controllers are compared at a chosen social-internalisation
+            # level (theta is inert without it); learn-noise per the checkbox.
             _p = replace(
                 base,
                 sim=replace(SimParams(), days=int(days.value), seed=int(seed.value)),
                 controller=_spec,
                 demand=demand,
-            ).with_window_size(int(traveller_window.value))
+            ).with_comm(SignalType.EXTERNALITY).with_compliance(
+                float(compliance.value)
+            ).with_theta(float(theta.value)).with_window_size(
+                int(traveller_window.value)
+            ).with_learn_obs_noise(bool(learn_noise.value))
             results_by_ctrl[_name] = run_experiment(
                 _p, seeds=[int(seed.value)], progress=mo.status.progress_bar,
             )
@@ -223,6 +235,19 @@ def _(figure_placeholder, plot_controller_metrics, results_by_ctrl):
         else plot_controller_metrics(results_by_ctrl)
     )
     fig_metrics
+    return
+
+
+@app.cell
+def _(figure_placeholder, learn_noise, plot_learned_obs_noise, results_by_ctrl):
+    # The AIF controller's learned observation noise (only when the VB checkbox
+    # is on; the baselines have no queue belief to learn noise for).
+    fig_obs_noise = (
+        plot_learned_obs_noise(results_by_ctrl["aif"].controller)
+        if (results_by_ctrl is not None and bool(learn_noise.value))
+        else figure_placeholder("Learned observation noise (enable the checkbox)")
+    )
+    fig_obs_noise
     return
 
 
@@ -308,7 +333,9 @@ def _(
     FixedTimeControllerSpec,
     Params,
     ReactiveControllerSpec,
+    SignalType,
     SimParams,
+    compliance,
     control_interval,
     controller_window,
     days,
@@ -316,6 +343,7 @@ def _(
     gamma,
     grid_btn,
     k_L,
+    learn_noise,
     mo,
     omega,
     replace,
@@ -357,7 +385,11 @@ def _(
                 sim=replace(SimParams(), days=int(days.value), seed=int(seed.value)),
                 controller=_spec,
                 demand=_demand,
-            ).with_theta(_theta).with_window_size(int(traveller_window.value))
+            ).with_comm(SignalType.EXTERNALITY).with_compliance(
+                float(compliance.value)
+            ).with_theta(_theta).with_window_size(
+                int(traveller_window.value)
+            ).with_learn_obs_noise(bool(learn_noise.value))
             results_by_ctrl_theta[_name][_theta] = run_experiment(
                 _p, seeds=[int(seed.value)],
             )

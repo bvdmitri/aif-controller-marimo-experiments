@@ -55,6 +55,7 @@ def _():
     from dataclasses import replace
     from pathlib import Path
 
+    from aif_traffic import notebook_controls as nc
     from aif_traffic.explainers import explainer_pointer, notebook_explainer
     from aif_traffic.notebook_io import is_deployed, outputs_dir
     from aif_traffic.parameters import (
@@ -70,6 +71,7 @@ def _():
         plot_daily_system_cost,
         plot_demand_profile,
         plot_green_split_heatmap,
+        plot_learned_obs_noise,
         plot_network_state,
         plot_queue_belief_day,
         plot_route_flows,
@@ -92,11 +94,13 @@ def _():
         explainer_pointer,
         figure_placeholder,
         is_deployed,
+        nc,
         notebook_explainer,
         outputs_dir,
         plot_daily_system_cost,
         plot_demand_profile,
         plot_green_split_heatmap,
+        plot_learned_obs_noise,
         plot_network_state,
         plot_queue_belief_day,
         plot_route_flows,
@@ -115,72 +119,44 @@ def _(explainer_pointer, mo):
 
 
 @app.cell
-def _(mo):
-    days = mo.ui.slider(10, 180, value=90, label="days")
-    seed = mo.ui.slider(0, 100, value=42, label="seed")
-    control_interval = mo.ui.slider(1, 30, value=10, label="control interval [min]")
-    demand_scale = mo.ui.slider(0.5, 2.0, step=0.1, value=1.0, label="demand scale")
-    theta = mo.ui.slider(0.0, 1.0, step=0.05, value=0.0, label="theta")
-    traveller_window = mo.ui.slider(0, 60, value=30, label="traveller window [days]")
-
-    gamma = mo.ui.slider(0.5, 20.0, step=0.5, value=4.0, label="gamma")
-    omega = mo.ui.slider(0.0, 0.2, step=0.005, value=0.02, label="omega")
-    sigma_pref = mo.ui.slider(5.0, 60.0, step=1.0, value=20.0, label="sigma_pref [veh]")
-    phi_grid = mo.ui.slider(3, 21, value=9, label="candidate splits K")
-    controller_window = mo.ui.slider(0, 60, value=30, label="controller window [days]")
+def _(mo, nc):
+    # All controls come from aif_traffic.notebook_controls (shared across the
+    # experiments; see CLAUDE.md). Experiment 1 exposes the full set: the social
+    # knobs theta + compliance (the externality is broadcast, so they bite) and
+    # the AIF-controller knobs.
+    days = nc.days()
+    seed = nc.seed()
+    control_interval = nc.control_interval()
+    demand_scale = nc.demand_scale()
+    traveller_window = nc.traveller_window()
+    controller_window = nc.controller_window()
+    learn_noise = nc.learn_noise()
+    theta = nc.theta()
+    compliance = nc.compliance()
+    gamma = nc.gamma()
+    omega = nc.omega()
+    sigma_pref = nc.sigma_pref()
+    phi_grid = nc.phi_grid()
 
     run_btn = mo.ui.run_button(label="Run experiment")
 
-    def _row(widget, desc):
-        return mo.hstack([widget, mo.md(desc)], widths=[2, 3], align="center", gap=1)
-
-    controls = mo.vstack([
-        mo.md("### Parameters you can play with"),
-        _row(days, "Total days to simulate (the first warm-up days are discarded)."),
-        _row(seed, "Master seed; redraws all stochastic elements."),
-        _row(control_interval,
-             "Minutes between green-split decisions, and the controller's "
-             "prediction horizon for scoring each split."),
-        _row(demand_scale,
-             r"Scales peak A--B and C--D demand. $>1$ pushes the junction "
-             r"toward saturation and makes the control problem harder."),
-        _row(theta,
-             r"Social internalisation $\theta$ for the single run below: how "
-             r"much travellers add the congestion externality $E_r$ to their "
-             r"perceived cost $\zeta_r = TT_r + \theta E_r$. $0$ = selfish, "
-             r"$1$ = fully cooperative. (The externality is broadcast at full "
-             r"compliance so $\theta$ has an $E_r$ to act on; this re-rolls the "
-             r"day each step, so runs take longer.)"),
-        _row(traveller_window,
-             "Days each traveller's rolling-window smoother remembers when "
-             r"forming route beliefs. Shorter $\to$ more reactive day-to-day "
-             "choices; longer → steadier but slower to adapt."),
-        mo.md("---"),
-        mo.md("### Controller (Active Inference)"),
-        _row(gamma,
-             r"Action precision $\gamma^c$. Higher $\to$ a sharper preference "
-             r"for the lowest-EFE split (more decisive control)."),
-        _row(omega,
-             r"Balance weight in the preference $\Sigma^c_{\mathrm{pref}}$: "
-             r"penalises capacity-normalised queue imbalance between the two "
-             r"movements. $0$ = only total queue matters."),
-        _row(sigma_pref,
-             r"Preferred-queue tolerance (veh): the SD of the *empty queues* "
-             r"preference. Smaller $\to$ less tolerant of any residual queue."),
-        _row(phi_grid, "Number of candidate green splits scored each decision."),
-        _row(controller_window,
-             "Days of past queue observations the macro AIF controller smooths "
-             r"over before acting. Shorter $\to$ reacts faster but noisier; "
-             "longer → steadier."),
-        run_btn,
-    ], gap=0.5)
+    controls = nc.standard_panel({
+        "days": days, "seed": seed, "control_interval": control_interval,
+        "demand_scale": demand_scale, "traveller_window": traveller_window,
+        "controller_window": controller_window, "learn_noise": learn_noise,
+        "theta": theta, "compliance": compliance,
+        "gamma": gamma, "omega": omega, "sigma_pref": sigma_pref,
+        "phi_grid": phi_grid,
+    }, run_btn)
     controls
     return (
+        compliance,
         control_interval,
         controller_window,
         days,
         demand_scale,
         gamma,
+        learn_noise,
         omega,
         phi_grid,
         run_btn,
@@ -197,11 +173,13 @@ def _(
     DemandParams,
     Params,
     SimParams,
+    compliance,
     control_interval,
     controller_window,
     days,
     demand_scale,
     gamma,
+    learn_noise,
     mo,
     omega,
     phi_grid,
@@ -243,9 +221,13 @@ def _(
             sim=replace(SimParams(), days=int(days.value), seed=int(seed.value)),
             controller=spec,
             demand=demand,
-        ).with_comm(SignalType.EXTERNALITY).with_compliance(1.0).with_theta(
+        ).with_comm(SignalType.EXTERNALITY).with_compliance(
+            float(compliance.value)
+        ).with_theta(
             float(theta.value)
-        ).with_window_size(int(traveller_window.value))
+        ).with_window_size(int(traveller_window.value)).with_learn_obs_noise(
+            bool(learn_noise.value)
+        )
         results = run_experiment(
             params, seeds=[int(seed.value)], progress=mo.status.progress_bar,
         )
@@ -297,6 +279,19 @@ def _(day_sel, figure_placeholder, plot_queue_belief_day, results):
     )
     fig_belief
     return (fig_belief,)
+
+
+@app.cell
+def _(figure_placeholder, learn_noise, plot_learned_obs_noise, results):
+    # Only meaningful when observation-noise learning is on; otherwise the
+    # controller's sigma_obs sits at the fixed default and this is hidden.
+    fig_obs_noise = (
+        plot_learned_obs_noise(results.controller)
+        if (results is not None and bool(learn_noise.value))
+        else figure_placeholder("Learned observation noise (enable the checkbox)")
+    )
+    fig_obs_noise
+    return (fig_obs_noise,)
 
 
 @app.cell

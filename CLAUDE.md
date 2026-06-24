@@ -53,15 +53,35 @@ experiment notebook.
 - **The controller is an abstraction.** Anything that drives signals implements
   the `Controller` protocol in `control/interface.py` and is built via
   `control/build_controller`. The simulator never special-cases a controller.
-- **The traveller smoother (`inference/filter.py`) is reused verbatim** from
-  IWAI and is route-agnostic. `theta` / broadcast affect only action selection
-  (`inference/efe.py`, `population.begin_day`), never the belief update.
+- **The traveller smoother (`inference/filter.py`) follows IWAI** and is
+  route-agnostic. `theta` / broadcast affect only action selection
+  (`inference/efe.py`, `population.begin_day`), never the belief update. The one
+  belief-update extension is the optional per-agent VB observation-noise learning
+  (`learn_obs_noise`, on by default); with it `False` the smoother is the
+  IWAI-verbatim fixed-noise filter (and deterministic, bit-identical).
 - **Determinism.** Inference is closed-form; with noise knobs at 0 the pipeline
   is reproducible. RNG streams are spawned from one `SeedSequence`.
 - **Notebooks** gate heavy work behind `mo.ui.run_button`; the smoke harness
   exercises the same code path without the marimo runtime. Wrap long runs via
-  `run_experiment(..., progress=mo.status.progress_bar)`, and pair each slider
-  with a one-line explanation (the `_row(widget, desc)` pattern).
+  `run_experiment(..., progress=mo.status.progress_bar)`.
+- **HARD RULE — experiment controls come from `notebook_controls.py`.** Every
+  experiment notebook builds its parameter panel from `aif_traffic.notebook_controls`
+  (`nc.days()`, `nc.theta()`, … as named globals) and renders it with
+  `nc.standard_panel({...}, run_btn)`, which fixes the canonical order, grouping,
+  labels and one-line descriptions. **Never hand-define an `mo.ui` slider/checkbox
+  for the parameter panel inline** — add or change a control (its range/default/
+  label/description) once in `notebook_controls.py`, so all four experiments stay
+  consistent. A notebook shows only the subset it needs, but each shown control is
+  identical across experiments. Placement: `theta` only where the externality
+  cost-offset is broadcast (Exp 1, 2); `compliance` where a controller→traveller
+  channel is gated (Exp 1–3; the swept variable in Exp 4). The per-notebook
+  `day_sel` / `tod_sel` day-inspection sliders are *not* parameter controls and are
+  exempt. (Enforced by `tests/test_notebook_controls.py`.)
+- **Observation-noise learning (VB) is ON by default** (`CohortSpec.learn_obs_noise`
+  / `AIFControllerSpec.learn_obs_noise` default `True`): both smoothers learn their
+  observation-noise SD via a conjugate-Gamma variational update. Set `False` (e.g.
+  `params.with_learn_obs_noise(False)`) to recover the fixed-noise IWAI-verbatim
+  smoother.
 - **`explainers.py` is part of the spec.** Each simulation notebook ends with a
   "How the simulation actually works" cell rendered from `notebook_explainer`.
   When you change the per-day loop, the controller's generative model /

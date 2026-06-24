@@ -22,6 +22,7 @@ from .demand import plot_demand_profile
 from .network import (
     plot_daily_system_cost,
     plot_green_split_heatmap,
+    plot_learned_obs_noise,
     plot_network_state,
     plot_queue_belief_day,
     plot_route_flows,
@@ -61,6 +62,7 @@ __all__ = [
     "plot_demand_profile",
     "plot_signal_day",
     "plot_queue_belief_day",
+    "plot_learned_obs_noise",
     "plot_route_flows",
     "plot_network_state",
     "plot_route_share_over_days",

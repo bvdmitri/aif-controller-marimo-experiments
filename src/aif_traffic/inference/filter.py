@@ -328,6 +328,92 @@ def _laplace_iter_step(
     return mu, Sigma
 
 
+class ObsNoisePosterior(NamedTuple):
+    """Per-agent Gamma posteriors over the observation precision of each channel.
+
+    Each field is ``(N,)``. The precision posterior for channel ``c`` is
+    ``Gamma(a_c, b_c)``; the learned noise SD is ``sqrt(E[sigma_c^2]) =
+    sqrt(b_c / (a_c - 1))`` and the state update uses ``E[tau_c] = a_c / b_c``.
+    """
+
+    a_tt: jnp.ndarray
+    b_tt: jnp.ndarray
+    a_L: jnp.ndarray
+    b_L: jnp.ndarray
+    a_phi: jnp.ndarray
+    b_phi: jnp.ndarray
+
+
+def _vb_noise_posterior(
+    mu: jnp.ndarray,
+    Sigma: jnp.ndarray,
+    route_chosen_window: jnp.ndarray,
+    y_tt_window: jnp.ndarray,
+    y_L_window: jnp.ndarray,
+    y_phi_window: jnp.ndarray,
+    obs_mask: jnp.ndarray,
+    signalised: jnp.ndarray,
+    a0: float,
+    b0_tt: jnp.ndarray,
+    b0_L: jnp.ndarray,
+    b0_phi: jnp.ndarray,
+    phi_lo: float,
+    phi_hi: float,
+) -> ObsNoisePosterior:
+    """Conjugate Gamma update of each channel's per-agent observation precision,
+    given the current state posterior ``q(z) = N(mu, Sigma)``.
+
+    For each observation channel the update pools the agent's active window slots
+    (first-hand: only the chosen route on each observed day; ``phi`` additionally
+    only on signalised routes):
+    ``a_post = a0 + 1/2 * N_active`` and
+    ``b_post = b0 + 1/2 * sum_active E[(y - h(z))^2]`` with the residual
+    expectation including the state predictive variance:
+    ``E[(y - h)^2] = (y - h(mu))^2 + H Sigma H^T``. The TT channel uses the
+    linearised forward map ``h = F + 60 L/(phi C)`` and its Jacobian; the L and
+    phi channels are identity so their predictive variance is ``Sigma_LL`` /
+    ``Sigma_phiphi``.
+    """
+    N, R, _ = mu.shape
+    chosen = (
+        route_chosen_window[:, None, :] == jnp.arange(R)[None, :, None]
+    ).astype(mu.dtype)                                   # (N, R, W)
+    active = chosen * obs_mask[:, None, :]               # (N, R, W)
+
+    F = mu[..., F_IDX]; C = mu[..., C_IDX]
+    L = mu[..., L_IDX]; phi = mu[..., PHI_IDX]
+    C_safe = jnp.maximum(C, 100.0)
+    phi_clip = jnp.clip(phi, phi_lo, phi_hi)
+    sig = signalised[None, :]                            # (1, R)
+    green = jnp.where(sig > 0.5, phi_clip, 1.0)
+    denom = C_safe * green
+    h_pred = F + 60.0 * L / denom                        # (N, R)
+
+    # TT Jacobian + predictive variance H Sigma H^T per (agent, route).
+    H_tt = jnp.zeros((N, R, 4), dtype=mu.dtype)
+    H_tt = H_tt.at[..., F_IDX].set(1.0)
+    H_tt = H_tt.at[..., C_IDX].set(-60.0 * L / (C_safe ** 2 * green))
+    H_tt = H_tt.at[..., L_IDX].set(60.0 / denom)
+    H_tt = H_tt.at[..., PHI_IDX].set(
+        jnp.where(sig > 0.5, -60.0 * L / (C_safe * phi_clip ** 2), 0.0))
+    predvar_tt = jnp.einsum("...d,...de,...e->...", H_tt, Sigma, H_tt)  # (N, R)
+    predvar_L = Sigma[..., L_IDX, L_IDX]
+    predvar_phi = Sigma[..., PHI_IDX, PHI_IDX]
+
+    def _update(active_c, y_window, h, predvar, a0, b0):
+        # residual^2 per (agent, route, day) + state predictive variance
+        resid2 = (y_window[:, None, :] - h[..., None]) ** 2 + predvar[..., None]
+        n_act = active_c.sum(axis=(1, 2))                # (N,)
+        ss = (active_c * resid2).sum(axis=(1, 2))        # (N,)
+        return a0 + 0.5 * n_act, b0 + 0.5 * ss
+
+    a_tt, b_tt = _update(active, y_tt_window, h_pred, predvar_tt, a0, b0_tt)
+    a_L, b_L = _update(active, y_L_window, L, predvar_L, a0, b0_L)
+    active_phi = active * sig[..., None]                 # signalised + chosen
+    a_phi, b_phi = _update(active_phi, y_phi_window, phi, predvar_phi, a0, b0_phi)
+    return ObsNoisePosterior(a_tt, b_tt, a_L, b_L, a_phi, b_phi)
+
+
 def window_step(
     state: VariationalState,
     cohort_priors: CohortPriors,
@@ -350,9 +436,24 @@ def window_step(
     mean_revert_days: jnp.ndarray | float = 0.0,
     phi_lo: float = PHI_LO_DEFAULT,
     phi_hi: float = PHI_HI_DEFAULT,
-) -> VariationalState:
+    learn_obs_noise: bool = False,
+    obs_noise_a0: float = 1.0,
+    obs_noise_vb_iters: int = 8,
+    return_obs_noise: bool = False,
+) -> VariationalState | tuple[VariationalState, ObsNoisePosterior | None]:
     """One smoother step: rebuild prior (with carry-forward + Σ inflation),
     then iterated linearised Kalman over the W-day window.
+
+    When ``learn_obs_noise`` is set, the per-agent observation-noise SD of each
+    channel (TT, L, phi) is **learned** by mean-field VB instead of fixed at the
+    passed ``sigma_*_window``: a conjugate ``Gamma`` precision posterior per agent
+    per channel, interleaved with the Laplace iterations (the state step uses the
+    expected precision ``E[tau]``; the noise step is :func:`_vb_noise_posterior`).
+    The passed ``sigma_*_window`` then only set the (weakly-informative) prior
+    centre. Per-agent windows are short, so the shared prior provides shrinkage.
+    With ``learn_obs_noise=False`` the smoother is bit-identical to before.
+    If ``return_obs_noise`` is set, returns ``(state, ObsNoisePosterior|None)``;
+    otherwise just ``state`` (the default, so existing callers are unaffected).
 
     For an unobserved route (no `obs_mask=1` & `route_chosen==r` slot in
     the buffer), the Kalman updates have ``active = 0`` everywhere and
@@ -431,18 +532,46 @@ def window_step(
 
     mu = prior.mu
     Sigma = prior_Sigma
-    for _ in range(n_laplace_iters):
+
+    # Observation-noise learning (optional): per-agent Gamma precision priors
+    # centred at the passed (fixed) sigmas; the effective per-channel SD used in
+    # the state step is refreshed from the running posterior each iteration.
+    obs_noise = None
+    if learn_obs_noise:
+        a0 = float(obs_noise_a0)
+        b0_tt = a0 * sigma_tt_window[:, -1] ** 2          # (N,) prior centre
+        b0_L = a0 * sigma_L_window[:, -1] ** 2
+        b0_phi = a0 * sigma_phi_window[:, -1] ** 2
+        # E[tau] = a/b; start at the prior precision.
+        sig_tt = sigma_tt_window[:, -1]
+        sig_L = sigma_L_window[:, -1]
+        sig_phi = sigma_phi_window[:, -1]
+        n_iters = max(int(n_laplace_iters), int(obs_noise_vb_iters))
+    else:
+        n_iters = int(n_laplace_iters)
+
+    for _ in range(n_iters):
+        if learn_obs_noise:
+            # Broadcast the current per-agent learned SD across the window.
+            ones_w = jnp.ones((1, W), dtype=mu.dtype)
+            sig_tt_eff = sig_tt[:, None] * ones_w
+            sig_L_eff = sig_L[:, None] * ones_w
+            sig_phi_eff = sig_phi[:, None] * ones_w
+        else:
+            sig_tt_eff, sig_L_eff, sig_phi_eff = (
+                sigma_tt_window, sigma_L_window, sigma_phi_window)
+
         mu, Sigma = _laplace_iter_step(
             mu_lin=mu,
             prior_mu=prior.mu,
             prior_Sigma=prior_Sigma,
             route_chosen_window=route_chosen_window,
             y_tt_window=y_tt_window,
-            sigma_tt_window=sigma_tt_window,
+            sigma_tt_window=sig_tt_eff,
             y_L_window=y_L_window,
-            sigma_L_window=sigma_L_window,
+            sigma_L_window=sig_L_eff,
             y_phi_window=y_phi_window,
-            sigma_phi_window=sigma_phi_window,
+            sigma_phi_window=sig_phi_eff,
             obs_mask=obs_mask,
             signalised=signalised,
             phi_lo=phi_lo,
@@ -450,5 +579,19 @@ def window_step(
             W=W,
         )
 
+        if learn_obs_noise:
+            obs_noise = _vb_noise_posterior(
+                mu, Sigma, route_chosen_window, y_tt_window, y_L_window,
+                y_phi_window, obs_mask, signalised, a0, b0_tt, b0_L, b0_phi,
+                phi_lo, phi_hi,
+            )
+            # State step uses the expected precision E[tau] = a/b -> SD sqrt(b/a).
+            sig_tt = jnp.sqrt(obs_noise.b_tt / obs_noise.a_tt)
+            sig_L = jnp.sqrt(obs_noise.b_L / obs_noise.a_L)
+            sig_phi = jnp.sqrt(obs_noise.b_phi / obs_noise.a_phi)
+
     scale_tril = jnp.linalg.cholesky(Sigma)
-    return VariationalState(mu=mu, scale_tril=scale_tril)
+    new_state = VariationalState(mu=mu, scale_tril=scale_tril)
+    if return_obs_noise:
+        return new_state, obs_noise
+    return new_state

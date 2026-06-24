@@ -245,6 +245,24 @@ class CohortSpec:
     window_size: int = 30
     n_laplace_iters: int = 3
 
+    # -- Learn the observation noise (per-agent variational Gamma) -------------
+    learn_obs_noise: bool = True
+    """When ``True`` (the default), each traveller *learns* its observation-noise
+    SD per channel (TT, L, phi) instead of fixing them at ``sigma_obs`` /
+    ``sigma_L_obs`` / ``sigma_phi_obs``: a conjugate ``Gamma`` precision posterior
+    per agent per channel, fit by mean-field VB interleaved with the smoother's
+    Laplace iterations. Those fixed sigmas then only set the (weakly-informative)
+    prior centre. Per-agent windows are short (<= ``window_size``), so the shared
+    prior provides shrinkage. Set ``False`` to recover the fixed-noise
+    IWAI-verbatim smoother (bit-identical and deterministic)."""
+    obs_noise_prior_shape: float = 1.0
+    """Shape ``a0`` of each channel's ``Gamma(a0, b0)`` precision prior
+    (weakly-informative at ``1``); the rate is ``b0 = a0 * sigma_channel^2`` so
+    the prior mean precision is centred on the fixed default."""
+    obs_noise_vb_iters: int = 8
+    """Coordinate-ascent iterations when learning the observation noise (the
+    smoother runs ``max(n_laplace_iters, obs_noise_vb_iters)`` iterations)."""
+
 
 @dataclass(frozen=True)
 class PopulationParams:
@@ -372,6 +390,23 @@ class AIFControllerSpec:
     """Optional extra per-day random-walk drift SD (veh) inflating the trajectory
     prior across the window, so the smoother can track non-stationarity. ``0``
     disables it (the within-day process noise still couples adjacent nodes)."""
+
+    # -- Learn the observation noise (variational Gamma on precision) ----------
+    learn_obs_noise: bool = True
+    """When ``True`` (the default), the controller *learns* its queue
+    observation-noise scale instead of fixing it at ``sigma_obs``: a conjugate
+    ``Gamma`` prior on the precision ``tau = 1/sigma_obs^2`` per movement, fit by
+    mean-field coordinate-ascent VB inside the smoother (the split-dependent
+    weighting is kept as a known structure; only the scale is learned). The
+    learned ``E[sigma_obs^2]`` then feeds both the belief band and the EFE
+    epistemic term. Set ``False`` to recover the fixed-noise smoother."""
+    obs_noise_prior_shape: float = 1.0
+    """Shape ``a0`` of the ``Gamma(a0, b0)`` precision prior (weakly-informative
+    at ``1``). The rate ``b0 = a0 * sigma_obs^2`` is derived so the prior mean
+    precision is ``1/sigma_obs^2`` (centred on the fixed default)."""
+    obs_noise_vb_iters: int = 8
+    """Coordinate-ascent iterations for the observation-noise VB (it converges in
+    a handful; see ``controller_smoother.window_smoother_vb``)."""
 
 
 ControllerSpecLike = (
@@ -501,6 +536,19 @@ class Params:
         cohorts = tuple(replace(c, window_size=int(window_size))
                         for c in self.population.cohorts)
         return self.with_cohorts(cohorts)
+
+    def with_learn_obs_noise(self, flag: bool = True) -> "Params":
+        """Toggle variational observation-noise learning on both layers: every
+        cohort's traveller smoother and (if the controller is the AIF one) the
+        controller smoother. Off by default everywhere, so this is the single
+        switch the experiment notebooks flip."""
+        cohorts = tuple(replace(c, learn_obs_noise=bool(flag))
+                        for c in self.population.cohorts)
+        out = self.with_cohorts(cohorts)
+        if isinstance(self.controller, AIFControllerSpec):
+            out = replace(out, controller=replace(self.controller,
+                                                   learn_obs_noise=bool(flag)))
+        return out
 
     def with_controller(self, spec: object) -> "Params":
         return replace(self, controller=spec)

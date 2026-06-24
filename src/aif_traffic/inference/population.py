@@ -87,6 +87,21 @@ class Population:
             )
         self.W: int = next(iter(window_sizes))
 
+        # Observation-noise learning is a single switch for the joint smoother
+        # call, so all cohorts must agree on it (like window_size).
+        learn_flags = {bool(c.learn_obs_noise) for c in cohorts}
+        if len(learn_flags) != 1:
+            raise ValueError(
+                "All cohorts must share the same CohortSpec.learn_obs_noise; "
+                f"got {learn_flags}."
+            )
+        self._learn_obs_noise: bool = next(iter(learn_flags))
+        self._obs_noise_a0 = float(cohorts[0].obs_noise_prior_shape)
+        self._obs_noise_vb_iters = int(max(c.obs_noise_vb_iters for c in cohorts))
+        # Latest per-agent learned observation-noise SD per channel (None until a
+        # learning window_step runs); each array is (N,).
+        self._obs_noise = None
+
         self.cohort_id = np.empty(self.N, dtype=int)
         self.cohort_label = np.empty(self.N, dtype=object)
         self.sigma_pref = _cohort_array(cohorts, "sigma_pref", self.N)
@@ -401,7 +416,7 @@ class Population:
             self.day_count - self._last_observed_day,
         )
 
-        self.state = window_step(
+        result = window_step(
             state=self.state,
             cohort_priors=self.cohort_priors,
             route_chosen_window=jnp.asarray(self._obs_buffer_route),
@@ -423,13 +438,38 @@ class Population:
             mean_revert_days=jnp.asarray(self._mean_revert_days)[:, None],
             phi_lo=self.phi_lo,
             phi_hi=self.phi_hi,
+            learn_obs_noise=self._learn_obs_noise,
+            obs_noise_a0=self._obs_noise_a0,
+            obs_noise_vb_iters=self._obs_noise_vb_iters,
+            return_obs_noise=True,
         )
+        self.state, self._obs_noise = result
+
+    def learned_obs_sigma(self) -> dict[str, np.ndarray] | None:
+        """Per-agent learned observation-noise SD per channel (``E[sigma_c^2]``
+        via ``b/(a-1)``), or ``None`` when ``learn_obs_noise`` is off / before the
+        first learning step. Each array is ``(N,)``."""
+        on = self._obs_noise
+        if on is None:
+            return None
+
+        def _sd(a, b):
+            a = np.asarray(a); b = np.asarray(b)
+            return np.sqrt(np.where(a > 1.0, b / np.maximum(a - 1.0, 1e-6), b / a))
+
+        return {
+            "tt": _sd(on.a_tt, on.b_tt),
+            "L": _sd(on.a_L, on.b_L),
+            "phi": _sd(on.a_phi, on.b_phi),
+        }
 
     # ----------------------------------------------------------- snapshots
     def snapshot(self) -> dict:
         mu_y, var_y = self.predictive_moments
         sigma_y = np.sqrt(var_y)
         latents = self.latent_summary()
+        learned = self.learned_obs_sigma()
+        nan_n = np.full(self.N, np.nan)
         return {
             "cohort_id": self.cohort_id.copy(),
             "cohort_label": self.cohort_label.copy(),
@@ -449,6 +489,10 @@ class Population:
             "phi_sd_alpha": latents["phi_sd"][:, 0],
             "last_P_alpha": self.last_P_alpha.copy(),
             "last_choice": self.last_choice.copy(),
+            # Learned observation-noise SD per channel (NaN when not learning).
+            "obs_sigma_tt": learned["tt"] if learned else nan_n,
+            "obs_sigma_L": learned["L"] if learned else nan_n,
+            "obs_sigma_phi": learned["phi"] if learned else nan_n,
         }
 
 

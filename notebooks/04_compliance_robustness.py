@@ -56,6 +56,7 @@ def _(mo):
 def _():
     from dataclasses import replace
 
+    from aif_traffic import notebook_controls as nc
     from aif_traffic.explainers import explainer_pointer, notebook_explainer
     from aif_traffic.parameters import (
         AIFControllerSpec,
@@ -80,6 +81,7 @@ def _():
         SimParams,
         explainer_pointer,
         figure_placeholder,
+        nc,
         notebook_explainer,
         plot_sweep_metrics,
         replace,
@@ -94,38 +96,32 @@ def _(explainer_pointer, mo):
 
 
 @app.cell
-def _(mo):
-    days = mo.ui.slider(10, 180, value=90, label="days")
-    seed = mo.ui.slider(0, 100, value=42, label="seed")
-    demand_scale = mo.ui.slider(0.5, 2.0, step=0.1, value=1.0, label="demand scale")
-    traveller_window = mo.ui.slider(0, 60, value=30, label="traveller window [days]")
-    controller_window = mo.ui.slider(0, 60, value=30, label="controller window [days]")
+def _(mo, nc):
+    # All controls come from aif_traffic.notebook_controls (shared across the
+    # experiments; see CLAUDE.md). compliance is the swept variable here, so it
+    # is not a slider; theta is not used (no externality channel).
+    days = nc.days()
+    seed = nc.seed()
+    control_interval = nc.control_interval()
+    demand_scale = nc.demand_scale()
+    traveller_window = nc.traveller_window()
+    controller_window = nc.controller_window()
+    learn_noise = nc.learn_noise()
 
     run_btn = mo.ui.run_button(label="Run all compliance settings")
 
-    def _row(widget, desc):
-        return mo.hstack([widget, mo.md(desc)], widths=[2, 3], align="center", gap=1)
-
-    controls = mo.vstack([
-        mo.md("### Parameters you can play with"),
-        _row(days, "Total days to simulate (the first warm-up days are discarded)."),
-        _row(seed, "Master seed; redraws all stochastic elements."),
-        _row(demand_scale,
-             r"Scales peak A--B and C--D demand. $>1$ loads the junction and "
-             r"sharpens the gap between high- and low-compliance outcomes."),
-        _row(traveller_window,
-             "Days each traveller's rolling-window smoother remembers when "
-             "forming route beliefs (held fixed across settings)."),
-        _row(controller_window,
-             "Days of past queue observations the AIF controller smooths over "
-             "before acting and broadcasting its belief."),
-        run_btn,
-    ], gap=0.5)
+    controls = nc.standard_panel({
+        "days": days, "seed": seed, "control_interval": control_interval,
+        "demand_scale": demand_scale, "traveller_window": traveller_window,
+        "controller_window": controller_window, "learn_noise": learn_noise,
+    }, run_btn)
     controls
     return (
+        control_interval,
         controller_window,
         days,
         demand_scale,
+        learn_noise,
         run_btn,
         seed,
         traveller_window,
@@ -139,9 +135,11 @@ def _(
     DemandParams,
     Params,
     SimParams,
+    control_interval,
     controller_window,
     days,
     demand_scale,
+    learn_noise,
     mo,
     replace,
     run_btn,
@@ -166,11 +164,15 @@ def _(
             Params(),
             sim=replace(SimParams(), days=int(days.value), seed=int(seed.value)),
             controller=AIFControllerSpec(
+                control_interval_min=int(control_interval.value),
+                horizon_min=int(control_interval.value),
                 controller_window_size=int(controller_window.value)),
             demand=_demand,
         ).with_belief_signals(
             BeliefSignal.QUEUE_BELIEF, BeliefSignal.SPLIT_PLAN
-        ).with_window_size(int(traveller_window.value))
+        ).with_window_size(int(traveller_window.value)).with_learn_obs_noise(
+            bool(learn_noise.value)
+        )
 
         _fractions = [0.0, 0.25, 0.5, 0.75, 1.0]
         _settings = {
