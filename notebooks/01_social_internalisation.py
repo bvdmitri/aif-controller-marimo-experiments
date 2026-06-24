@@ -1,7 +1,7 @@
 """Experiment 1 -- Traveller social internalisation.
 
 Fixes the **AIF signal controller** and varies how cooperative the travellers
-are. The single run (default ``theta = 0.5``) shows the coupled
+are. The single run (default ``theta = 0``, the user equilibrium) shows the coupled
 traveller/controller adaptation within a day and across days; the sweep section
 then runs ``theta in {0, 0.25, 0.5, 0.75, 1}`` -- the spectrum from the user
 equilibrium to the system optimum -- and overlays the resulting route shares,
@@ -71,6 +71,7 @@ def _():
         plot_demand_profile,
         plot_green_split_heatmap,
         plot_network_state,
+        plot_queue_belief_day,
         plot_route_flows,
         plot_route_share_over_days,
         plot_signal_day,
@@ -97,6 +98,7 @@ def _():
         plot_demand_profile,
         plot_green_split_heatmap,
         plot_network_state,
+        plot_queue_belief_day,
         plot_route_flows,
         plot_route_share_over_days,
         plot_signal_day,
@@ -118,14 +120,14 @@ def _(mo):
     seed = mo.ui.slider(0, 100, value=42, label="seed")
     control_interval = mo.ui.slider(1, 30, value=10, label="control interval [min]")
     demand_scale = mo.ui.slider(0.5, 2.0, step=0.1, value=1.0, label="demand scale")
-    theta = mo.ui.slider(0.0, 1.0, step=0.05, value=0.5, label="theta")
-    traveller_window = mo.ui.slider(1, 30, value=10, label="traveller window [days]")
+    theta = mo.ui.slider(0.0, 1.0, step=0.05, value=0.0, label="theta")
+    traveller_window = mo.ui.slider(0, 60, value=30, label="traveller window [days]")
 
     gamma = mo.ui.slider(0.5, 20.0, step=0.5, value=4.0, label="gamma")
     omega = mo.ui.slider(0.0, 0.2, step=0.005, value=0.02, label="omega")
     sigma_pref = mo.ui.slider(5.0, 60.0, step=1.0, value=20.0, label="sigma_pref [veh]")
     phi_grid = mo.ui.slider(3, 21, value=9, label="candidate splits K")
-    controller_window = mo.ui.slider(1, 30, value=10, label="controller window [days]")
+    controller_window = mo.ui.slider(0, 60, value=30, label="controller window [days]")
 
     run_btn = mo.ui.run_button(label="Run experiment")
 
@@ -281,6 +283,20 @@ def _(day_sel, figure_placeholder, plot_signal_day, results):
     )
     fig_signal
     return (fig_signal,)
+
+
+@app.cell
+def _(day_sel, figure_placeholder, plot_queue_belief_day, results):
+    # The controller's learned belief (smoother posterior, mean +/- 1 sigma)
+    # against the day's realised queue: the band narrows on later days as the
+    # rolling window fills.
+    fig_belief = (
+        figure_placeholder("Controller belief vs realised queue")
+        if results is None
+        else plot_queue_belief_day(results.step, day=int(day_sel.value))
+    )
+    fig_belief
+    return (fig_belief,)
 
 
 @app.cell

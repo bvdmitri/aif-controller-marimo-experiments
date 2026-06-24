@@ -65,6 +65,7 @@ def _():
     )
     from aif_traffic.plotting import (
         figure_placeholder,
+        plot_queue_belief_day,
         plot_route_choice_heatmaps,
         plot_sweep_metrics,
         setup_style,
@@ -81,6 +82,7 @@ def _():
         explainer_pointer,
         figure_placeholder,
         notebook_explainer,
+        plot_queue_belief_day,
         plot_route_choice_heatmaps,
         plot_sweep_metrics,
         replace,
@@ -99,10 +101,10 @@ def _(mo):
     days = mo.ui.slider(10, 180, value=90, label="days")
     seed = mo.ui.slider(0, 100, value=42, label="seed")
     demand_scale = mo.ui.slider(0.5, 2.0, step=0.1, value=1.0, label="demand scale")
-    theta = mo.ui.slider(0.0, 1.0, step=0.05, value=0.5, label="theta")
+    theta = mo.ui.slider(0.0, 1.0, step=0.05, value=0.0, label="theta")
     compliance = mo.ui.slider(0.0, 1.0, step=0.05, value=1.0, label="compliance")
-    traveller_window = mo.ui.slider(1, 30, value=10, label="traveller window [days]")
-    controller_window = mo.ui.slider(1, 30, value=10, label="controller window [days]")
+    traveller_window = mo.ui.slider(0, 60, value=30, label="traveller window [days]")
+    controller_window = mo.ui.slider(0, 60, value=30, label="controller window [days]")
 
     run_btn = mo.ui.run_button(label="Run all communication settings")
 
@@ -207,6 +209,49 @@ def _(figure_placeholder, plot_sweep_metrics, results_by_setting):
     )
     fig_comm
     return
+
+
+@app.cell
+def _(mo):
+    mo.md(
+        r"""
+        ### What the controller believes vs what actually happened
+
+        The controller shares its rolling-window smoother posterior over the
+        within-day queue (that is the QB channel). Below, for one chosen setting
+        and day, that belief (mean $\pm 1\sigma$) is overlaid on the day's
+        realised queue, so you can read *what gets broadcast* against reality.
+        """
+    )
+    return
+
+
+@app.cell
+def _(days, mo, results_by_setting):
+    setting_sel = mo.ui.dropdown(
+        options=["BL", "QB", "SP", "QB+SP"], value="QB", label="setting",
+    )
+    day_sel = mo.ui.slider(
+        0, max(int(days.value) - 1, 0),
+        value=max(int(days.value) - 1, 0),
+        label="inspect day",
+    )
+    mo.hstack([setting_sel, day_sel]) if results_by_setting is not None else mo.md("")
+    return day_sel, setting_sel
+
+
+@app.cell
+def _(day_sel, figure_placeholder, plot_queue_belief_day, results_by_setting,
+      setting_sel):
+    fig_belief = (
+        figure_placeholder("Controller belief vs realised queue")
+        if results_by_setting is None
+        else plot_queue_belief_day(
+            results_by_setting[setting_sel.value].step, day=int(day_sel.value)
+        )
+    )
+    fig_belief
+    return (fig_belief,)
 
 
 @app.cell

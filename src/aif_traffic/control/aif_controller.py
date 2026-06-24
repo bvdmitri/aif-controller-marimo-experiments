@@ -399,6 +399,29 @@ class AIFController(BaseController):
             var_phi=float(s.sigma_phi_plan ** 2),
         )
 
+    def belief_trajectory(self) -> tuple[np.ndarray, np.ndarray] | None:
+        """The smoother posterior over the within-day queue trajectory, expanded
+        to the per-minute grid for plotting against the realised queues.
+
+        Returns ``(mu, sd)`` each shape ``(2, K)`` -- row 0 = the A--B queue
+        ``L_2``, row 1 = the C--D queue ``L_6`` -- where ``mu`` is the posterior
+        mean trajectory and ``sd`` its per-minute marginal standard deviation
+        (it shrinks as the rolling window fills). This is the same posterior the
+        controller broadcasts (:meth:`forecast`) and uses as its prior in
+        :meth:`decide`. Returns ``None`` before any day has been observed (cold
+        start) or if ``prepare_day`` was never called."""
+        if self._post_mu is None or self._K <= 0:
+            return None
+        mu = np.stack([
+            cs.expand_to_minutes(self._post_mu[mv], self._ci, self._K)
+            for mv in (0, 1)
+        ])
+        sd = np.stack([
+            np.sqrt(cs.expand_to_minutes(self._post_var[mv], self._ci, self._K))
+            for mv in (0, 1)
+        ])
+        return mu, sd
+
     def snapshot(self) -> dict:
         total_var = (
             float(np.mean(self._post_var)) if self._post_var is not None

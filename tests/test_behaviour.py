@@ -178,3 +178,75 @@ def test_green_split_belief_tracks_realised_split(run):
     assert abs(bias) < 0.12, bias
     assert abs_med < 0.10, abs_med
     assert sd_users < sd_bypass, (sd_users, sd_bypass)
+
+
+def test_controller_belief_tracks_realised_queue(run):
+    """The controller's recorded posterior belief tracks the realised queue.
+
+    The simulator records, per day, the controller's smoother posterior over the
+    within-day queue (``L2_belief_mu`` +/- ``L2_belief_sd``, same for L6). The
+    posterior is its estimate of the *typical* day. We expect:
+      * the belief columns are present and finite on every recorded day (the
+        30-day burn-in has filled the controller's window, so there is no
+        cold-start gap in the recorded data);
+      * the belief mean is strongly CORRELATED with the realised within-day
+        profile -- the controller has learned the overall shape of a typical day;
+      * both the belief and the realised queue peak inside the congested mid-day
+        window, not in the empty early morning or late evening.
+
+    NOTE on shape (a real, non-obvious behaviour). The intersection queue L2 is
+    *bimodal*: a first hump as demand builds (~tau 120-140), then the
+    route-diversion DIP at the demand peak (~tau 150, see the diversion test
+    above), then a higher post-peak REBUILD hump (~tau 200-220) -- the realised
+    global maximum is this second hump. The controller's belief is a 30-day
+    rolling-window smoother that *averages over the system's learning transient*
+    (early recorded days have a less pronounced diversion pattern), so it keeps a
+    relatively taller first hump and flatter second hump: it reproduces the
+    double-humped shape (high correlation) but its argmax can land on the EARLIER
+    hump rather than the realised second peak. We therefore assert the robust
+    facts (correlation, peaks-in-the-busy-window), not a brittle argmax match.
+
+    (That the band narrows AS the window fills is a property of the smoother
+    itself, asserted in tests/test_controller_smoother.py; here the window is
+    already full throughout the recorded run, so the band is ~stationary.)
+    """
+    params, res, _ = run
+    step = res.step
+    cols = {"L2_belief_mu", "L2_belief_sd", "L6_belief_mu", "L6_belief_sd"}
+    assert cols <= set(step.columns), f"missing belief columns: {cols - set(step.columns)}"
+
+    finite_frac = float(step["L2_belief_mu"].notna().mean())
+
+    prof = _steady_profile(step, ["L2", "L2_belief_mu"])
+    realised_argmax = int(prof["L2"].idxmax())
+    belief_argmax = int(prof["L2_belief_mu"].idxmax())
+    corr = float(prof["L2"].corr(prof["L2_belief_mu"]))
+    band = float(step["L2_belief_sd"].mean())
+    busy = range(100, 250)  # the congested mid-day window
+
+    _narrate(
+        "BEHAVIOUR: controller belief tracks the realised within-day queue",
+        [
+            f"Belief recorded & finite on every step row: {finite_frac:.0%}",
+            f"Mean +/- 1 sigma belief band: {band:.2f} veh",
+            "",
+            "Within-day SHAPE (the queue is bimodal: build-up hump, diversion",
+            "dip at the demand peak, then a higher post-peak rebuild hump):",
+            f"   realised L2 argmax: tau ~ {realised_argmax}  (the rebuild hump)",
+            f"   belief   L2 argmax: tau ~ {belief_argmax}  (smoother keeps the "
+            "earlier hump taller)",
+            f"   both fall in the congested window {busy.start}-{busy.stop}.",
+            "",
+            f"Correlation of belief mean with realised L2 profile: {corr:.3f}",
+            "",
+            "VERDICT: the controller has learned the overall shape of the typical "
+            "within-day queue (strong correlation, peaks in the busy window); the "
+            "30-day window averages over the learning transient, so its mode can "
+            "sit on the earlier of the two humps.",
+        ],
+    )
+
+    assert finite_frac > 0.99, finite_frac
+    assert corr > 0.85, corr
+    assert realised_argmax in busy, realised_argmax
+    assert belief_argmax in busy, belief_argmax

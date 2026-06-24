@@ -131,6 +131,12 @@ def simulate_one_day(
         "phi2": phi2, "phi6": phi6, "SC": SC,
     })
 
+    # The controller's posterior belief over today's within-day queue trajectory
+    # (mean +/- sd per minute, movement 0 = L_2, 1 = L_6), recorded so the
+    # belief-vs-realised chart can be drawn per day. ``None`` for controllers
+    # with no learned belief (baselines) or before the first observed day.
+    belief = controller.belief_trajectory()
+
     # Controller-belief broadcast for the NEXT day's route choice (Experiment
     # 3/4): the controller forward-predicts tomorrow's queue belief + planned
     # split using today's realised inflows as a persistence forecast, and shares
@@ -164,6 +170,8 @@ def simulate_one_day(
         "prior": prior_state,
         "broadcast_next": broadcast_next,
         "belief_broadcast_next": belief_broadcast_next,
+        # (mu, sd) each (2, K) for movements (L_2, L_6), or None.
+        "belief_trajectory": belief,
     }
 
 
@@ -268,8 +276,9 @@ def run_experiment(
             if i < burn_in:
                 continue
 
+            belief = out["belief_trajectory"]
             for k, tau in enumerate(sim.time):
-                step_records.append({
+                rec = {
                     "seed": seed, "day": d, "tau": int(tau),
                     "P_alpha": float(out["P_alpha"][k]),
                     "Q_alpha": float(out["Q_alpha"][k]),
@@ -284,7 +293,17 @@ def run_experiment(
                     # SC is a daily scalar; repeated on every step row so the
                     # per-day value is recovered with a groupby(...).first().
                     "SC": out["SC"],
-                })
+                }
+                # Controller's posterior belief over the within-day queue
+                # (mean +/- sd per minute); only present when the controller
+                # exposes one (the AIF controller after its first observed day).
+                if belief is not None:
+                    mu_b, sd_b = belief
+                    rec["L2_belief_mu"] = float(mu_b[0, k])
+                    rec["L2_belief_sd"] = float(sd_b[0, k])
+                    rec["L6_belief_mu"] = float(mu_b[1, k])
+                    rec["L6_belief_sd"] = float(sd_b[1, k])
+                step_records.append(rec)
             cohort_records.extend(
                 _cohort_record(seed, d, population, out["prior"], signal_name)
             )

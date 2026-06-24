@@ -39,6 +39,7 @@ from aif_traffic.plotting import (
     plot_controller_theta_grid,
     plot_demand_profile,
     plot_network_state,
+    plot_queue_belief_day,
     plot_route_choice_heatmaps,
     plot_route_flows,
     plot_route_share_over_days,
@@ -84,6 +85,7 @@ def smoke_controllers() -> None:
         assert (res.step["phi2"] + res.step["phi6"]).sub(
             params.signal.phi_sat).abs().max() < 1e-9, f"{name}: cycle constraint"
         _save_figure(plot_signal_day(res.step), f"signal_{name}.png")
+        _save_figure(plot_queue_belief_day(res.step), f"belief_{name}.png")
         _save_figure(plot_route_flows(res.step), f"route_flows_{name}.png")
         _save_figure(plot_network_state(res.step, params.network, color_by="travellers"),
                      f"network_flow_{name}.png")

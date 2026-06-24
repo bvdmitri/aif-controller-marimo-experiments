@@ -104,13 +104,13 @@ def _(mo):
     seed = mo.ui.slider(0, 100, value=42, label="seed")
     control_interval = mo.ui.slider(1, 30, value=10, label="control interval [min]")
     demand_scale = mo.ui.slider(0.5, 2.5, step=0.1, value=1.0, label="demand scale")
-    traveller_window = mo.ui.slider(1, 30, value=10, label="traveller window [days]")
+    traveller_window = mo.ui.slider(0, 60, value=30, label="traveller window [days]")
 
     gamma = mo.ui.slider(0.5, 20.0, step=0.5, value=4.0, label="AIF gamma")
     omega = mo.ui.slider(0.0, 0.2, step=0.005, value=0.02, label="AIF omega")
     sigma_pref = mo.ui.slider(5.0, 60.0, step=1.0, value=20.0, label="AIF sigma_pref [veh]")
     k_L = mo.ui.slider(1e-4, 5e-3, step=1e-4, value=1e-3, label="reactive k_L")
-    controller_window = mo.ui.slider(1, 30, value=10, label="AIF controller window [days]")
+    controller_window = mo.ui.slider(0, 60, value=30, label="AIF controller window [days]")
 
     run_btn = mo.ui.run_button(label="Run experiment")
 

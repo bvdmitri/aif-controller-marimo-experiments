@@ -116,7 +116,13 @@ about. The travellers' exploration, by contrast, arises because a route is seen
 only when chosen; both layers act under one expected-free-energy objective.
 
 **What the charts show.** *Within-day queues and green split* trace one day's
-$L_2,L_6$ and $\phi_2,\phi_6$. *Per-route traveller flow* shows, for the same
+$L_2,L_6$ and $\phi_2,\phi_6$. *Controller belief vs realised queue* overlays the
+controller's learned belief -- its rolling-window smoother posterior over the
+within-day queue (mean $\pm 1\sigma$) -- on the day's realised $L_2,L_6$; the
+posterior shown for day $N$ is the one *after* folding day $N$ into the window (the
+controller's estimate of a typical day given days up to $N$, compared against day
+$N$'s single realised sample), and its $\pm 1\sigma$ band narrows on later days as
+the window fills. *Per-route traveller flow* shows, for the same
 day, how the A--B demand splits between the intersection route $\alpha$ (link 2)
 and the bypass $\beta$ (link 5), alongside the exogenous C--D stream $\gamma$
 (link 6): when travellers divert away from the congested intersection near the
@@ -170,8 +176,9 @@ _SOCIAL = r"""
 ### Sweeping social internalisation $\theta$
 
 This experiment fixes the AIF controller and varies how cooperative the
-travellers are. At $\theta=0.5$ the within-day and day-to-day charts above show
-the coupled traveller--controller adaptation. Sweeping
+travellers are. At $\theta=0$ (the default, the user equilibrium) the within-day
+and day-to-day charts above show the coupled traveller--controller adaptation.
+Sweeping
 $\theta\in\{0,0.25,0.5,0.75,1\}$ then traces the spectrum from the **user
 equilibrium** ($\theta=0$, travellers minimise only their own travel time) to
 the **system optimum** ($\theta=1$, travellers fully internalise the congestion
@@ -222,6 +229,9 @@ the shared belief reduces imbalance; *green-split evolution* shows the
 controller's policy; a *belief-uncertainty* panel compares the traveller
 posterior SD across settings; and a row of *route-choice heatmaps* (one per
 setting) shows the intersection share $P_\alpha$ over (day $\times$ time-of-day).
+A *controller belief vs realised queue* chart (pick a setting and day) overlays
+exactly the posterior the controller broadcasts as QB (mean $\pm 1\sigma$) on the
+realised $L_2,L_6$, so what is shared can be read against what actually happened.
 
 A caveat the model makes explicit: sharing the controller's belief sharpens each
 traveller's *private* travel-time anticipation, which drives behaviour toward the

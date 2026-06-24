@@ -77,6 +77,8 @@ class Controller(Protocol):
 
     def forecast(self, context: Mapping) -> QueueForecast | None: ...
 
+    def belief_trajectory(self) -> tuple[np.ndarray, np.ndarray] | None: ...
+
 
 class BaseController:
     """Convenience base providing no-op ``prepare_day`` / ``observe`` / ``forecast``
@@ -99,4 +101,11 @@ class BaseController:
     def forecast(self, context: Mapping) -> QueueForecast | None:  # noqa: D401
         """Controllers that maintain a shareable belief override this; baselines
         have no belief to broadcast, so they forecast nothing."""
+        return None
+
+    def belief_trajectory(self) -> tuple[np.ndarray, np.ndarray] | None:  # noqa: D401
+        """Controllers that learn a within-day queue belief override this to
+        expose it for plotting: ``(mu, sd)`` each shape ``(2, K)`` (movement 0 =
+        signalised A--B queue ``L_2``, 1 = C--D queue ``L_6``) per within-day
+        minute. Baselines have no belief, so they return ``None``."""
         return None

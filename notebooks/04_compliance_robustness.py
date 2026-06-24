@@ -98,8 +98,8 @@ def _(mo):
     days = mo.ui.slider(10, 180, value=90, label="days")
     seed = mo.ui.slider(0, 100, value=42, label="seed")
     demand_scale = mo.ui.slider(0.5, 2.0, step=0.1, value=1.0, label="demand scale")
-    traveller_window = mo.ui.slider(1, 30, value=10, label="traveller window [days]")
-    controller_window = mo.ui.slider(1, 30, value=10, label="controller window [days]")
+    traveller_window = mo.ui.slider(0, 60, value=30, label="traveller window [days]")
+    controller_window = mo.ui.slider(0, 60, value=30, label="controller window [days]")
 
     run_btn = mo.ui.run_button(label="Run all compliance settings")
 

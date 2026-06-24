@@ -61,6 +61,52 @@ def plot_signal_day(step: pd.DataFrame, day: int | None = None):
     return fig
 
 
+def plot_queue_belief_day(step: pd.DataFrame, day: int | None = None):
+    """The controller's posterior belief over the within-day queue trajectory
+    (mean +/- 1 sigma band) overlaid on the realised queue, for a single day
+    (defaults to the last recorded day), on both signalised movements.
+
+    The belief is the controller's rolling-window smoother posterior *after*
+    folding day ``N`` into its window -- i.e. what the controller now believes a
+    typical day's queue looks like, compared against day ``N``'s single realised
+    sample. The band narrows on later days as the window fills. Requires the
+    ``*_belief_mu`` / ``*_belief_sd`` columns the simulator records for a
+    controller that maintains a belief (the AIF controller); for a controller
+    with no belief (baselines) only the realised queue is drawn."""
+    if day is None:
+        day = int(step["day"].max())
+    d = step[step["day"] == day].sort_values("tau")
+    has_belief = "L2_belief_mu" in d.columns and d["L2_belief_mu"].notna().any()
+
+    fig, axes = plt.subplots(
+        2, 1, figsize=(TEXT_W, TEXT_W * 0.9), sharex=True,
+    )
+    panels = [
+        (axes[0], "L2", "tab:blue", r"$L_2$ (A--B)"),
+        (axes[1], "L6", "tab:orange", r"$L_6$ (C--D)"),
+    ]
+    for ax, link, color, label in panels:
+        ax.plot(d["tau"], d[link], color=color, label=f"{label} realised")
+        if has_belief:
+            mu = d[f"{link}_belief_mu"].to_numpy(dtype=float)
+            sd = d[f"{link}_belief_sd"].to_numpy(dtype=float)
+            tau = d["tau"].to_numpy(dtype=float)
+            ax.plot(tau, mu, color="black", lw=1.0, ls="--", label="belief mean")
+            ax.fill_between(
+                tau, mu - sd, mu + sd, color="black", alpha=0.15,
+                label=r"belief $\pm1\sigma$",
+            )
+        ax.set_ylabel("queue [veh]")
+        ax.legend()
+        ax.grid(alpha=0.25)
+
+    suffix = "" if has_belief else " (controller has no belief)"
+    axes[0].set_title(f"Controller belief vs realised queue (day {day}){suffix}")
+    axes[1].set_xlabel("time of day [min]")
+    fig.tight_layout()
+    return fig
+
+
 def plot_route_flows(step: pd.DataFrame, day: int | None = None):
     """Within-day traveller flow on each route, for a single day.
 

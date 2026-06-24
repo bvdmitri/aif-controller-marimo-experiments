@@ -198,7 +198,7 @@ class CohortSpec:
     label: str = "default"
 
     # Social / communication coupling.
-    theta: float = 0.5
+    theta: float = 0.0
     compliance_fraction: float = 1.0
 
     # EFE preference: p_tilde_r(y) = N(mu_F_r, sigma_pref^2).
@@ -242,7 +242,7 @@ class CohortSpec:
     sigma_phi_drift: float = 0.02
     mean_revert_days: float = 60.0
 
-    window_size: int = 10
+    window_size: int = 30
     n_laplace_iters: int = 3
 
 
@@ -359,7 +359,7 @@ class AIFControllerSpec:
     # the per-interval observations via a rolling-window Gaussian smoother over
     # the last ``controller_window_size`` days (the macro analogue of the
     # travellers' window smoother). The smoothed posterior is what it broadcasts.
-    controller_window_size: int = 10
+    controller_window_size: int = 30
     """Number of past days the controller smooths over (its window ``W``)."""
     controller_state_resolution: str = "minute"
     """Grid for the trajectory latent: ``"minute"`` (one node per within-day
