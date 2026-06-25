@@ -58,6 +58,7 @@ def _():
 
     from aif_traffic import notebook_controls as nc
     from aif_traffic.explainers import explainer_pointer, notebook_explainer
+    from aif_traffic.notebook_io import figure_block
     from aif_traffic.parameters import (
         AIFControllerSpec,
         BeliefSignal,
@@ -80,6 +81,7 @@ def _():
         Params,
         SimParams,
         explainer_pointer,
+        figure_block,
         figure_placeholder,
         nc,
         notebook_explainer,
@@ -187,13 +189,13 @@ def _(
 
 
 @app.cell
-def _(figure_placeholder, plot_sweep_metrics, results_by_compliance):
+def _(figure_block, figure_placeholder, plot_sweep_metrics, results_by_compliance):
     fig_compliance = (
         figure_placeholder("Compliance settings overlay")
         if results_by_compliance is None
         else plot_sweep_metrics(results_by_compliance)
     )
-    fig_compliance
+    figure_block("plot_sweep_metrics", fig_compliance)
     return
 
 

@@ -86,7 +86,24 @@ experiment notebook.
   "How the simulation actually works" cell rendered from `notebook_explainer`.
   When you change the per-day loop, the controller's generative model /
   preference / EFE, or the belief update, update `explainers.py` in the same
-  commit.
+  commit. The same module also owns the per-chart reading guide (`CHART_GUIDE`,
+  `chart_caption`, `NOTEBOOK_CHARTS`, `charts_section`) — see the next rule.
+- **HARD RULE — every chart carries a "how to read" caption from
+  `explainers.CHART_GUIDE`.** Every figure rendered in an experiment notebook is
+  displayed through `notebook_io.figure_block("<plot_fn>", fig)`, which renders a
+  **centred** caption-above-figure block; the caption text is generated from the
+  chart's `CHART_GUIDE` entry (`{title, what, read, slider}`), and the *same*
+  registry generates the end-of-notebook "How to read the charts" section
+  (`charts_section`), so the two never drift. **Never write a figure's reading
+  guidance inline** — add or change it once in `CHART_GUIDE`, and list the chart
+  in `NOTEBOOK_CHARTS[nb_id]`. Captions must be **descriptive**: say *what is on
+  screen and how to read it* ("if you see X, that is Y"); they must **not** assert
+  the experiment's conclusion or inject analysis. When a chart is governed by the
+  `day` / time-of-day inspection slider, set its `slider` field so the automatic
+  affordance badge makes clear the view can be re-pointed. Charts whose Y-axis (or
+  colour scale) should be comparable across days fix it across the whole run
+  (`shared_ylim` / `shared_scale`, default on). Update `CHART_GUIDE` in the same
+  commit as any new/changed chart. (Enforced by `tests/test_chart_captions.py`.)
 
 ## Run
 

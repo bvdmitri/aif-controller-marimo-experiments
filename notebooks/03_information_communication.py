@@ -57,6 +57,7 @@ def _():
 
     from aif_traffic import notebook_controls as nc
     from aif_traffic.explainers import explainer_pointer, notebook_explainer
+    from aif_traffic.notebook_io import figure_block
     from aif_traffic.parameters import (
         AIFControllerSpec,
         BeliefSignal,
@@ -66,6 +67,7 @@ def _():
     )
     from aif_traffic.plotting import (
         figure_placeholder,
+        plot_day_overview_grid,
         plot_queue_belief_day,
         plot_route_choice_heatmaps,
         plot_sweep_metrics,
@@ -81,9 +83,11 @@ def _():
         Params,
         SimParams,
         explainer_pointer,
+        figure_block,
         figure_placeholder,
         nc,
         notebook_explainer,
+        plot_day_overview_grid,
         plot_queue_belief_day,
         plot_route_choice_heatmaps,
         plot_sweep_metrics,
@@ -199,13 +203,13 @@ def _(
 
 
 @app.cell
-def _(figure_placeholder, plot_sweep_metrics, results_by_setting):
+def _(figure_block, figure_placeholder, plot_sweep_metrics, results_by_setting):
     fig_comm = (
         figure_placeholder("Communication settings overlay")
         if results_by_setting is None
         else plot_sweep_metrics(results_by_setting)
     )
-    fig_comm
+    figure_block("plot_sweep_metrics", fig_comm)
     return
 
 
@@ -225,6 +229,26 @@ def _(mo):
 
 
 @app.cell
+def _(figure_block, figure_placeholder, plot_day_overview_grid,
+      results_by_setting):
+    # At-a-glance comparison of the first / middle / last day (shared Y per row),
+    # so the day-to-day change is visible without moving the slider below. Shown
+    # for the full-information QB+SP setting; the dropdown below drills into any
+    # setting/day.
+    fig_overview = (
+        figure_placeholder("Multi-day overview")
+        if results_by_setting is None
+        else plot_day_overview_grid(results_by_setting["QB+SP"].step)
+    )
+    figure_block(
+        "plot_day_overview_grid", fig_overview,
+        extra="_Shown for the **QB+SP** setting; use the dropdown below to drill "
+        "into any setting and day._",
+    )
+    return (fig_overview,)
+
+
+@app.cell
 def _(days, mo, results_by_setting):
     setting_sel = mo.ui.dropdown(
         options=["BL", "QB", "SP", "QB+SP"], value="QB", label="setting",
@@ -239,8 +263,8 @@ def _(days, mo, results_by_setting):
 
 
 @app.cell
-def _(day_sel, figure_placeholder, plot_queue_belief_day, results_by_setting,
-      setting_sel):
+def _(day_sel, figure_block, figure_placeholder, plot_queue_belief_day,
+      results_by_setting, setting_sel):
     fig_belief = (
         figure_placeholder("Controller belief vs realised queue")
         if results_by_setting is None
@@ -248,7 +272,8 @@ def _(day_sel, figure_placeholder, plot_queue_belief_day, results_by_setting,
             results_by_setting[setting_sel.value].step, day=int(day_sel.value)
         )
     )
-    fig_belief
+    figure_block("plot_queue_belief_day", fig_belief,
+                 extra="Also follows the **setting** dropdown above.")
     return (fig_belief,)
 
 
@@ -269,13 +294,14 @@ def _(mo):
 
 
 @app.cell
-def _(figure_placeholder, plot_route_choice_heatmaps, results_by_setting):
+def _(figure_block, figure_placeholder, plot_route_choice_heatmaps,
+      results_by_setting):
     fig_routes = (
         figure_placeholder("Route-choice heatmaps")
         if results_by_setting is None
         else plot_route_choice_heatmaps(results_by_setting)
     )
-    fig_routes
+    figure_block("plot_route_choice_heatmaps", fig_routes)
     return
 
 

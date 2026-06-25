@@ -34,9 +34,16 @@ def _edges(v: np.ndarray) -> np.ndarray:
     return np.concatenate([[v[0] - dd[0] / 2], v[:-1] + dd / 2, [v[-1] + dd[-1] / 2]])
 
 
-def plot_signal_day(step: pd.DataFrame, day: int | None = None):
+def plot_signal_day(step: pd.DataFrame, day: int | None = None, *,
+                    shared_ylim: bool = True):
     """Within-day queues on the two signalised links and the green split,
-    for a single day (defaults to the last recorded day)."""
+    for a single day (defaults to the last recorded day).
+
+    With ``shared_ylim`` (default) the queue axis is fixed to the maximum queue
+    over **all** recorded days, so heights are comparable as the day slider moves
+    (a lower curve is a genuinely lower-queue day, not a rescaling); the green-
+    fraction axis is fixed to ``[0, 1]``. Set ``shared_ylim=False`` for the old
+    per-day autoscale."""
     if day is None:
         day = int(step["day"].max())
     d = step[step["day"] == day].sort_values("tau")
@@ -57,11 +64,17 @@ def plot_signal_day(step: pd.DataFrame, day: int | None = None):
     ax_phi.set_ylabel("green fraction")
     ax_phi.legend()
     ax_phi.grid(alpha=0.25)
+
+    if shared_ylim:
+        qmax = float(np.nanmax(step[["L2", "L6"]].to_numpy()))
+        ax_q.set_ylim(0, qmax * 1.05 if qmax > 0 else 1.0)
+        ax_phi.set_ylim(0, 1.0)
     fig.tight_layout()
     return fig
 
 
-def plot_queue_belief_day(step: pd.DataFrame, day: int | None = None):
+def plot_queue_belief_day(step: pd.DataFrame, day: int | None = None, *,
+                          shared_ylim: bool = True):
     """The controller's posterior belief over the within-day queue trajectory
     (mean +/- 1 sigma band) overlaid on the realised queue, for a single day
     (defaults to the last recorded day), on both signalised movements.
@@ -72,7 +85,11 @@ def plot_queue_belief_day(step: pd.DataFrame, day: int | None = None):
     sample. The band narrows on later days as the window fills. Requires the
     ``*_belief_mu`` / ``*_belief_sd`` columns the simulator records for a
     controller that maintains a belief (the AIF controller); for a controller
-    with no belief (baselines) only the realised queue is drawn."""
+    with no belief (baselines) only the realised queue is drawn.
+
+    With ``shared_ylim`` (default) both panels are fixed to the maximum over
+    **all** days of the realised queue and the belief envelope (mean + 1 sigma),
+    so heights are comparable as the day slider moves."""
     if day is None:
         day = int(step["day"].max())
     d = step[step["day"] == day].sort_values("tau")
@@ -99,6 +116,18 @@ def plot_queue_belief_day(step: pd.DataFrame, day: int | None = None):
         ax.set_ylabel("queue [veh]")
         ax.legend()
         ax.grid(alpha=0.25)
+
+    if shared_ylim:
+        ymax = float(np.nanmax(step[["L2", "L6"]].to_numpy()))
+        for link in ("L2", "L6"):
+            mucol, sdcol = f"{link}_belief_mu", f"{link}_belief_sd"
+            if mucol in step.columns:
+                env = (step[mucol].to_numpy(dtype=float)
+                       + step[sdcol].to_numpy(dtype=float))
+                if np.isfinite(env).any():
+                    ymax = max(ymax, float(np.nanmax(env)))
+        for ax in axes:
+            ax.set_ylim(0, ymax * 1.05 if ymax > 0 else 1.0)
 
     suffix = "" if has_belief else " (controller has no belief)"
     axes[0].set_title(f"Controller belief vs realised queue (day {day}){suffix}")
@@ -131,15 +160,18 @@ def plot_learned_obs_noise(controller: pd.DataFrame):
     return fig
 
 
-def plot_route_flows(step: pd.DataFrame, day: int | None = None):
+def plot_route_flows(step: pd.DataFrame, day: int | None = None, *,
+                     shared_ylim: bool = True):
     """Within-day traveller flow on each route, for a single day.
 
     Shows the two A--B options -- the intersection route ``alpha`` (link 2) and
     the bypass ``beta`` (link 5) -- and the exogenous C--D stream ``gamma``
-    (link 6), with the total A--B demand for reference. When travellers divert
-    away from the congested intersection around the demand peak, ``Q_alpha``
-    dips while ``Q_beta`` rises, which relieves the intersection queue.
-    """
+    (link 6), with the total A--B demand for reference. ``alpha`` and ``beta``
+    together make up the A--B demand, so when ``Q_alpha`` dips while ``Q_beta``
+    rises travellers have shifted from the intersection to the bypass.
+
+    With ``shared_ylim`` (default) the flow axis is fixed to the maximum over
+    **all** days, so heights are comparable as the day slider moves."""
     if day is None:
         day = int(step["day"].max())
     d = step[step["day"] == day].sort_values("tau")
@@ -159,6 +191,93 @@ def plot_route_flows(step: pd.DataFrame, day: int | None = None):
     ax.set_title(f"Per-route traveller flow (day {day})")
     ax.legend(fontsize=7)
     ax.grid(alpha=0.25)
+
+    if shared_ylim:
+        total_all = (step["Q_alpha"] + step["Q_beta"]).to_numpy()
+        fmax = float(np.nanmax([
+            total_all,
+            step["Q_alpha"].to_numpy(),
+            step["Q_beta"].to_numpy(),
+            step["Q_gamma"].to_numpy(),
+        ]))
+        ax.set_ylim(0, fmax * 1.05 if fmax > 0 else 1.0)
+    fig.tight_layout()
+    return fig
+
+
+def plot_day_overview_grid(step: pd.DataFrame, *, days=None):
+    """A 4x3 at-a-glance grid comparing three representative days side by side.
+
+    Columns are the first, middle and last recorded day (override with
+    ``days=(a, b, c)``); rows are (1) queues ``L_2,L_6``, (2) green split
+    ``phi_2,phi_6``, (3) belief-vs-realised for ``L_2`` and (4) for ``L_6``. The
+    Y-axis is shared across each row (computed over all days), so the three
+    columns are directly comparable -- e.g. whether queues shrink from the first
+    to the last day. If the belief columns are absent (a controller with no
+    belief), rows 3-4 show only the realised queue."""
+    all_days = sorted(int(x) for x in step["day"].unique())
+    if days is None:
+        days = (all_days[0], all_days[len(all_days) // 2], all_days[-1])
+    days = [int(x) for x in days]
+
+    has_belief = (
+        "L2_belief_mu" in step.columns and step["L2_belief_mu"].notna().any()
+    )
+    qmax = float(np.nanmax(step[["L2", "L6"]].to_numpy()))
+    bmax = qmax
+    for link in ("L2", "L6"):
+        mucol, sdcol = f"{link}_belief_mu", f"{link}_belief_sd"
+        if mucol in step.columns:
+            env = step[mucol].to_numpy(dtype=float) + step[sdcol].to_numpy(dtype=float)
+            if np.isfinite(env).any():
+                bmax = max(bmax, float(np.nanmax(env)))
+
+    fig, axes = plt.subplots(
+        4, 3, figsize=(TEXT_W * 1.7, TEXT_W * 1.75), sharex=True,
+    )
+    row_ylabels = [
+        "queue [veh]", "green fraction",
+        r"$L_2$ belief vs real", r"$L_6$ belief vs real",
+    ]
+    for j, day in enumerate(days):
+        d = step[step["day"] == day].sort_values("tau")
+        tau = d["tau"].to_numpy(dtype=float)
+
+        ax = axes[0][j]
+        ax.plot(tau, d["L2"], color="tab:blue", label=r"$L_2$ (A--B)")
+        ax.plot(tau, d["L6"], color="tab:orange", label=r"$L_6$ (C--D)")
+        ax.set_ylim(0, qmax * 1.05 if qmax > 0 else 1.0)
+        ax.set_title(f"day {day}", fontsize=9)
+
+        ax = axes[1][j]
+        ax.plot(tau, d["phi2"], color="tab:blue", label=r"$\phi_2$")
+        ax.plot(tau, d["phi6"], color="tab:orange", label=r"$\phi_6$")
+        ax.set_ylim(0, 1.0)
+
+        for r, link, color in ((2, "L2", "tab:blue"), (3, "L6", "tab:orange")):
+            ax = axes[r][j]
+            ax.plot(tau, d[link], color=color, label="realised")
+            mucol = f"{link}_belief_mu"
+            if has_belief and mucol in d.columns:
+                mu = d[mucol].to_numpy(dtype=float)
+                sdv = d[f"{link}_belief_sd"].to_numpy(dtype=float)
+                ax.plot(tau, mu, color="black", lw=1.0, ls="--", label="belief")
+                ax.fill_between(tau, mu - sdv, mu + sdv, color="black", alpha=0.15)
+            ax.set_ylim(0, bmax * 1.05 if bmax > 0 else 1.0)
+
+        for r in range(4):
+            axes[r][j].grid(alpha=0.25)
+
+    for r, ylabel in enumerate(row_ylabels):
+        axes[r][0].set_ylabel(ylabel, fontsize=8)
+        axes[r][0].legend(fontsize=6, loc="upper left")
+    for j in range(3):
+        axes[3][j].set_xlabel("time of day [min]")
+
+    fig.suptitle(
+        "Multi-day overview: first / middle / last day (Y shared per row)",
+        fontsize=10,
+    )
     fig.tight_layout()
     return fig
 
@@ -185,15 +304,18 @@ def plot_network_state(
     color_by: str = "travellers",
     *,
     seed: int | None = None,
+    shared_scale: bool = True,
 ):
     """Node-edge diagram of the network at one day and time of day.
 
     Each link is coloured and labelled by either the traveller flow
     (``color_by="travellers"``, veh/h) or the queue length
     (``color_by="queue"``, veh); the label always shows both, and the two
-    signalised links (2, 6) additionally show the current green split. The
-    colour scale is fixed to that day's maximum of the selected metric so
-    frames are comparable as the time-of-day slider moves.
+    signalised links (2, 6) additionally show the current green split. With
+    ``shared_scale`` (default) the colour scale is fixed to the global maximum of
+    the selected metric across **all** days, so snapshots are comparable both
+    across the time-of-day slider and across days; set ``shared_scale=False`` to
+    normalise to the selected day's maximum instead.
     """
     if tuple(net.link_ids) != (1, 2, 3, 4, 5, 6, 7):
         raise ValueError(
@@ -219,18 +341,21 @@ def plot_network_state(
     queues = {lid: float(row[f"L{lid}"]) for lid in net.link_ids}
     phi = {2: float(row["phi2"]), 6: float(row["phi6"])}
 
+    # Normalise the colour scale to the day's maximum, or (default) the global
+    # maximum across all recorded days so snapshots are comparable across days.
+    scale_df = sd if shared_scale else day_df
     if color_by == "queue":
         values, cmap, clabel = queues, plt.get_cmap("YlOrRd"), "queue length [veh]"
-        vmax = float(np.nanmax([day_df[f"L{lid}"].max() for lid in net.link_ids]))
+        vmax = float(np.nanmax([scale_df[f"L{lid}"].max() for lid in net.link_ids]))
     else:
-        # Max link flow over the day = max over links of the route-flow sums.
-        flow_day = {lid: np.zeros(len(day_df)) for lid in net.link_ids}
+        # Max link flow = max over links of the route-flow sums.
+        flow_scale = {lid: np.zeros(len(scale_df)) for lid in net.link_ids}
         for r in net.routes:
-            qr = day_df[f"Q_{r}"].to_numpy()
+            qr = scale_df[f"Q_{r}"].to_numpy()
             for lid in net.route_links[r]:
-                flow_day[lid] = flow_day[lid] + qr
+                flow_scale[lid] = flow_scale[lid] + qr
         values, cmap, clabel = flows, plt.get_cmap("viridis"), "traveller flow [veh/h]"
-        vmax = float(np.nanmax([flow_day[lid].max() for lid in net.link_ids]))
+        vmax = float(np.nanmax([flow_scale[lid].max() for lid in net.link_ids]))
     norm = Normalize(vmin=0.0, vmax=max(vmax, 1e-6))
 
     fig, ax = plt.subplots(figsize=(TEXT_W * 1.35, TEXT_W * 0.85))

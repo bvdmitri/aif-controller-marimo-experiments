@@ -49,7 +49,7 @@ def _():
 
     from aif_traffic import notebook_controls as nc
     from aif_traffic.explainers import explainer_pointer, notebook_explainer
-    from aif_traffic.notebook_io import is_deployed, outputs_dir
+    from aif_traffic.notebook_io import figure_block, is_deployed, outputs_dir
     from aif_traffic.parameters import (
         AIFControllerSpec,
         AnticipatoryControllerSpec,
@@ -84,6 +84,7 @@ def _():
         animate_controller_comparison,
         controller_summary,
         explainer_pointer,
+        figure_block,
         figure_placeholder,
         is_deployed,
         nc,
@@ -228,18 +229,19 @@ def _(
 
 
 @app.cell
-def _(figure_placeholder, plot_controller_metrics, results_by_ctrl):
+def _(figure_block, figure_placeholder, plot_controller_metrics, results_by_ctrl):
     fig_metrics = (
         figure_placeholder("System cost, peak queue, signal variation")
         if results_by_ctrl is None
         else plot_controller_metrics(results_by_ctrl)
     )
-    fig_metrics
+    figure_block("plot_controller_metrics", fig_metrics)
     return
 
 
 @app.cell
-def _(figure_placeholder, learn_noise, plot_learned_obs_noise, results_by_ctrl):
+def _(figure_block, figure_placeholder, learn_noise, plot_learned_obs_noise,
+      results_by_ctrl):
     # The AIF controller's learned observation noise (only when the VB checkbox
     # is on; the baselines have no queue belief to learn noise for).
     fig_obs_noise = (
@@ -247,18 +249,19 @@ def _(figure_placeholder, learn_noise, plot_learned_obs_noise, results_by_ctrl):
         if (results_by_ctrl is not None and bool(learn_noise.value))
         else figure_placeholder("Learned observation noise (enable the checkbox)")
     )
-    fig_obs_noise
+    figure_block("plot_learned_obs_noise", fig_obs_noise)
     return
 
 
 @app.cell
-def _(figure_placeholder, plot_green_split_heatmaps_by_controller, results_by_ctrl):
+def _(figure_block, figure_placeholder, plot_green_split_heatmaps_by_controller,
+      results_by_ctrl):
     fig_heatmaps = (
         figure_placeholder("Green split by controller")
         if results_by_ctrl is None
         else plot_green_split_heatmaps_by_controller(results_by_ctrl)
     )
-    fig_heatmaps
+    figure_block("plot_green_split_heatmaps_by_controller", fig_heatmaps)
     return
 
 
@@ -284,6 +287,7 @@ def _(is_deployed, mo):
 @app.cell
 def _(
     animate_controller_comparison,
+    figure_block,
     is_deployed,
     make_gif,
     mo,
@@ -296,7 +300,8 @@ def _(
         gif_path = animate_controller_comparison(
             results_by_ctrl, outputs_dir() / "controller_comparison_days.gif",
         )
-        gif_view = mo.image(str(gif_path))
+        gif_view = figure_block("animate_controller_comparison",
+                                mo.image(str(gif_path)))
     gif_view
     return
 
@@ -397,13 +402,14 @@ def _(
 
 
 @app.cell
-def _(figure_placeholder, plot_controller_theta_grid, results_by_ctrl_theta):
+def _(figure_block, figure_placeholder, plot_controller_theta_grid,
+      results_by_ctrl_theta):
     fig_theta_grid = (
         figure_placeholder("System cost over theta x controller")
         if results_by_ctrl_theta is None
         else plot_controller_theta_grid(results_by_ctrl_theta)
     )
-    fig_theta_grid
+    figure_block("plot_controller_theta_grid", fig_theta_grid)
     return
 
 

@@ -34,3 +34,21 @@ def is_deployed() -> bool:
 def outputs_dir() -> Path:
     """Absolute path to the repository's ``outputs/`` directory."""
     return Path(__file__).resolve().parents[2] / "outputs"
+
+
+def figure_block(chart_id: str, content, *, extra: str | None = None):
+    """Render a figure with its "how to read" caption, centred (CLAUDE.md hard rule).
+
+    ``chart_id`` is the plotting-function name registered in
+    :data:`aif_traffic.explainers.CHART_GUIDE`; ``content`` is the figure to show
+    (a matplotlib ``Figure``, a ``figure_placeholder``, or any marimo-renderable
+    such as an ``mo.hstack`` of figures). Returns a centred ``mo.vstack`` of the
+    caption (markdown, with a slider badge when applicable) above the figure, so
+    every notebook figure is captioned and centred uniformly. ``extra`` appends a
+    notebook-specific note (e.g. another control that filters the chart)."""
+    import marimo as mo
+
+    from .explainers import chart_caption
+
+    caption = mo.md(chart_caption(chart_id, extra=extra))
+    return mo.center(mo.vstack([caption, content], align="center"))

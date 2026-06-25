@@ -57,7 +57,7 @@ def _():
 
     from aif_traffic import notebook_controls as nc
     from aif_traffic.explainers import explainer_pointer, notebook_explainer
-    from aif_traffic.notebook_io import is_deployed, outputs_dir
+    from aif_traffic.notebook_io import figure_block, is_deployed, outputs_dir
     from aif_traffic.parameters import (
         AIFControllerSpec,
         DemandParams,
@@ -69,6 +69,7 @@ def _():
         animate_days,
         figure_placeholder,
         plot_daily_system_cost,
+        plot_day_overview_grid,
         plot_demand_profile,
         plot_green_split_heatmap,
         plot_learned_obs_noise,
@@ -92,12 +93,14 @@ def _():
         SimParams,
         animate_days,
         explainer_pointer,
+        figure_block,
         figure_placeholder,
         is_deployed,
         nc,
         notebook_explainer,
         outputs_dir,
         plot_daily_system_cost,
+        plot_day_overview_grid,
         plot_demand_profile,
         plot_green_split_heatmap,
         plot_learned_obs_noise,
@@ -235,14 +238,27 @@ def _(
 
 
 @app.cell
-def _(figure_placeholder, params, plot_demand_profile, results):
+def _(figure_block, figure_placeholder, params, plot_demand_profile, results):
     fig_demand = (
         figure_placeholder("Demand profile")
         if results is None
         else plot_demand_profile(params)
     )
-    fig_demand
+    figure_block("plot_demand_profile", fig_demand)
     return (fig_demand,)
+
+
+@app.cell
+def _(figure_block, figure_placeholder, plot_day_overview_grid, results):
+    # At-a-glance comparison of the first / middle / last day, on a shared Y per
+    # row, so the day-to-day change is visible without moving the slider below.
+    fig_overview = (
+        figure_placeholder("Multi-day overview")
+        if results is None
+        else plot_day_overview_grid(results.step)
+    )
+    figure_block("plot_day_overview_grid", fig_overview)
+    return (fig_overview,)
 
 
 @app.cell
@@ -257,51 +273,47 @@ def _(days, mo, results):
 
 
 @app.cell
-def _(day_sel, figure_placeholder, plot_signal_day, results):
+def _(day_sel, figure_block, figure_placeholder, plot_signal_day, results):
     fig_signal = (
         figure_placeholder("Within-day queues and green split")
         if results is None
         else plot_signal_day(results.step, day=int(day_sel.value))
     )
-    fig_signal
+    figure_block("plot_signal_day", fig_signal)
     return (fig_signal,)
 
 
 @app.cell
-def _(day_sel, figure_placeholder, plot_queue_belief_day, results):
-    # The controller's learned belief (smoother posterior, mean +/- 1 sigma)
-    # against the day's realised queue: the band narrows on later days as the
-    # rolling window fills.
+def _(day_sel, figure_block, figure_placeholder, plot_queue_belief_day, results):
     fig_belief = (
         figure_placeholder("Controller belief vs realised queue")
         if results is None
         else plot_queue_belief_day(results.step, day=int(day_sel.value))
     )
-    fig_belief
+    figure_block("plot_queue_belief_day", fig_belief)
     return (fig_belief,)
 
 
 @app.cell
-def _(figure_placeholder, learn_noise, plot_learned_obs_noise, results):
-    # Only meaningful when observation-noise learning is on; otherwise the
-    # controller's sigma_obs sits at the fixed default and this is hidden.
+def _(figure_block, figure_placeholder, learn_noise, plot_learned_obs_noise,
+      results):
     fig_obs_noise = (
         plot_learned_obs_noise(results.controller)
         if (results is not None and bool(learn_noise.value))
         else figure_placeholder("Learned observation noise (enable the checkbox)")
     )
-    fig_obs_noise
+    figure_block("plot_learned_obs_noise", fig_obs_noise)
     return (fig_obs_noise,)
 
 
 @app.cell
-def _(day_sel, figure_placeholder, plot_route_flows, results):
+def _(day_sel, figure_block, figure_placeholder, plot_route_flows, results):
     fig_routes = (
         figure_placeholder("Per-route traveller flow")
         if results is None
         else plot_route_flows(results.step, day=int(day_sel.value))
     )
-    fig_routes
+    figure_block("plot_route_flows", fig_routes)
     return (fig_routes,)
 
 
@@ -320,8 +332,8 @@ def _(SimParams, mo, results):
 
 
 @app.cell
-def _(color_metric, day_sel, figure_placeholder, params, plot_network_state,
-      results, tod_sel):
+def _(color_metric, day_sel, figure_block, figure_placeholder, params,
+      plot_network_state, results, tod_sel):
     fig_network = (
         figure_placeholder("Network state at a time of day")
         if results is None
@@ -331,53 +343,55 @@ def _(color_metric, day_sel, figure_placeholder, params, plot_network_state,
             color_by=color_metric.value,
         )
     )
-    fig_network
+    figure_block("plot_network_state", fig_network)
     return (fig_network,)
 
 
 @app.cell
-def _(figure_placeholder, plot_green_split_heatmap, results):
+def _(figure_block, figure_placeholder, plot_green_split_heatmap, results):
     fig_phi_hm = (
         figure_placeholder("Green split phi2 over (day x time)")
         if results is None
         else plot_green_split_heatmap(results.step, value="phi2")
     )
-    fig_phi_hm
+    figure_block("plot_green_split_heatmap", fig_phi_hm,
+                 extra="_Showing the green split $\\phi_2$._")
     return (fig_phi_hm,)
 
 
 @app.cell
-def _(mo, plot_green_split_heatmap, results):
+def _(figure_block, figure_placeholder, mo, plot_green_split_heatmap, results):
     if results is None:
-        fig_queues = mo.md("")
+        fig_queues = figure_placeholder("Queue heatmaps (L2, L6)")
     else:
         fig_queues = mo.hstack([
             plot_green_split_heatmap(results.step, value="L2"),
             plot_green_split_heatmap(results.step, value="L6"),
         ])
-    fig_queues
+    figure_block("plot_green_split_heatmap", fig_queues,
+                 extra="_Showing the queues $L_2$ and $L_6$ instead of the split._")
     return (fig_queues,)
 
 
 @app.cell
-def _(figure_placeholder, plot_daily_system_cost, results):
+def _(figure_block, figure_placeholder, plot_daily_system_cost, results):
     fig_cost = (
         figure_placeholder("Day-to-day system cost")
         if results is None
         else plot_daily_system_cost(results.step)
     )
-    fig_cost
+    figure_block("plot_daily_system_cost", fig_cost)
     return (fig_cost,)
 
 
 @app.cell
-def _(figure_placeholder, plot_route_share_over_days, results):
+def _(figure_block, figure_placeholder, plot_route_share_over_days, results):
     fig_share = (
         figure_placeholder("Day-to-day route share")
         if results is None
         else plot_route_share_over_days(results.step)
     )
-    fig_share
+    figure_block("plot_route_share_over_days", fig_share)
     return (fig_share,)
 
 
@@ -389,12 +403,13 @@ def _(is_deployed, mo):
 
 
 @app.cell
-def _(animate_days, is_deployed, make_gif, mo, outputs_dir, results):
+def _(animate_days, figure_block, is_deployed, make_gif, mo, outputs_dir,
+      results):
     if results is None or is_deployed() or not make_gif.value:
         gif_view = mo.md("")
     else:
         gif_path = animate_days(results.step, outputs_dir() / "aif_controller_days.gif")
-        gif_view = mo.image(str(gif_path))
+        gif_view = figure_block("animate_days", mo.image(str(gif_path)))
     gif_view
     return
 
@@ -426,7 +441,7 @@ def _(mo):
 
 
 @app.cell
-def _(mo, params, plot_sweep_metrics, run_experiment, sweep_btn):
+def _(figure_block, mo, params, plot_sweep_metrics, run_experiment, sweep_btn):
     if not sweep_btn.value or params is None:
         fig_sweep = mo.md(
             "_Run the single experiment above, then click **Run theta sweep**._"
@@ -438,7 +453,9 @@ def _(mo, params, plot_sweep_metrics, run_experiment, sweep_btn):
             _results_by_theta[f"theta={_th:g}"] = run_experiment(
                 params.with_theta(_th), seeds=[params.sim.seed],
             )
-        fig_sweep = plot_sweep_metrics(_results_by_theta)
+        fig_sweep = figure_block(
+            "plot_sweep_metrics", plot_sweep_metrics(_results_by_theta)
+        )
     fig_sweep
     return
 
