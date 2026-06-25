@@ -262,35 +262,40 @@ def _(figure_block, figure_placeholder, plot_day_overview_grid, results):
 
 
 @app.cell
-def _(days, mo, results):
+def _(days, mo):
+    # Defined once; displayed as a synced copy above each day-dependent chart
+    # below (marimo keeps every instance of the same element in sync), so the
+    # inspect-day control is always next to the chart you are looking at.
     day_sel = mo.ui.slider(
         0, max(int(days.value) - 1, 0),
         value=max(int(days.value) - 1, 0),
         label="inspect day",
     )
-    day_sel if results is not None else mo.md("")
     return (day_sel,)
 
 
 @app.cell
-def _(day_sel, figure_block, figure_placeholder, plot_signal_day, results):
+def _(day_sel, figure_block, figure_placeholder, mo, plot_signal_day, results):
     fig_signal = (
         figure_placeholder("Within-day queues and green split")
         if results is None
         else plot_signal_day(results.step, day=int(day_sel.value))
     )
-    figure_block("plot_signal_day", fig_signal)
+    _out = figure_block("plot_signal_day", fig_signal)
+    mo.vstack([day_sel, _out]) if results is not None else _out
     return (fig_signal,)
 
 
 @app.cell
-def _(day_sel, figure_block, figure_placeholder, plot_queue_belief_day, results):
+def _(day_sel, figure_block, figure_placeholder, mo, plot_queue_belief_day,
+      results):
     fig_belief = (
         figure_placeholder("Controller belief vs realised queue")
         if results is None
         else plot_queue_belief_day(results.step, day=int(day_sel.value))
     )
-    figure_block("plot_queue_belief_day", fig_belief)
+    _out = figure_block("plot_queue_belief_day", fig_belief)
+    mo.vstack([day_sel, _out]) if results is not None else _out
     return (fig_belief,)
 
 
@@ -307,18 +312,20 @@ def _(figure_block, figure_placeholder, learn_noise, plot_learned_obs_noise,
 
 
 @app.cell
-def _(day_sel, figure_block, figure_placeholder, plot_route_flows, results):
+def _(day_sel, figure_block, figure_placeholder, mo, plot_route_flows, results):
     fig_routes = (
         figure_placeholder("Per-route traveller flow")
         if results is None
         else plot_route_flows(results.step, day=int(day_sel.value))
     )
-    figure_block("plot_route_flows", fig_routes)
+    _out = figure_block("plot_route_flows", fig_routes)
+    mo.vstack([day_sel, _out]) if results is not None else _out
     return (fig_routes,)
 
 
 @app.cell
-def _(SimParams, mo, results):
+def _(SimParams, mo):
+    # Defined once; displayed as a synced copy above the network-state chart.
     tod_sel = mo.ui.slider(
         0, SimParams().h_min, value=150, step=5, label="time of day [min]",
     )
@@ -326,13 +333,11 @@ def _(SimParams, mo, results):
         options=["travellers", "queue"], value="travellers",
         label="colour links by", inline=True,
     )
-    (mo.hstack([tod_sel, color_metric], justify="start", gap=2)
-     if results is not None else mo.md(""))
     return color_metric, tod_sel
 
 
 @app.cell
-def _(color_metric, day_sel, figure_block, figure_placeholder, params,
+def _(color_metric, day_sel, figure_block, figure_placeholder, mo, params,
       plot_network_state, results, tod_sel):
     fig_network = (
         figure_placeholder("Network state at a time of day")
@@ -343,7 +348,10 @@ def _(color_metric, day_sel, figure_block, figure_placeholder, params,
             color_by=color_metric.value,
         )
     )
-    figure_block("plot_network_state", fig_network)
+    _out = figure_block("plot_network_state", fig_network)
+    _controls = mo.hstack([day_sel, tod_sel, color_metric],
+                          justify="start", gap=2)
+    mo.vstack([_controls, _out]) if results is not None else _out
     return (fig_network,)
 
 

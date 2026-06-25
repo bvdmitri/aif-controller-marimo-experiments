@@ -249,7 +249,8 @@ def _(figure_block, figure_placeholder, plot_day_overview_grid,
 
 
 @app.cell
-def _(days, mo, results_by_setting):
+def _(days, mo):
+    # Defined once; displayed as a synced copy directly above the belief chart.
     setting_sel = mo.ui.dropdown(
         options=["BL", "QB", "SP", "QB+SP"], value="QB", label="setting",
     )
@@ -258,12 +259,11 @@ def _(days, mo, results_by_setting):
         value=max(int(days.value) - 1, 0),
         label="inspect day",
     )
-    mo.hstack([setting_sel, day_sel]) if results_by_setting is not None else mo.md("")
     return day_sel, setting_sel
 
 
 @app.cell
-def _(day_sel, figure_block, figure_placeholder, plot_queue_belief_day,
+def _(day_sel, figure_block, figure_placeholder, mo, plot_queue_belief_day,
       results_by_setting, setting_sel):
     fig_belief = (
         figure_placeholder("Controller belief vs realised queue")
@@ -272,8 +272,10 @@ def _(day_sel, figure_block, figure_placeholder, plot_queue_belief_day,
             results_by_setting[setting_sel.value].step, day=int(day_sel.value)
         )
     )
-    figure_block("plot_queue_belief_day", fig_belief,
-                 extra="Also follows the **setting** dropdown above.")
+    _out = figure_block("plot_queue_belief_day", fig_belief,
+                        extra="Pick the **setting** and **inspect day** above.")
+    _controls = mo.hstack([setting_sel, day_sel], justify="start", gap=2)
+    mo.vstack([_controls, _out]) if results_by_setting is not None else _out
     return (fig_belief,)
 
 
