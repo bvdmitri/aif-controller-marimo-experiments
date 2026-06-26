@@ -28,8 +28,10 @@ import pandas as pd
 from .communication import (
     build_belief_broadcast,
     build_broadcast,
+    build_observation_broadcast,
     empty_belief_broadcast,
     empty_broadcast,
+    empty_observation_broadcast,
 )
 from .control import build_controller
 from .demand import DemandProfile
@@ -113,12 +115,22 @@ def simulate_one_day(
     N_ab = net.n_delay(sim.dt_min)[sig_ab]
     k_arr = np.minimum(np.arange(sim.K) + N_ab, sim.K - 1)
     green_obs_alpha = np.asarray(phi2, dtype=float)[k_arr]
-    # First-hand belief update only (the controller's broadcast is fused at
-    # decision time in begin_day, never here).
+    # Extra-observation relay (Experiment 3 default, CG/SN): the controller
+    # relays the *true realised* route queues / green split of THIS day so every
+    # traveller can fold the non-chosen route into its end-of-day belief update.
+    # Empty obs_signals returns an empty broadcast (a no-op in the smoother). The
+    # belief-sharing (QB/SP) broadcast is separate and is fused at decision time
+    # in begin_day, never here.
+    obs_broadcast = (
+        build_observation_broadcast(params.comm, queues, phi2, phi6, net, sim)
+        if params.comm.obs_signals
+        else empty_observation_broadcast()
+    )
     population.update_beliefs(
         tt_route["alpha"], tt_route["beta"],
         route_q["alpha"], route_q["beta"],
         green_obs_alpha=green_obs_alpha,
+        obs_broadcast=obs_broadcast,
         rng=rng_obs, obs_noise_sd=params.noise.obs_noise_sd,
     )
 
@@ -215,8 +227,18 @@ def run_experiment(
     seeds: Iterable[int] | None = None,
     progress: bool | Callable = False,
     snapshot_days: Iterable[int] | None = None,
+    on_step: Callable[[], None] | None = None,
 ) -> ExperimentResult:
-    """Run the coupled simulator for one or more seeds."""
+    """Run the coupled simulator for one or more seeds.
+
+    ``progress`` wraps this run's own per-day iterator in a fresh progress bar
+    (single-run notebooks). ``on_step``, by contrast, is a per-day tick callback
+    advancing an **externally owned** bar: it is called once per simulated day
+    (over every seed), so a sweep can fuse many ``run_experiment`` calls into one
+    progress bar spanning ``n_experiments * (burn_in + days)`` ticks (see
+    :func:`aif_traffic.notebook_io.sweep_progress_bar`). It is a pure side effect
+    and never touches the RNG, so determinism is unaffected.
+    """
     if seeds is None:
         seeds = [params.sim.seed]
     seeds = list(seeds)
@@ -272,6 +294,9 @@ def run_experiment(
             )
             broadcast_prev = out["broadcast_next"]
             belief_broadcast_prev = out["belief_broadcast_next"]
+
+            if on_step is not None:
+                on_step()
 
             if i < burn_in:
                 continue

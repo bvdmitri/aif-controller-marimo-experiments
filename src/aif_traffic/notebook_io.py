@@ -52,3 +52,28 @@ def figure_block(chart_id: str, content, *, extra: str | None = None):
 
     caption = mo.md(chart_caption(chart_id, extra=extra))
     return mo.center(mo.vstack([caption, content], align="center"))
+
+
+def sweep_progress_bar(n_experiments: int, sim, *, title: str, n_seeds: int = 1):
+    """A single fused progress bar over every simulated day of a sweep.
+
+    A sweep runs many experiments back-to-back (e.g. one per communication
+    setting). Wrapping only the outer loop makes the bar advance once per
+    *finished* experiment -- it sits at ``0/N`` for a whole 90-day run and gives
+    no useful ETA. Instead, create this bar once and pass its ``.update`` to
+    ``run_experiment(..., on_step=...)`` so it advances **per simulated day**
+    across all experiments::
+
+        with sweep_progress_bar(len(settings), base.sim, title="...") as bar:
+            for name, p in settings.items():
+                results[name] = run_experiment(p, seeds=[seed], on_step=bar.update)
+
+    The total is ``n_experiments * n_seeds * (sim.burn_in + sim.days)`` -- one
+    tick per simulated day (``run_experiment`` ticks every day, burn-in included).
+    marimo shows the rate + ETA automatically.
+    """
+    import marimo as mo
+
+    days_each = int(sim.burn_in) + int(sim.days)
+    total = int(n_experiments) * int(n_seeds) * days_each
+    return mo.status.progress_bar(total=total, title=title)

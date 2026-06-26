@@ -142,6 +142,59 @@ def test_learn_obs_noise_off_is_identical_to_default():
     assert jnp.allclose(base.scale_tril, off.scale_tril)
 
 
+def test_extra_obs_zero_mask_is_identical_to_omitting():
+    """All-zero extra-observation masks fold no information: the smoother is
+    bit-identical to not passing the extra-obs windows at all (the BL no-op)."""
+    N, W = 4, W_DEFAULT
+    state, priors = _init_state(N=N)
+    route, y_tt, sigma_tt, y_L, sigma_L, mask = _empty_window(N, W)
+    route, y_tt, sigma_tt, y_L, sigma_L, mask = _fill_window(
+        route, y_tt, sigma_tt, y_L, sigma_L, mask, W - 1, 0, 25.0, 120.0)
+    base = window_step(state, priors, route, y_tt, sigma_tt, y_L, sigma_L, mask, W=W)
+    z = jnp.zeros((N, 2, W))
+    ones = jnp.ones((N, 2, W))
+    with_extra = window_step(
+        state, priors, route, y_tt, sigma_tt, y_L, sigma_L, mask, W=W,
+        y_extra_L_window=z, sigma_extra_L_window=ones, mask_extra_L_window=z,
+        y_extra_phi_window=z, sigma_extra_phi_window=ones, mask_extra_phi_window=z)
+    assert jnp.allclose(base.mu, with_extra.mu)
+    assert jnp.allclose(base.scale_tril, with_extra.scale_tril)
+
+
+def test_extra_obs_informs_the_unchosen_route():
+    """An extra-observation relay of the route the agent did NOT take pulls that
+    route's queue belief toward the relayed value and shrinks its variance --
+    the documented departure from the chosen-route-only smoother. The chosen
+    route (which routes are independent) is untouched by the relay."""
+    N, W = 4, W_DEFAULT
+    state, priors = _init_state(N=N, L_mu=50.0, L_sigma=200.0)
+    route, y_tt, sigma_tt, y_L, sigma_L, mask = _empty_window(N, W)
+    # All agents take route 0 on the last day; route 1 is never chosen.
+    route, y_tt, sigma_tt, y_L, sigma_L, mask = _fill_window(
+        route, y_tt, sigma_tt, y_L, sigma_L, mask, W - 1, 0, 25.0, 120.0)
+    base = window_step(state, priors, route, y_tt, sigma_tt, y_L, sigma_L, mask, W=W)
+
+    relay_val = 200.0
+    y_xL = jnp.zeros((N, 2, W)).at[:, 1, W - 1].set(relay_val)
+    sig_xL = jnp.full((N, 2, W), 10.0)
+    m_xL = jnp.zeros((N, 2, W)).at[:, 1, W - 1].set(1.0)
+    z = jnp.zeros((N, 2, W))
+    ones = jnp.ones((N, 2, W))
+    relayed = window_step(
+        state, priors, route, y_tt, sigma_tt, y_L, sigma_L, mask, W=W,
+        y_extra_L_window=y_xL, sigma_extra_L_window=sig_xL, mask_extra_L_window=m_xL,
+        y_extra_phi_window=z, sigma_extra_phi_window=ones, mask_extra_phi_window=z)
+
+    L1_base = base.mu[:, 1, L_IDX]
+    L1_relayed = relayed.mu[:, 1, L_IDX]
+    var1_base = _marginal_var(base, L_IDX)[:, 1]
+    var1_relayed = _marginal_var(relayed, L_IDX)[:, 1]
+    assert jnp.all(L1_relayed > L1_base + 20.0)       # pulled toward 200
+    assert jnp.all(var1_relayed < var1_base)          # and made more certain
+    # Routes are independent: the route-1 relay leaves route 0 unchanged.
+    assert jnp.allclose(base.mu[:, 0, L_IDX], relayed.mu[:, 0, L_IDX])
+
+
 def test_init_variational_state_cohort_priors():
     """Initial state stores natural-space (F, C, L) means at the right slots."""
     state, priors = _init_state(N=2, F_mu=16.0, C_mu=4000.0, C_sigma=1500.0)

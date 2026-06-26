@@ -20,14 +20,22 @@ measure the increase in system cost), and the externality is
 once per (traveller route, minute) -- so it only runs when one of those two
 signals is actually broadcast.
 
-Separately from this cost-offset advisory, the controller can also broadcast
-**belief-informing** signals (:class:`BeliefBroadcast`, paper Experiment 3:
-BL/CG/SN/CG+SN). Unlike the ``Broadcast`` above -- which only shifts the
-traveller's *perceived cost* -- a ``BeliefBroadcast`` is fed straight into the
-traveller's smoother as *observations* of routes the traveller did not take
-(see :mod:`inference.population` / :mod:`inference.filter`). It carries the raw
-route queue ``L_hat_r`` (CG) and/or the route green split ``phi_hat_r`` (SN);
-these are NOT clipped (a Kalman observation, not a cost advisory).
+Two further controller -> traveller channels are defined here, both orthogonal
+to the cost-offset advisory above (which only shifts the *perceived cost*):
+
+* **Extra observations** (:class:`ObservationBroadcast`, paper Experiment 3
+  default, BL/CG/SN/CG+SN). Travellers natively observe only the route they
+  took; this channel relays the **true realised** route queue ``L_r`` (CG) and/or
+  green split ``phi_r`` (SN) of the routes they did *not* take, fed straight into
+  the traveller's smoother as *observations* (see :mod:`inference.population` /
+  :mod:`inference.filter`). It reaches all travellers and works with any
+  controller. The values are raw readings (not clipped, unlike the cost
+  advisory): the smoother treats them as noisy readings of the latent ``L``/``phi``.
+* **Belief sharing** (:class:`BeliefBroadcast`, paper Experiment 3 optional,
+  BL/QB/SP/QB+SP). The AIF controller shares its own forward-predicted belief
+  (queue belief QB, planned split SP) *before* travellers choose; a compliant
+  traveller fuses it transiently into a copy of its posterior at decision time
+  (never written back to the smoother).
 """
 
 from __future__ import annotations
@@ -47,6 +55,7 @@ from .parameters import (
     BeliefSignal,
     CommunicationSpec,
     NetworkParams,
+    ObservationSignal,
     SignalType,
     SimParams,
 )
@@ -177,6 +186,91 @@ def build_broadcast(
             raise ValueError(f"Unknown signal type {st!r}.")
         value[r] = v
     return Broadcast(signal_type=st, value=value)
+
+
+# ---------------------------------------------------------------------------
+# Extra-observation broadcasts folded into the traveller smoother (Experiment 3)
+# ---------------------------------------------------------------------------
+@dataclass(frozen=True)
+class ObservationBroadcast:
+    """Extra observations of the non-chosen routes relayed to travellers.
+
+    ``L`` maps each traveller route to a length-``K`` realised route queue
+    ``L_r(k)`` (the CG signal); ``phi`` maps the *signalised* traveller route to
+    its arrival-aligned realised green split ``phi_r(k)`` (the SN signal). Either
+    may be ``None`` when that signal is not relayed; both ``None`` is the
+    baseline (BL) case. A traveller departing at minute ``t`` on a route it did
+    *not* take reads ``L[r][t]`` / ``phi[r][t]`` and folds it into its Gaussian
+    belief over that route's latent ``(L, phi)`` at the end of the day (see
+    :mod:`inference.population`).
+
+    These are raw observations (not clipped, unlike the cost-advisory
+    :class:`Broadcast`): the smoother treats them as noisy readings of the latent
+    ``L`` and ``phi``. They are the **true realised values** of the day, so the
+    relay simply lifts the traveller's partial observation to a fuller one.
+    """
+
+    L: Mapping[str, np.ndarray] | None
+    phi: Mapping[str, np.ndarray] | None
+
+    def is_empty(self) -> bool:
+        return self.L is None and self.phi is None
+
+
+def empty_observation_broadcast() -> ObservationBroadcast:
+    """The baseline (BL) extra-observation broadcast: nothing relayed."""
+    return ObservationBroadcast(L=None, phi=None)
+
+
+def build_observation_broadcast(
+    comm: CommunicationSpec,
+    queues_by_link: Mapping[int, np.ndarray],
+    phi2: np.ndarray,
+    phi6: np.ndarray,
+    net: NetworkParams,
+    sim: SimParams,
+) -> ObservationBroadcast:
+    """Assemble the extra-observation broadcast from the *realised* day.
+
+    * ``ObservationSignal.ROUTE_CONGESTION`` (CG) -> ``L_r``: the arrival-aligned
+      route queue ``route_arrival_queues`` -- the very quantity a traveller senses
+      first-hand when it *does* take the route -- relayed for every traveller
+      route.
+    * ``ObservationSignal.SIGNAL_CONTROL`` (SN) -> ``phi``: the arrival-aligned
+      realised intersection green split ``phi2`` for the signalised traveller
+      route only (``phi`` is inert on the bypass), mirroring the chosen-route
+      green-split observation the simulator builds first-hand.
+
+    Empty ``obs_signals`` returns ``empty_observation_broadcast()`` so the
+    baseline (BL) path is bit-identical to relaying no observations. ``phi6`` is
+    accepted for signature symmetry with the realised day; the bypass carries no
+    green split.
+    """
+    del phi6  # the signalised traveller route carries only the phi2 split
+    signals = comm.obs_signals
+    if not signals:
+        return empty_observation_broadcast()
+
+    L_payload: dict[str, np.ndarray] | None = None
+    phi_payload: dict[str, np.ndarray] | None = None
+
+    if ObservationSignal.ROUTE_CONGESTION in signals:
+        route_queue = route_arrival_queues(queues_by_link, net, sim)
+        L_payload = {
+            r: np.asarray(route_queue[r], dtype=float) for r in net.traveller_routes
+        }
+
+    if ObservationSignal.SIGNAL_CONTROL in signals:
+        # Arrival-aligned intersection split, identical to the chosen-route
+        # green-split observation (simulator: k + N_l forward look). Only the
+        # signalised traveller route (alpha) carries phi.
+        sig_ab, _sig_cd = net.signalised_links
+        N_ab = net.n_delay(sim.dt_min)[sig_ab]
+        k_arr = np.minimum(np.arange(sim.K) + N_ab, sim.K - 1)
+        phi_alpha = np.asarray(phi2, dtype=float)[k_arr]
+        phi_payload = {net.traveller_routes[0]: phi_alpha}
+
+    return ObservationBroadcast(L=L_payload, phi=phi_payload)
 
 
 # ---------------------------------------------------------------------------

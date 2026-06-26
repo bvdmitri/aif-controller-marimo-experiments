@@ -244,6 +244,12 @@ def _laplace_iter_step(
     sigma_phi_window: jnp.ndarray,
     obs_mask: jnp.ndarray,
     signalised: jnp.ndarray,
+    y_extra_L_window: jnp.ndarray,
+    sigma_extra_L_window: jnp.ndarray,
+    mask_extra_L_window: jnp.ndarray,
+    y_extra_phi_window: jnp.ndarray,
+    sigma_extra_phi_window: jnp.ndarray,
+    mask_extra_phi_window: jnp.ndarray,
     phi_lo: float,
     phi_hi: float,
     W: int,
@@ -252,9 +258,21 @@ def _laplace_iter_step(
 
     Linearises the TT forward map around ``mu_lin`` and folds in all W
     chosen-route observations (TT, L, and -- on signalised routes -- the green
-    split ``phi``) starting from the prior. First-hand only: an unchosen route
-    receives no information (the controller's broadcast is fused transiently at
-    route-choice time, not here -- see :mod:`inference.population`).
+    split ``phi``) starting from the prior. First-hand only for these: an
+    unchosen route receives no information from them.
+
+    In addition, it folds in any **extra-observation** relays (CG:
+    ``y_extra_L``; SN: ``y_extra_phi``) gated by a **choice-independent** mask
+    (``mask_extra_L``/``mask_extra_phi``). These carry the true realised route
+    queue / green split into routes the traveller did *not* take; the masks are
+    constructed (in :mod:`inference.population`) to be zero on the chosen route
+    (the first-hand observation wins -- no double counting) and zero everywhere
+    when nothing is relayed, in which case these folds are exact no-ops and the
+    smoother is bit-identical to the chosen-route-only model. The
+    ``mask_extra_*`` arrays are ``(N, R, W)`` -- one value per route -- so, unlike
+    the chosen-route ``y_L``/``y_phi`` (``(N, W)`` broadcast via the ``chosen``
+    one-hot), they do not use the ``chosen`` selector. The ``phi`` relay is
+    additionally gated to signalised routes.
     """
     N, R, _ = prior_mu.shape
     F_lin = mu_lin[..., F_IDX]
@@ -321,6 +339,22 @@ def _laplace_iter_step(
         active_phi = active_d * sig                       # (N, R)
 
         mu, Sigma = _kalman_one_obs(mu, Sigma, H_phi, innov_phi, R_var_phi, active_phi)
+
+        # --- extra-observation relays (choice-INDEPENDENT) ------------------
+        # CG: y_extra_L,d is a per-route realised queue; reuse the linear H_L
+        # (one-hot at L_IDX). Gated by mask_extra_L (already excludes the chosen
+        # route, so no double counting with the first-hand y_L above).
+        innov_xL = y_extra_L_window[..., d] - mu[..., L_IDX]      # (N, R)
+        R_var_xL = (sigma_extra_L_window[..., d]) ** 2            # (N, R)
+        active_xL = mask_extra_L_window[..., d]                   # (N, R)
+        mu, Sigma = _kalman_one_obs(mu, Sigma, H_L, innov_xL, R_var_xL, active_xL)
+
+        # SN: y_extra_phi,d is a per-route realised green split; reuse H_phi.
+        # Gated by mask_extra_phi AND the signalised mask (phi inert on bypass).
+        innov_xphi = y_extra_phi_window[..., d] - mu[..., PHI_IDX]  # (N, R)
+        R_var_xphi = (sigma_extra_phi_window[..., d]) ** 2          # (N, R)
+        active_xphi = mask_extra_phi_window[..., d] * sig           # (N, R)
+        mu, Sigma = _kalman_one_obs(mu, Sigma, H_phi, innov_xphi, R_var_xphi, active_xphi)
 
     # Symmetrise Σ for numerical safety (rank-1 updates preserve symmetry
     # in exact arithmetic; float rounding can drift).
@@ -427,6 +461,12 @@ def window_step(
     obs_mask: jnp.ndarray,
     signalised: jnp.ndarray,
     W: int,
+    y_extra_L_window: jnp.ndarray | None = None,
+    sigma_extra_L_window: jnp.ndarray | None = None,
+    mask_extra_L_window: jnp.ndarray | None = None,
+    y_extra_phi_window: jnp.ndarray | None = None,
+    sigma_extra_phi_window: jnp.ndarray | None = None,
+    mask_extra_phi_window: jnp.ndarray | None = None,
     n_stale_days: jnp.ndarray | None = None,
     sigma_F_drift: jnp.ndarray | float = 0.0,
     sigma_C_drift: jnp.ndarray | float = 0.0,
@@ -530,6 +570,23 @@ def window_step(
 
     prior_Sigma = prior.scale_tril @ jnp.swapaxes(prior.scale_tril, -1, -2)
 
+    # Extra-observation relay windows default to all-zero masks (a no-op):
+    # callers that relay no CG/SN information (or pre-extra-obs callers) leave
+    # these None and recover the exact chosen-route-only smoother.
+    extra_shape = (*prior.mu.shape[:2], W)  # (N, R, W)
+    if mask_extra_L_window is None:
+        mask_extra_L_window = jnp.zeros(extra_shape)
+    if y_extra_L_window is None:
+        y_extra_L_window = jnp.zeros(extra_shape)
+    if sigma_extra_L_window is None:
+        sigma_extra_L_window = jnp.ones(extra_shape)
+    if mask_extra_phi_window is None:
+        mask_extra_phi_window = jnp.zeros(extra_shape)
+    if y_extra_phi_window is None:
+        y_extra_phi_window = jnp.zeros(extra_shape)
+    if sigma_extra_phi_window is None:
+        sigma_extra_phi_window = jnp.ones(extra_shape)
+
     mu = prior.mu
     Sigma = prior_Sigma
 
@@ -574,6 +631,12 @@ def window_step(
             sigma_phi_window=sig_phi_eff,
             obs_mask=obs_mask,
             signalised=signalised,
+            y_extra_L_window=y_extra_L_window,
+            sigma_extra_L_window=sigma_extra_L_window,
+            mask_extra_L_window=mask_extra_L_window,
+            y_extra_phi_window=y_extra_phi_window,
+            sigma_extra_phi_window=sigma_extra_phi_window,
+            mask_extra_phi_window=mask_extra_phi_window,
             phi_lo=phi_lo,
             phi_hi=phi_hi,
             W=W,

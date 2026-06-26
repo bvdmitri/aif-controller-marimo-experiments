@@ -462,19 +462,51 @@ class BeliefSignal(enum.Enum):
     SPLIT_PLAN = "sp"     # controller's planned green split (with its variance)
 
 
+class ObservationSignal(enum.Enum):
+    """What the controller relays to travellers as an *extra observation* of the
+    routes they did *not* take (paper Experiment 3 settings BL/CG/SN/CG+SN).
+
+    Travellers natively have only **partial observation**: each observes the
+    realised travel time / queue (and, on the intersection, the green split) of
+    the route it actually took that day, and learns nothing first-hand about the
+    other route. This channel relays the **true realised values** of the
+    non-chosen routes -- route congestion ``L_r(d,t)`` (CG) and/or the signal
+    green split ``phi_r(d,t)`` (SN) -- which travellers fold into their
+    **end-of-day belief update** (the smoother, see ``inference/population`` and
+    ``inference/filter``). Unlike the belief-sharing channel
+    (:class:`BeliefSignal`), this carries *realised readings* (not a controller
+    forecast), it **persists** into the smoother, it reaches **all** travellers
+    (not gated by compliance), and it works with **any** controller (it does not
+    require the controller to hold beliefs).
+
+    Experiment-3 settings map to subsets of this enum::
+
+        BL    -> frozenset()                       (baseline, partial observation)
+        CG    -> {ROUTE_CONGESTION}                (relay true queue L_r)
+        SN    -> {SIGNAL_CONTROL}                  (relay true green split phi_r)
+        CG+SN -> {ROUTE_CONGESTION, SIGNAL_CONTROL} (both)
+    """
+
+    ROUTE_CONGESTION = "cg"   # true realised queue L_r for non-chosen routes
+    SIGNAL_CONTROL = "sn"     # true realised green split phi_r (signalised route)
+
+
 @dataclass(frozen=True)
 class CommunicationSpec:
     """How the controller communicates with travellers.
 
-    Two orthogonal channels that can be combined:
+    Three orthogonal channels that can be combined:
 
     * ``signal_type`` -- the cost-offset advisory (Experiment 1, theta);
-    * ``belief_signals`` -- the controller's belief shared for decision-time
-      fusion (Experiment 3, BL/QB/SP/QB+SP). Empty set = baseline (nothing
-      shared).
+    * ``obs_signals`` -- **extra observations** of the non-chosen routes relayed
+      into the traveller's belief update (Experiment 3 default, BL/CG/SN/CG+SN);
+    * ``belief_signals`` -- the controller's own belief shared for decision-time
+      fusion (Experiment 3 optional, BL/QB/SP/QB+SP). Empty set = baseline
+      (nothing shared).
     """
 
     signal_type: SignalType = SignalType.NONE
+    obs_signals: frozenset[ObservationSignal] = frozenset()
     belief_signals: frozenset[BeliefSignal] = frozenset()
 
 
@@ -565,3 +597,13 @@ class Params:
         QB+SP.
         """
         return replace(self, comm=replace(self.comm, belief_signals=frozenset(signals)))
+
+    def with_extra_observations(self, *signals: ObservationSignal) -> "Params":
+        """Set which extra observations of the non-chosen routes are relayed into
+        the traveller belief update (Experiment 3 default settings).
+
+        ``with_extra_observations()`` (no args) is the baseline BL case;
+        ``with_extra_observations(ObservationSignal.ROUTE_CONGESTION)`` is CG;
+        pass both for CG+SN.
+        """
+        return replace(self, comm=replace(self.comm, obs_signals=frozenset(signals)))

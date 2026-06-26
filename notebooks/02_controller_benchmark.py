@@ -49,7 +49,12 @@ def _():
 
     from aif_traffic import notebook_controls as nc
     from aif_traffic.explainers import explainer_pointer, notebook_explainer
-    from aif_traffic.notebook_io import figure_block, is_deployed, outputs_dir
+    from aif_traffic.notebook_io import (
+        figure_block,
+        is_deployed,
+        outputs_dir,
+        sweep_progress_bar,
+    )
     from aif_traffic.parameters import (
         AIFControllerSpec,
         AnticipatoryControllerSpec,
@@ -96,6 +101,7 @@ def _():
         plot_learned_obs_noise,
         replace,
         run_experiment,
+        sweep_progress_bar,
     )
 
 
@@ -173,7 +179,6 @@ def _(
     gamma,
     k_L,
     learn_noise,
-    mo,
     omega,
     phi_grid,
     replace,
@@ -181,6 +186,7 @@ def _(
     run_experiment,
     seed,
     sigma_pref,
+    sweep_progress_bar,
     theta,
     traveller_window,
 ):
@@ -208,23 +214,25 @@ def _(
             d_CD_max=base.demand.d_CD_max * scale,
         )
         results_by_ctrl = {}
-        for _name, _spec in specs.items():
-            # Broadcast the externality advisory at the chosen theta/compliance so
-            # the controllers are compared at a chosen social-internalisation
-            # level (theta is inert without it); learn-noise per the checkbox.
-            _p = replace(
-                base,
-                sim=replace(SimParams(), days=int(days.value), seed=int(seed.value)),
-                controller=_spec,
-                demand=demand,
-            ).with_comm(SignalType.EXTERNALITY).with_compliance(
-                float(compliance.value)
-            ).with_theta(float(theta.value)).with_window_size(
-                int(traveller_window.value)
-            ).with_learn_obs_noise(bool(learn_noise.value))
-            results_by_ctrl[_name] = run_experiment(
-                _p, seeds=[int(seed.value)], progress=mo.status.progress_bar,
-            )
+        _sim = replace(SimParams(), days=int(days.value), seed=int(seed.value))
+        with sweep_progress_bar(len(specs), _sim, title="controllers") as _bar:
+            for _name, _spec in specs.items():
+                # Broadcast the externality advisory at the chosen theta/compliance
+                # so the controllers are compared at a chosen social-internalisation
+                # level (theta is inert without it); learn-noise per the checkbox.
+                _p = replace(
+                    base,
+                    sim=_sim,
+                    controller=_spec,
+                    demand=demand,
+                ).with_comm(SignalType.EXTERNALITY).with_compliance(
+                    float(compliance.value)
+                ).with_theta(float(theta.value)).with_window_size(
+                    int(traveller_window.value)
+                ).with_learn_obs_noise(bool(learn_noise.value))
+                results_by_ctrl[_name] = run_experiment(
+                    _p, seeds=[int(seed.value)], on_step=_bar.update,
+                )
     return (results_by_ctrl,)
 
 
@@ -349,12 +357,12 @@ def _(
     grid_btn,
     k_L,
     learn_noise,
-    mo,
     omega,
     replace,
     run_experiment,
     seed,
     sigma_pref,
+    sweep_progress_bar,
     traveller_window,
 ):
     if not grid_btn.value:
@@ -382,22 +390,24 @@ def _(
         _thetas = [0.0, 0.25, 0.5, 0.75, 1.0]
         _cells = [(n, s, t) for n, s in _specs.items() for t in _thetas]
         results_by_ctrl_theta = {n: {} for n in _specs}
-        for _name, _spec, _theta in mo.status.progress_bar(
-            _cells, title="theta x controller",
-        ):
-            _p = replace(
-                _base,
-                sim=replace(SimParams(), days=int(days.value), seed=int(seed.value)),
-                controller=_spec,
-                demand=_demand,
-            ).with_comm(SignalType.EXTERNALITY).with_compliance(
-                float(compliance.value)
-            ).with_theta(_theta).with_window_size(
-                int(traveller_window.value)
-            ).with_learn_obs_noise(bool(learn_noise.value))
-            results_by_ctrl_theta[_name][_theta] = run_experiment(
-                _p, seeds=[int(seed.value)],
-            )
+        _sim = replace(SimParams(), days=int(days.value), seed=int(seed.value))
+        with sweep_progress_bar(
+            len(_cells), _sim, title="theta x controller",
+        ) as _bar:
+            for _name, _spec, _theta in _cells:
+                _p = replace(
+                    _base,
+                    sim=_sim,
+                    controller=_spec,
+                    demand=_demand,
+                ).with_comm(SignalType.EXTERNALITY).with_compliance(
+                    float(compliance.value)
+                ).with_theta(_theta).with_window_size(
+                    int(traveller_window.value)
+                ).with_learn_obs_noise(bool(learn_noise.value))
+                results_by_ctrl_theta[_name][_theta] = run_experiment(
+                    _p, seeds=[int(seed.value)], on_step=_bar.update,
+                )
     return (results_by_ctrl_theta,)
 
 

@@ -29,6 +29,7 @@ from aif_traffic.parameters import (
     CohortSpec,
     FixedTimeControllerSpec,
     NoiseParams,
+    ObservationSignal,
     Params,
     PopulationParams,
     ReactiveControllerSpec,
@@ -101,6 +102,37 @@ def smoke_communication() -> None:
         params = _small_params(ReactiveControllerSpec(), signal_type=st)
         res = run_experiment(params)
         assert not res.step.empty, f"{st}: empty step frame"
+
+
+def smoke_extra_observations() -> None:
+    """Run the four extra-observation settings (BL/CG/SN/CG+SN, Experiment 3
+    default) and render the sweep overlay. Extra observations are ungated by
+    compliance, so this also checks the baseline is bit-identical to relaying
+    no observations."""
+    base = _small_params(AIFControllerSpec())
+    settings = {
+        "BL": base.with_extra_observations(),
+        "CG": base.with_extra_observations(ObservationSignal.ROUTE_CONGESTION),
+        "SN": base.with_extra_observations(ObservationSignal.SIGNAL_CONTROL),
+        "CG+SN": base.with_extra_observations(
+            ObservationSignal.ROUTE_CONGESTION, ObservationSignal.SIGNAL_CONTROL
+        ),
+    }
+    results = {}
+    for name, params in settings.items():
+        res = run_experiment(params)
+        assert not res.step.empty, f"extra-obs {name}: empty step frame"
+        results[name] = res
+
+    import numpy as np
+
+    default = run_experiment(base)
+    assert np.allclose(
+        results["BL"].step["P_alpha"].values, default.step["P_alpha"].values
+    ), "BL extra-obs is not bit-identical to no information"
+
+    _save_figure(plot_sweep_metrics(results), "extra_observations_sweep.png")
+    _save_figure(plot_route_choice_heatmaps(results), "extra_observations_route_choice.png")
 
 
 def smoke_belief_communication() -> None:
@@ -226,6 +258,7 @@ def main() -> int:
         "demand": smoke_demand,
         "controllers": smoke_controllers,
         "communication": smoke_communication,
+        "extra_observations": smoke_extra_observations,
         "belief_communication": smoke_belief_communication,
         "compliance": smoke_compliance,
         "theta_grid": smoke_theta_grid,

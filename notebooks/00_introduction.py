@@ -2,7 +2,7 @@
 
 A markdown-only marimo notebook: no simulation, no parameters, no Run button.
 It explains what this repository is, the two-layer model, the pluggable
-controller, the two communication channels, and how the four experiment
+controller, the controller-to-traveller communication channels, and how the four experiment
 notebooks are organised.
 """
 
@@ -80,21 +80,27 @@ def _(mo):
         r"""
         ## Communication and compliance
 
-        The controller has a network-wide view and can share it through **two
+        The controller has a network-wide view and can share it through **three
         distinct channels**:
 
         * **Cost-offset advisory** ($\theta$) -- a per-route signal (e.g. the
           congestion externality $E_r$) folded into the perceived cost
           $\zeta_r = TT_r + \theta\, E_r$. This shifts route *choice* only.
-        * **Controller-belief broadcast** (QB / SP) -- the controller shares its
-          own *belief* before travellers choose: its forward-predicted queue
+        * **Extra observations** (CG / SN) -- travellers natively see only the
+          route they took; the controller relays the *true realised* route
+          congestion $L_r$ (**CG**) and/or signal split $\phi_r$ (**SN**) of the
+          routes they did *not* take, folded into their end-of-day belief update.
+          Reaches every traveller and works with any controller.
+        * **Controller-belief broadcast** (QB / SP) -- the AIF controller shares
+          its own *belief* before travellers choose: its forward-predicted queue
           belief $\mathcal N(\hat L,\widehat{\mathrm{var}})$ (**QB**) and/or its
           planned green split $\hat\phi$ (**SP**). A compliant traveller *fuses*
           that distribution with its own posterior to decide; the fusion is
           transient and never enters the smoother.
 
         A per-cohort **compliance fraction** sets how many travellers fuse the
-        controller's belief; the rest choose on their own posterior alone.
+        controller's belief (the QB/SP channel); the rest choose on their own
+        posterior alone. Extra observations are not gated by compliance.
         """
     )
     return
@@ -116,10 +122,12 @@ def _(mo):
         2. **`02_controller_benchmark`** — compare the AIF controller against
            fixed-time, reactive, and anticipatory controllers (cost, queues,
            signal stability). The core result: AIF outperforms the baselines.
-        3. **`03_information_communication`** — having shown AIF performs best,
-           investigate *that* controller further: what should it share from its
-           own belief? Compare BL / QB / SP / QB+SP (queue belief and/or planned
-           split, fused at decision time) and measure the value of information.
+        3. **`03_information_communication`** — vary *what travellers learn about
+           the network*. By default, relay the true realised congestion/split of
+           the routes they did not take (BL / CG / SN / CG+SN, the **extra
+           observations** channel); optionally instead share the AIF controller's
+           own forecast belief (BL / QB / SP / QB+SP, fused at decision time).
+           Measure the value of information.
         4. **`04_compliance_robustness`** — fix the AIF controller and share its
            full belief (QB+SP), then sweep the **compliance fraction**: how the
            coordination effect changes as fewer travellers fuse the controller's

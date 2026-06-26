@@ -65,6 +65,15 @@ DESCRIPTIONS: dict[str, str] = {
         "movement, travellers per agent). On by default; the belief band is then "
         "data-driven rather than set by `sigma_obs`."
     ),
+    "comm_mechanism": (
+        "Which controller->traveller information channel Experiment 3 sweeps. "
+        "**Extra observations** relays the *true realised* queue (CG) / green "
+        "split (SN) of the routes a traveller did not take into its belief update "
+        "(works with any controller, reaches everyone). **Belief sharing** has the "
+        "AIF controller share its own forecast belief (QB/SP) for transient "
+        "decision-time fusion (compliant travellers only). **Both** runs each "
+        "channel alone and combined; **Disable** is the no-information baseline."
+    ),
     "theta": (
         r"Social internalisation $\theta$: how much travellers fold the congestion "
         r"externality $E_r$ into their perceived cost $\zeta_r = TT_r + \theta E_r$. "
@@ -126,6 +135,14 @@ def learn_noise():
     return mo.ui.checkbox(value=True, label="learn observation noise (VB)")
 
 
+def comm_mechanism():
+    return mo.ui.dropdown(
+        options=["Disable", "Extra observations", "Belief sharing", "Both"],
+        value="Extra observations",
+        label="communication mechanism",
+    )
+
+
 def theta():
     return mo.ui.slider(0.0, 1.0, step=0.05, value=0.0, label="theta")
 
@@ -164,7 +181,7 @@ _GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
         "days", "seed", "control_interval", "demand_scale",
         "traveller_window", "controller_window", "learn_noise",
     )),
-    ("Communication / social", ("theta", "compliance")),
+    ("Communication / social", ("comm_mechanism", "theta", "compliance")),
     ("AIF controller", ("gamma", "omega", "sigma_pref", "phi_grid", "k_L")),
 )
 

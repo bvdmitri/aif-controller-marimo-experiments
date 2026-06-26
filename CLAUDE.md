@@ -27,15 +27,28 @@ experiment notebook.
   low-and-balanced goal lives inside `Sigma_pref` (extra precision `omega` along
   the unit capacity-normalised imbalance direction), not in a hand-built cost.
   Keep it EFE-based; do not reintroduce a hand-crafted scalar cost.
-- **Two communication channels.** `communication.py` carries two distinct
+- **Three communication channels.** `communication.py` carries three distinct
   controller→traveller channels (paper Sections 4.3 / Experiment 3):
   - **Cost-offset advisory** (`SignalType`, `build_broadcast`, `Broadcast`):
     a per-route signal folded into the *perceived cost* `zeta_r = TT_r + theta*E_r`.
     Affects route choice only (`begin_day`), never the belief update. Carries the
     `theta` social-internalisation (Experiment 1). MSC/externality use the
     finite-difference re-roll; travel-time/congestion are direct proxies.
+  - **Extra observations** (`ObservationSignal` = `ROUTE_CONGESTION` / `SIGNAL_CONTROL`,
+    `build_observation_broadcast`, `ObservationBroadcast`; settings BL/CG/SN/CG+SN —
+    the **Experiment 3 default story**): travellers natively observe only the route
+    they chose; this relays the **true realised** route queue `L_r` (CG) and/or
+    green split `phi_r` (SN) of the *non-chosen* routes into the **end-of-day
+    belief update** (`population._append_observation_broadcast` → `update_beliefs`
+    → a choice-independent fold in `filter.window_step`/`_laplace_iter_step`,
+    gated `last_choice != route` so first-hand obs wins — no double counting). It
+    **persists** into the smoother (a documented departure from IWAI first-hand-only),
+    reaches **all** travellers (NOT gated by compliance), and works with **any**
+    controller. Built from the **same-day** realised values. Empty `obs_signals` (BL)
+    is bit-identical (masks all-zero → exact no-op).
   - **Controller-belief broadcast** (`BeliefSignal` = `QUEUE_BELIEF` / `SPLIT_PLAN`,
-    `build_belief_broadcast`, `BeliefBroadcast`; settings BL/QB/SP/QB+SP): the
+    `build_belief_broadcast`, `BeliefBroadcast`; settings BL/QB/SP/QB+SP — the
+    **optional, AIF-only** story, kept off by default in the notebook): the
     controller shares its **smoother posterior** over the upcoming day — its queue
     belief `N(L_hat, var)` (QB) and/or its planned green split (SP) — *before*
     travellers choose. A *compliant* traveller **fuses** that Gaussian into a
@@ -44,6 +57,9 @@ experiment notebook.
     **transient** — it informs the choice but is never written back, so the
     traveller smoother stays **first-hand-only** (IWAI-verbatim). Empty
     `belief_signals` (BL), or zero compliance, is bit-identical to no information.
+  - The Experiment 3 notebook (`03_information_communication.py`) picks the channel
+    via the `nc.comm_mechanism()` dropdown (Disable / Extra observations [default] /
+    Belief sharing / Both); belief sharing runs at compliance=1.
 
 ## Conventions
 
@@ -62,8 +78,13 @@ experiment notebook.
 - **Determinism.** Inference is closed-form; with noise knobs at 0 the pipeline
   is reproducible. RNG streams are spawned from one `SeedSequence`.
 - **Notebooks** gate heavy work behind `mo.ui.run_button`; the smoke harness
-  exercises the same code path without the marimo runtime. Wrap long runs via
-  `run_experiment(..., progress=mo.status.progress_bar)`.
+  exercises the same code path without the marimo runtime. Wrap a *single* long
+  run via `run_experiment(..., progress=mo.status.progress_bar)` (its own per-day
+  bar). For a **sweep** of experiments, create one fused bar with
+  `notebook_io.sweep_progress_bar(n_experiments, sim, title=...)` and pass its
+  `.update` as `run_experiment(..., on_step=bar.update)`, so the single bar
+  advances per simulated day across all experiments (`k/(N*days)`, real ETA)
+  instead of once per finished experiment.
 - **HARD RULE — experiment controls come from `notebook_controls.py`.** Every
   experiment notebook builds its parameter panel from `aif_traffic.notebook_controls`
   (`nc.days()`, `nc.theta()`, … as named globals) and renders it with

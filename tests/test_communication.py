@@ -12,14 +12,20 @@ from dataclasses import replace
 import numpy as np
 import pytest
 
-from aif_traffic.communication import build_belief_broadcast, build_broadcast
+from aif_traffic.communication import (
+    build_belief_broadcast,
+    build_broadcast,
+    build_observation_broadcast,
+)
 from aif_traffic.control.interface import QueueForecast
+from aif_traffic.network import route_arrival_queues
 from aif_traffic.parameters import (
     BeliefSignal,
     CohortSpec,
     CommunicationSpec,
     FixedTimeControllerSpec,
     NetworkParams,
+    ObservationSignal,
     Params,
     PopulationParams,
     SignalType,
@@ -205,4 +211,86 @@ def test_baseline_belief_signals_match_no_information():
     assert np.allclose(res_bl.step["P_alpha"], res_default.step["P_alpha"])
     assert np.allclose(
         res_bl.cohort["sigma_beta_post"], res_default.cohort["sigma_beta_post"]
+    )
+
+
+# --------------------------------------------------------------------------
+# Extra-observation broadcasts folded into the smoother (Exp 3: BL/CG/SN/CG+SN)
+# --------------------------------------------------------------------------
+def test_observation_broadcast_baseline_is_empty():
+    """BL (no obs signals) -> empty payload, even given a realised day."""
+    net, sim, _inflow, queues, _tt, phi2, phi6 = _congested_alpha_scenario()
+    ob = build_observation_broadcast(CommunicationSpec(), queues, phi2, phi6, net, sim)
+    assert ob.is_empty()
+
+
+def test_observation_broadcast_cg_is_arrival_aligned_route_queue():
+    """CG carries the true realised route queue for every traveller route; the
+    split is not relayed."""
+    net, sim, _inflow, queues, _tt, phi2, phi6 = _congested_alpha_scenario()
+    ob = build_observation_broadcast(
+        CommunicationSpec(obs_signals=frozenset({ObservationSignal.ROUTE_CONGESTION})),
+        queues, phi2, phi6, net, sim,
+    )
+    assert ob.phi is None  # CG only
+    route_q = route_arrival_queues(queues, net, sim)
+    for r in net.traveller_routes:
+        assert np.allclose(ob.L[r], route_q[r])
+    # The oversaturated A--B (alpha) route queue dwarfs the free-flowing bypass.
+    assert ob.L["alpha"].mean() > ob.L["beta"].mean()
+
+
+def test_observation_broadcast_sn_is_arrival_aligned_split():
+    """SN carries the true realised green split for the signalised route only,
+    arrival-aligned (k + N_2); the route queue is not relayed."""
+    net, sim, _inflow, queues, _tt, phi2, phi6 = _congested_alpha_scenario()
+    ob = build_observation_broadcast(
+        CommunicationSpec(obs_signals=frozenset({ObservationSignal.SIGNAL_CONTROL})),
+        queues, phi2, phi6, net, sim,
+    )
+    assert ob.L is None  # SN only
+    assert set(ob.phi) == {net.traveller_routes[0]}  # signalised route only
+    sig_ab, _ = net.signalised_links
+    N_ab = net.n_delay(sim.dt_min)[sig_ab]
+    k_arr = np.minimum(np.arange(sim.K) + N_ab, sim.K - 1)
+    assert np.allclose(ob.phi[net.traveller_routes[0]], np.asarray(phi2)[k_arr])
+
+
+def test_observation_broadcast_cg_sn_carries_both():
+    net, sim, _inflow, queues, _tt, phi2, phi6 = _congested_alpha_scenario()
+    ob = build_observation_broadcast(
+        CommunicationSpec(obs_signals=frozenset(
+            {ObservationSignal.ROUTE_CONGESTION, ObservationSignal.SIGNAL_CONTROL})),
+        queues, phi2, phi6, net, sim,
+    )
+    assert ob.L is not None and ob.phi is not None
+
+
+def test_baseline_obs_signals_match_no_information():
+    """An empty obs-signal set is bit-identical to the default (no extra-obs
+    channel): the BL fold has all-zero masks (an exact no-op in the smoother)."""
+    base = _params(SignalType.NONE, theta=0.5, compliance=1.0)
+    res_bl = run_experiment(
+        replace(base, comm=CommunicationSpec(obs_signals=frozenset()))
+    )
+    res_default = run_experiment(base)
+    assert np.allclose(res_bl.step["P_alpha"], res_default.step["P_alpha"])
+    assert np.allclose(
+        res_bl.cohort["sigma_beta_post"], res_default.cohort["sigma_beta_post"]
+    )
+
+
+def test_extra_observations_change_belief_about_non_chosen_route():
+    """CG+SN relayed to all travellers shifts the smoother posterior vs BL:
+    folding the true non-chosen-route queue/split is *not* a no-op (unlike the
+    masked-off baseline). Asserts the channel actually enters the belief update."""
+    base = _params(SignalType.NONE, theta=0.0, compliance=0.0)
+    res_bl = run_experiment(replace(base, comm=CommunicationSpec()))
+    res_eo = run_experiment(replace(base, comm=CommunicationSpec(
+        obs_signals=frozenset(
+            {ObservationSignal.ROUTE_CONGESTION, ObservationSignal.SIGNAL_CONTROL}))))
+    # Compliance is 0, so this difference cannot come from any decision-time
+    # fusion -- only the extra-observation belief fold can move it.
+    assert not np.allclose(
+        res_bl.cohort["sigma_beta_post"], res_eo.cohort["sigma_beta_post"]
     )

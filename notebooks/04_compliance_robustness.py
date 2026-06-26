@@ -58,7 +58,7 @@ def _():
 
     from aif_traffic import notebook_controls as nc
     from aif_traffic.explainers import explainer_pointer, notebook_explainer
-    from aif_traffic.notebook_io import figure_block
+    from aif_traffic.notebook_io import figure_block, sweep_progress_bar
     from aif_traffic.parameters import (
         AIFControllerSpec,
         BeliefSignal,
@@ -88,6 +88,7 @@ def _():
         plot_sweep_metrics,
         replace,
         run_experiment,
+        sweep_progress_bar,
     )
 
 
@@ -142,11 +143,11 @@ def _(
     days,
     demand_scale,
     learn_noise,
-    mo,
     replace,
     run_btn,
     run_experiment,
     seed,
+    sweep_progress_bar,
     traveller_window,
 ):
     if not run_btn.value:
@@ -181,10 +182,12 @@ def _(
             f"{int(round(f * 100))}%": _base.with_compliance(f) for f in _fractions
         }
         results_by_compliance = {}
-        for _name, _p in mo.status.progress_bar(
-            list(_settings.items()), title="compliance settings"
-        ):
-            results_by_compliance[_name] = run_experiment(_p, seeds=[int(seed.value)])
+        with sweep_progress_bar(
+            len(_settings), _base.sim, title="compliance settings"
+        ) as _bar:
+            for _name, _p in _settings.items():
+                results_by_compliance[_name] = run_experiment(
+                    _p, seeds=[int(seed.value)], on_step=_bar.update)
     return (results_by_compliance,)
 
 

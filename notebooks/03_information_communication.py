@@ -1,19 +1,23 @@
 """Experiment 3 -- System information communication.
 
-Fixes the AIF signal controller and a single traveller population, and varies
-only **what the controller shares from its own belief** before travellers
-choose.
+Fixes the signal controller and a single traveller population, and varies only
+**what information travellers receive about the network** before/after they
+choose. The ``communication mechanism`` dropdown selects which channel is swept:
 
-* **BL** -- baseline: the controller shares nothing.
-* **QB** -- the controller shares its forward-predicted queue belief
-  ``N(L_hat, var)``.
-* **SP** -- the controller shares its planned green split ``phi_hat``.
-* **QB+SP** -- both.
+* **Extra observations** (default) -- travellers natively see only the route
+  they took; the controller relays the *true realised* route congestion (**CG**,
+  queue ``L_r``) and/or signal green split (**SN**, ``phi_r``) of the routes they
+  did *not* take, folded into their end-of-day belief update. Settings
+  BL/CG/SN/CG+SN. Works with any controller and reaches every traveller.
+* **Belief sharing** -- the AIF controller shares its own forward-predicted
+  belief: its queue belief (**QB**, ``N(L_hat, var)``) and/or planned green split
+  (**SP**). A compliant traveller fuses that Gaussian into its posterior at
+  decision time (transient, never entering the smoother). Settings BL/QB/SP/QB+SP,
+  run at full compliance.
+* **Both** -- each channel alone and combined (BL/CG+SN/QB+SP/CG+SN+QB+SP).
+* **Disable** -- the no-information baseline only.
 
-A compliant traveller fuses the shared Gaussian into its own posterior at
-decision time (a transient fusion that never enters the smoother); richer
-information sharpens its anticipation of the day. This notebook runs the four
-settings at full compliance and overlays the outcomes.
+The notebook runs the selected settings and overlays the outcomes.
 """
 
 import marimo
@@ -35,17 +39,23 @@ def _(mo):
         r"""
         # Experiment 3 — System information communication
 
-        The AIF controller and the traveller population are fixed; we vary only
-        **what the controller shares from its own belief** before travellers
-        choose. The controller forward-predicts the day and shares its queue
-        belief ($\mathcal N(\hat L,\widehat{\mathrm{var}})$, **QB**) and/or its
-        planned green split ($\hat\phi$, **SP**). A compliant traveller *fuses*
-        that distribution into its own posterior to decide — a transient fusion
-        that never enters its smoother; non-compliant travellers ignore it.
+        The controller and the traveller population are fixed; we vary only
+        **what information travellers receive about the network**. Pick the
+        channel with the **communication mechanism** dropdown:
+
+        * **Extra observations** (default): travellers see only the route they
+          took, so the controller relays the *true realised* congestion (**CG**,
+          queue $L_r$) and/or signal split (**SN**, $\phi_r$) of the routes they
+          did *not* take, folded into their end-of-day belief update. This works
+          with any controller and reaches everyone.
+        * **Belief sharing**: the AIF controller shares its own forecast belief
+          ($\mathcal N(\hat L,\widehat{\mathrm{var}})$, **QB**) and/or planned
+          split ($\hat\phi$, **SP**); a compliant traveller *fuses* it into its
+          posterior to decide (transient, never entering its smoother).
 
         Set the parameters, click **Run**, and read the overlay below. The
-        question is whether richer shared anticipation gives more stable route
-        choice and lower system cost.
+        question is whether richer information gives more stable route choice and
+        lower system cost.
         """
     )
     return
@@ -57,11 +67,12 @@ def _():
 
     from aif_traffic import notebook_controls as nc
     from aif_traffic.explainers import explainer_pointer, notebook_explainer
-    from aif_traffic.notebook_io import figure_block
+    from aif_traffic.notebook_io import figure_block, sweep_progress_bar
     from aif_traffic.parameters import (
         AIFControllerSpec,
         BeliefSignal,
         DemandParams,
+        ObservationSignal,
         Params,
         SimParams,
     )
@@ -80,6 +91,7 @@ def _():
         AIFControllerSpec,
         BeliefSignal,
         DemandParams,
+        ObservationSignal,
         Params,
         SimParams,
         explainer_pointer,
@@ -93,6 +105,7 @@ def _():
         plot_sweep_metrics,
         replace,
         run_experiment,
+        sweep_progress_bar,
     )
 
 
@@ -105,9 +118,11 @@ def _(explainer_pointer, mo):
 @app.cell
 def _(mo, nc):
     # All controls come from aif_traffic.notebook_controls (shared across the
-    # experiments; see CLAUDE.md). This experiment is about the belief broadcast,
-    # so it exposes compliance (gates the belief fusion) but not theta (the
-    # externality channel is not used here) nor the AIF-tuning knobs.
+    # experiments; see CLAUDE.md). The comm_mechanism dropdown selects which
+    # information channel is swept. compliance gates the belief-sharing channel
+    # only (extra observations reach everyone); theta (the externality channel)
+    # and the AIF-tuning knobs are not used here.
+    comm_mechanism = nc.comm_mechanism()
     days = nc.days()
     seed = nc.seed()
     control_interval = nc.control_interval()
@@ -120,6 +135,7 @@ def _(mo, nc):
     run_btn = mo.ui.run_button(label="Run all communication settings")
 
     controls = nc.standard_panel({
+        "comm_mechanism": comm_mechanism,
         "days": days, "seed": seed, "control_interval": control_interval,
         "demand_scale": demand_scale, "traveller_window": traveller_window,
         "controller_window": controller_window, "learn_noise": learn_noise,
@@ -127,6 +143,7 @@ def _(mo, nc):
     }, run_btn)
     controls
     return (
+        comm_mechanism,
         compliance,
         control_interval,
         controller_window,
@@ -144,19 +161,21 @@ def _(
     AIFControllerSpec,
     BeliefSignal,
     DemandParams,
+    ObservationSignal,
     Params,
     SimParams,
+    comm_mechanism,
     compliance,
     control_interval,
     controller_window,
     days,
     demand_scale,
     learn_noise,
-    mo,
     replace,
     run_btn,
     run_experiment,
     seed,
+    sweep_progress_bar,
     traveller_window,
 ):
     if not run_btn.value:
@@ -169,9 +188,9 @@ def _(
             d_AB_max=base_d.d_AB_max * _scale,
             d_CD_max=base_d.d_CD_max * _scale,
         )
-        # This experiment is about the belief broadcast, so theta stays at its
-        # default 0 (the externality channel is not used here); compliance gates
-        # the belief fusion.
+        # theta stays at its default 0 (the externality channel is not used
+        # here). compliance gates the belief-sharing channel only; extra
+        # observations reach every traveller regardless.
         _base = replace(
             Params(),
             sim=replace(SimParams(), days=int(days.value), seed=int(seed.value)),
@@ -186,19 +205,45 @@ def _(
             bool(learn_noise.value)
         )
 
-        _settings = {
-            "BL": _base.with_belief_signals(),
-            "QB": _base.with_belief_signals(BeliefSignal.QUEUE_BELIEF),
-            "SP": _base.with_belief_signals(BeliefSignal.SPLIT_PLAN),
-            "QB+SP": _base.with_belief_signals(
-                BeliefSignal.QUEUE_BELIEF, BeliefSignal.SPLIT_PLAN
-            ),
-        }
+        _CG = ObservationSignal.ROUTE_CONGESTION
+        _SN = ObservationSignal.SIGNAL_CONTROL
+        _QB = BeliefSignal.QUEUE_BELIEF
+        _SP = BeliefSignal.SPLIT_PLAN
+        _mech = comm_mechanism.value
+        if _mech == "Disable":
+            _settings = {"BL": _base}
+        elif _mech == "Belief sharing":
+            # Belief sharing is studied at full compliance (the swept content is
+            # what the controller shares, not who listens).
+            _bb = _base.with_compliance(1.0)
+            _settings = {
+                "BL": _bb.with_belief_signals(),
+                "QB": _bb.with_belief_signals(_QB),
+                "SP": _bb.with_belief_signals(_SP),
+                "QB+SP": _bb.with_belief_signals(_QB, _SP),
+            }
+        elif _mech == "Both":
+            _bb = _base.with_compliance(1.0)
+            _settings = {
+                "BL": _bb,
+                "CG+SN": _bb.with_extra_observations(_CG, _SN),
+                "QB+SP": _bb.with_belief_signals(_QB, _SP),
+                "CG+SN+QB+SP": _bb.with_extra_observations(_CG, _SN).with_belief_signals(_QB, _SP),
+            }
+        else:  # "Extra observations" (default)
+            _settings = {
+                "BL": _base.with_extra_observations(),
+                "CG": _base.with_extra_observations(_CG),
+                "SN": _base.with_extra_observations(_SN),
+                "CG+SN": _base.with_extra_observations(_CG, _SN),
+            }
         results_by_setting = {}
-        for _name, _p in mo.status.progress_bar(
-            list(_settings.items()), title="communication settings"
-        ):
-            results_by_setting[_name] = run_experiment(_p, seeds=[int(seed.value)])
+        with sweep_progress_bar(
+            len(_settings), _base.sim, title="communication settings"
+        ) as _bar:
+            for _name, _p in _settings.items():
+                results_by_setting[_name] = run_experiment(
+                    _p, seeds=[int(seed.value)], on_step=_bar.update)
     return (results_by_setting,)
 
 
@@ -219,10 +264,11 @@ def _(mo):
         r"""
         ### What the controller believes vs what actually happened
 
-        The controller shares its rolling-window smoother posterior over the
-        within-day queue (that is the QB channel). Below, for one chosen setting
-        and day, that belief (mean $\pm 1\sigma$) is overlaid on the day's
-        realised queue, so you can read *what gets broadcast* against reality.
+        The AIF controller maintains a rolling-window smoother posterior over the
+        within-day queue. Below, for one chosen setting and day, that belief
+        (mean $\pm 1\sigma$) is overlaid on the day's realised queue, so you can
+        read the controller's estimate against reality (and, under belief sharing,
+        *what gets broadcast*).
         """
     )
     return
@@ -233,26 +279,35 @@ def _(figure_block, figure_placeholder, plot_day_overview_grid,
       results_by_setting):
     # At-a-glance comparison of the first / middle / last day (shared Y per row),
     # so the day-to-day change is visible without moving the slider below. Shown
-    # for the full-information QB+SP setting; the dropdown below drills into any
-    # setting/day.
+    # for the richest (last) setting of the sweep; the dropdown below drills into
+    # any setting/day.
+    _ov_key = (
+        None if results_by_setting is None
+        else list(results_by_setting.keys())[-1]
+    )
     fig_overview = (
         figure_placeholder("Multi-day overview")
         if results_by_setting is None
-        else plot_day_overview_grid(results_by_setting["QB+SP"].step)
+        else plot_day_overview_grid(results_by_setting[_ov_key].step)
     )
     figure_block(
         "plot_day_overview_grid", fig_overview,
-        extra="_Shown for the **QB+SP** setting; use the dropdown below to drill "
-        "into any setting and day._",
+        extra=(
+            None if _ov_key is None
+            else f"_Shown for the **{_ov_key}** setting; use the dropdown below "
+            "to drill into any setting and day._"
+        ),
     )
     return (fig_overview,)
 
 
 @app.cell
-def _(days, mo):
+def _(days, mo, results_by_setting):
     # Defined once; displayed as a synced copy directly above the belief chart.
+    # Options follow whichever settings the selected mechanism actually swept.
+    _labels = list(results_by_setting.keys()) if results_by_setting else ["BL"]
     setting_sel = mo.ui.dropdown(
-        options=["BL", "QB", "SP", "QB+SP"], value="QB", label="setting",
+        options=_labels, value=_labels[-1], label="setting",
     )
     day_sel = mo.ui.slider(
         0, max(int(days.value) - 1, 0),

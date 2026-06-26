@@ -71,8 +71,8 @@ in two stages.
 At the end of the day travellers update their route beliefs from the realised
 travel times. Across days the two layers co-adapt through the shared network.
 
-**Two controller$\to$traveller communication channels.** The controller has a
-network-wide view and can share it in two distinct ways.
+**Controller$\to$traveller communication channels.** The controller has a
+network-wide view and can share it in three distinct ways.
 
 - *Cost-offset advisory* ($\theta$): a per-route signal (e.g. the congestion
   externality $E_r$) is folded into the traveller's **perceived cost**
@@ -80,6 +80,13 @@ network-wide view and can share it in two distinct ways.
   social internalisation ($0$ = purely selfish / user equilibrium, $1$ = fully
   cooperative / system optimum). This shifts route *choice* only; it never
   touches the belief update.
+- *Extra observations* (CG / SN): travellers natively observe only the route
+  they took. The controller relays the **true realised** route congestion
+  $L_r$ (**CG**) and/or signal green split $\phi_r$ (**SN**) of the routes they
+  did *not* take, folded into the end-of-day **belief update** for those routes
+  (gated so first-hand experience stays authoritative). This reaches **every**
+  traveller and works with **any** controller. The baseline (**BL**) relays
+  nothing.
 - *Controller-belief broadcast* (QB / SP): the controller has its own
   *belief* (a probability distribution) about the upcoming day. Before
   travellers choose, it shares its forward-predicted queue belief
@@ -88,9 +95,8 @@ network-wide view and can share it in two distinct ways.
   its own posterior (precision-weighted) to make the route decision; a
   non-compliant traveller uses only its own posterior. The fusion is
   **transient** -- it shapes the choice but is never written back into the
-  smoother, so the traveller's first-hand belief is untouched. The baseline
-  (**BL**) shares nothing, and at zero compliance every setting collapses onto
-  BL exactly.
+  smoother. Requires an AIF controller (only it holds beliefs). At zero
+  compliance every QB/SP setting collapses onto BL exactly.
 """
 
 _CONTROLLER = r"""
@@ -183,45 +189,59 @@ belief-informing CG/SN broadcasts of Experiment 3 are not used here.
 """
 
 _COMMUNICATION = r"""
-### What belief should the controller share?
+### What information should travellers receive?
 
-This experiment fixes the AIF controller and a single traveller population, and
-varies only **what the controller shares from its own belief** before travellers
-choose, comparing four settings:
+This experiment fixes the controller and a single traveller population, and
+varies only **what travellers learn about the network**. The *communication
+mechanism* dropdown selects which of two channels is swept.
 
-- **BL (baseline)** -- the controller shares nothing; travellers decide on their
-  own posterior alone.
-- **QB (queue belief)** -- the controller shares its forward-predicted belief
-  over the intersection queue, $\mathcal N(\hat L,\widehat{\mathrm{var}})$.
-- **SP (split plan)** -- the controller shares its *planned* green split
-  $\hat\phi$ for the upcoming day.
-- **QB+SP** -- both.
+**Extra observations (the default channel).** A traveller natively has only a
+**partial view**: it observes the realised travel time / queue (and, on the
+intersection, the green split) of the route it actually took that day, and learns
+nothing first-hand about the other route. This channel relays the **true realised
+values** of the routes the traveller did *not* take, folded into its end-of-day
+belief update (its rolling-window smoother), comparing four settings:
 
-The controller is itself **one big Active-Inference agent**: its latent is the
-whole within-day queue trajectory of both signalised movements, and it estimates
-it from the per-interval queue observations with a **rolling-window Gaussian
-smoother over the last few days** (the macro analogue of the travellers' window
-smoother), with a full covariance capturing the temporal correlations between
-intervals. QB is therefore the controller's **smoother posterior** over the queue
-(mean + variance, the variance shrinking as the window fills) -- a genuine
-inference object, not a forward guess. A compliant traveller **fuses** the shared
-Gaussian into its own posterior over the intersection-route latent at decision
-time (precision-weighted by the controller's variance: a confident belief pulls
-harder). The fusion is transient -- it never enters the *traveller's* smoother.
-QB tells travellers what queue to expect; SP lets them anticipate the
-intersection's effective capacity, which they cannot observe first-hand.
+- **BL (baseline)** -- nothing relayed; each traveller keeps its partial view.
+- **CG (route congestion)** -- the realised route queue $L_r(d,t)$ of the
+  non-chosen route is relayed.
+- **SN (signal control)** -- the realised green split $\phi_r(d,t)$ is relayed to
+  travellers who did not take the intersection.
+- **CG+SN** -- both.
+
+The relayed value is the day's true reading; the smoother folds it in with the
+same observation variance the traveller uses for its own first-hand readings,
+gated so it only informs the route the traveller did *not* take (its own
+experience stays authoritative -- no double counting). This channel reaches
+**every** traveller and works with **any** controller (it does not require the
+controller to hold beliefs); it simply lifts each traveller from a partial view
+toward a fuller one.
+
+**Belief sharing (the optional channel).** Instead of realised values, the AIF
+controller can share its **own forward-predicted belief** before travellers
+choose: its queue belief $\mathcal N(\hat L,\widehat{\mathrm{var}})$ (**QB**)
+and/or its *planned* green split $\hat\phi$ (**SP**), settings BL/QB/SP/QB+SP. The
+controller is itself **one big Active-Inference agent** whose latent is the whole
+within-day queue trajectory, estimated by a rolling-window smoother; QB is that
+**smoother posterior** (a genuine inference object, not a forward guess). A
+*compliant* traveller **fuses** the shared Gaussian into its own posterior at
+decision time (precision-weighted: a confident belief pulls harder); the fusion is
+transient and never enters the traveller's smoother. Unlike extra observations,
+this channel requires an AIF controller and reaches only compliant travellers; it
+is studied at full compliance. The **Both** setting runs each channel alone and
+combined.
 
 A per-chart "how to read" guide is appended automatically below (one entry per
 figure shown in this notebook), including which chart follows the inspect-day
 slider.
 
-A caveat the model makes explicit: sharing the controller's belief sharpens each
-traveller's *private* travel-time anticipation, which drives behaviour toward the
-**user equilibrium** -- it carries no externality/social term, so (unlike the
+A caveat the model makes explicit: both channels sharpen each traveller's
+*private* travel-time anticipation, which drives behaviour toward the **user
+equilibrium** -- neither carries an externality/social term, so (unlike the
 cost-offset $\theta\,E_r$ channel of Experiments 1 and 4) there is no guarantee
-that QB/SP alone reach the lowest *system* cost. Better anticipation can still
-help by reducing over-/under-reaction; read the value-of-information question as
-empirical, not assumed.
+that fuller information alone reaches the lowest *system* cost. Better
+anticipation can still help by reducing over-/under-reaction; read the
+value-of-information question as empirical, not assumed.
 """
 
 _COMPLIANCE = r"""

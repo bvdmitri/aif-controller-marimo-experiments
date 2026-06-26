@@ -57,7 +57,12 @@ def _():
 
     from aif_traffic import notebook_controls as nc
     from aif_traffic.explainers import explainer_pointer, notebook_explainer
-    from aif_traffic.notebook_io import figure_block, is_deployed, outputs_dir
+    from aif_traffic.notebook_io import (
+        figure_block,
+        is_deployed,
+        outputs_dir,
+        sweep_progress_bar,
+    )
     from aif_traffic.parameters import (
         AIFControllerSpec,
         DemandParams,
@@ -112,6 +117,7 @@ def _():
         plot_sweep_metrics,
         replace,
         run_experiment,
+        sweep_progress_bar,
     )
 
 
@@ -449,7 +455,8 @@ def _(mo):
 
 
 @app.cell
-def _(figure_block, mo, params, plot_sweep_metrics, run_experiment, sweep_btn):
+def _(figure_block, mo, params, plot_sweep_metrics, run_experiment,
+      sweep_btn, sweep_progress_bar):
     if not sweep_btn.value or params is None:
         fig_sweep = mo.md(
             "_Run the single experiment above, then click **Run theta sweep**._"
@@ -457,10 +464,14 @@ def _(figure_block, mo, params, plot_sweep_metrics, run_experiment, sweep_btn):
     else:
         _thetas = [0.0, 0.25, 0.5, 0.75, 1.0]
         _results_by_theta = {}
-        for _th in mo.status.progress_bar(_thetas, title="theta sweep"):
-            _results_by_theta[f"theta={_th:g}"] = run_experiment(
-                params.with_theta(_th), seeds=[params.sim.seed],
-            )
+        with sweep_progress_bar(
+            len(_thetas), params.sim, title="theta sweep"
+        ) as _bar:
+            for _th in _thetas:
+                _results_by_theta[f"theta={_th:g}"] = run_experiment(
+                    params.with_theta(_th), seeds=[params.sim.seed],
+                    on_step=_bar.update,
+                )
         fig_sweep = figure_block(
             "plot_sweep_metrics", plot_sweep_metrics(_results_by_theta)
         )

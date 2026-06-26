@@ -11,6 +11,14 @@ channels**:
   turns the cost-offset advisory into the EFE
   ``cost_offset = theta * compliance * E_r`` per (agent, route). This affects
   *action selection only* -- the smoother (``filter.py``) is untouched by it.
+* **Extra observations** (Experiment 3 default, CG/SN):
+  ``update_beliefs(..., obs_broadcast=...)`` folds the **true realised** route queue
+  (CG) and/or green split (SN) into the smoother as observations of routes the
+  agent did *not* take that day. This DOES enter the belief update -- a deliberate,
+  documented departure from the IWAI "belief update sees only first-hand,
+  chosen-route observations" property. The gate ``(last_choice != route)`` keeps
+  the chosen route's first-hand observation authoritative (no double counting). It
+  reaches **all** agents (not gated by compliance) and works with any controller.
 * **Controller-belief fusion** (Experiment 3/4, QB/SP):
   ``begin_day(..., belief_broadcast=...)`` fuses the controller's forward-predicted
   belief over the intersection queue (QB) and/or its planned green split (SP) into
@@ -185,6 +193,18 @@ class Population:
         self._obs_buffer_sigma_phi = np.ones((self.N, self.W), dtype=float)
         self._obs_mask = np.zeros((self.N, self.W), dtype=float)
 
+        # Extra-observation relay buffers (paper Exp 3: CG/SN). Unlike the
+        # chosen-route buffers above (one value per agent-day), these carry one
+        # value per (agent, route, day): the relay informs routes the agent did
+        # NOT take. The masks are choice-independent (set in update_beliefs) and
+        # ungated by compliance -- every agent receives the relayed observations.
+        self._extra_L = np.zeros((self.N, 2, self.W), dtype=float)
+        self._extra_sigma_L = np.ones((self.N, 2, self.W), dtype=float)
+        self._extra_phi = np.zeros((self.N, 2, self.W), dtype=float)
+        self._extra_sigma_phi = np.ones((self.N, 2, self.W), dtype=float)
+        self._extra_mask_L = np.zeros((self.N, 2, self.W), dtype=float)
+        self._extra_mask_phi = np.zeros((self.N, 2, self.W), dtype=float)
+
         self.day_count: int = 0
 
         self._last_observed_day = np.full((self.N, 2), -1, dtype=int)
@@ -236,6 +256,57 @@ class Population:
             vals = np.asarray(broadcast.value[route], dtype=float)
             offset[:, j] = scale * vals[t_i]
         return offset
+
+    def _append_observation_broadcast(self, obs_broadcast, t_i) -> None:
+        """Shift the extra-observation buffers and write today's slot.
+
+        The new slot carries, per (agent, route), the relayed true route queue
+        (CG) and green split (SN) sampled at the agent's departure minute. The
+        gate ``(last_choice != route)`` is the key correctness invariant: the
+        relay informs only routes the agent did *not* take (the first-hand
+        observation wins there -- no double counting), and it reaches **every**
+        agent (ungated by compliance: extra observations are not a recommendation
+        a traveller may decline, just additional sensor data). When nothing is
+        relayed the new slot's masks stay zero (a no-op in the smoother).
+
+        The relayed value is the controller's true reading; the traveller's trust
+        in it is encoded by the fold variance (``sigma_L_obs`` / ``sigma_phi_obs``),
+        not by injecting random noise. This keeps the pipeline draw-free here, so
+        the baseline (nothing relayed) is bit-identical to no relay.
+        """
+        # Shift every extra-obs buffer/mask left by one day.
+        for buf in (
+            self._extra_L, self._extra_sigma_L,
+            self._extra_phi, self._extra_sigma_phi,
+            self._extra_mask_L, self._extra_mask_phi,
+        ):
+            buf[:, :, :-1] = buf[:, :, 1:]
+        # Default new slot = no relayed observation (mask 0 ⇒ no-op).
+        self._extra_L[:, :, -1] = 0.0
+        self._extra_sigma_L[:, :, -1] = 1.0
+        self._extra_phi[:, :, -1] = 0.0
+        self._extra_sigma_phi[:, :, -1] = 1.0
+        self._extra_mask_L[:, :, -1] = 0.0
+        self._extra_mask_phi[:, :, -1] = 0.0
+
+        if obs_broadcast is None:
+            return
+
+        # CG: route-queue relay for routes the agent did not take (all agents).
+        if getattr(obs_broadcast, "L", None) is not None:
+            for j, route in enumerate(self.route_names):
+                vals = np.asarray(obs_broadcast.L[route], dtype=float)[t_i]
+                self._extra_L[:, j, -1] = vals
+                self._extra_sigma_L[:, j, -1] = np.maximum(self.sigma_L_obs, 1e-3)
+                self._extra_mask_L[:, j, -1] = (self.last_choice != j).astype(float)
+
+        # SN: green-split relay for the signalised route (index 0) only.
+        if getattr(obs_broadcast, "phi", None) is not None:
+            route0 = self.route_names[0]
+            phi_vals = np.asarray(obs_broadcast.phi[route0], dtype=float)[t_i]
+            self._extra_phi[:, 0, -1] = phi_vals
+            self._extra_sigma_phi[:, 0, -1] = np.maximum(self.sigma_phi_obs, 1e-3)
+            self._extra_mask_phi[:, 0, -1] = (self.last_choice != 0).astype(float)
 
     def _fuse_controller_belief(self, state: VariationalState, bb) -> VariationalState:
         """Transient decision-time fusion of the controller's broadcast belief
@@ -350,19 +421,27 @@ class Population:
         L_obs_alpha: np.ndarray,
         L_obs_beta: np.ndarray,
         green_obs_alpha: np.ndarray | None = None,
+        obs_broadcast=None,
         rng: np.random.Generator | None = None,
         obs_noise_sd: float = 0.0,
     ) -> None:
         """Append today's TT + queue (+ green-split) observations and re-fit.
 
-        First-hand only: each agent updates from the realised travel time and
-        queue on the route it actually took (and, on the signalised route, the
-        green split). ``green_obs_alpha`` is the realised intersection green
-        split, aligned to the traveller's arrival, per departure minute (length
-        ``K``); only agents who chose the intersection observe it (the smoother
-        gates it to the signalised route). The controller's broadcast does NOT
-        enter here -- it is fused transiently at decision time in
-        :meth:`begin_day` and never persists into the smoother.
+        First-hand: each agent updates from the realised travel time and queue on
+        the route it actually took (and, on the signalised route, the green
+        split). ``green_obs_alpha`` is the realised intersection green split,
+        aligned to the traveller's arrival, per departure minute (length ``K``);
+        only agents who chose the intersection observe it first-hand (the smoother
+        gates it to the signalised route).
+
+        ``obs_broadcast`` is the controller's **extra-observation** relay (paper
+        Exp 3: CG/SN; :class:`communication.ObservationBroadcast`). When present,
+        **every** agent additionally folds the relayed true route queue (CG)
+        and/or green split (SN) into its belief about routes it did *not* take
+        that day. ``None`` (or an empty broadcast, the baseline BL case) leaves
+        the belief update bit-identical to the chosen-route-only smoother. The
+        controller's *belief-sharing* broadcast (QB/SP) does NOT enter here -- it
+        is fused transiently at decision time in :meth:`begin_day`.
         """
         t_i = self.departure_time
         realised_tt_alpha = TT_alpha[t_i]
@@ -403,6 +482,8 @@ class Population:
         self._obs_mask[:, :-1] = self._obs_mask[:, 1:]
         self._obs_mask[:, -1] = 1.0
 
+        self._append_observation_broadcast(obs_broadcast, t_i)
+
         self.day_count += 1
 
         self._last_observed_day[np.arange(self.N), self.last_choice] = self.day_count
@@ -429,6 +510,12 @@ class Population:
             obs_mask=jnp.asarray(self._obs_mask),
             signalised=self.signalised_route,
             W=self.W,
+            y_extra_L_window=jnp.asarray(self._extra_L),
+            sigma_extra_L_window=jnp.asarray(self._extra_sigma_L),
+            mask_extra_L_window=jnp.asarray(self._extra_mask_L),
+            y_extra_phi_window=jnp.asarray(self._extra_phi),
+            sigma_extra_phi_window=jnp.asarray(self._extra_sigma_phi),
+            mask_extra_phi_window=jnp.asarray(self._extra_mask_phi),
             n_stale_days=jnp.asarray(n_stale),
             sigma_F_drift=jnp.asarray(self._sigma_F_drift)[:, None],
             sigma_C_drift=jnp.asarray(self._sigma_C_drift)[:, None],
