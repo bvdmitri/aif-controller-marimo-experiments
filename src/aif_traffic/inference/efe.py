@@ -128,3 +128,12 @@ def efe_route_probabilities(
 
     G = risk_weight * risk - info_gain_weight * info_gain
     return jax.nn.softmax(-gamma[:, None] * G, axis=-1)
+
+
+# JIT-compiled per-day choice/predictive steps. Same eager math, compiled once
+# and reused (constant shapes within a run). ``phi_lo``/``phi_hi``/``risk_weight``/
+# ``info_gain_weight`` stay traced (no coercion to Python scalars inside), so
+# their values may change without recompiling. ``cost_offset`` is consistently
+# ``None`` or an array within a run, so its pytree structure is stable.
+_predictive_moments_jit = jax.jit(_predictive_moments)
+efe_route_probabilities_jit = jax.jit(efe_route_probabilities)

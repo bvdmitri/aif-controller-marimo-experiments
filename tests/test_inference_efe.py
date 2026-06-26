@@ -5,7 +5,10 @@ from __future__ import annotations
 import jax.numpy as jnp
 import pytest
 
-from aif_traffic.inference.efe import efe_route_probabilities
+from aif_traffic.inference.efe import (
+    efe_route_probabilities,
+    efe_route_probabilities_jit,
+)
 from aif_traffic.inference.filter import CohortPriors, init_variational_state
 
 # These EFE-mechanics tests treat both routes as non-signalised so the
@@ -40,6 +43,31 @@ def test_softmax_returns_per_route_distribution():
     )
     assert P.shape == (N, 2)
     assert jnp.allclose(P.sum(axis=-1), 1.0, atol=1e-6)
+
+
+def test_jit_matches_eager_efe():
+    """The JIT-compiled choice step computes the same probabilities as the eager
+    function (the speedup does not change the math), with and without a broadcast
+    cost offset. Tight tolerance -- only XLA float reassociation may differ."""
+    import numpy as np
+
+    N = 16
+    state = _state(N=N, L_A=20.0, L_B=5.0, phi_A=0.4, phi_B=0.5)
+    sig = jnp.asarray([1.0, 0.0])  # route 0 signalised (exercises the phi path)
+    common = dict(
+        state=state, sigma_obs=jnp.full(N, 5.0), sigma_pref=jnp.full(N, 4.0),
+        gamma=jnp.full(N, 3.0), risk_weight=1.0, info_gain_weight=1.0,
+        signalised=sig,
+    )
+    # No cost offset.
+    eager = efe_route_probabilities(**common)
+    jit = efe_route_probabilities_jit(**common)
+    assert np.allclose(np.asarray(eager), np.asarray(jit), rtol=1e-4, atol=1e-6)
+    # With a cost offset (the other pytree structure of cost_offset).
+    offset = jnp.asarray([[2.0, 0.0]] * N)
+    eager_o = efe_route_probabilities(cost_offset=offset, **common)
+    jit_o = efe_route_probabilities_jit(cost_offset=offset, **common)
+    assert np.allclose(np.asarray(eager_o), np.asarray(jit_o), rtol=1e-4, atol=1e-6)
 
 
 def test_symmetric_priors_give_p_a_half():

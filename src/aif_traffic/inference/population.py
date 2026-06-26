@@ -36,7 +36,7 @@ import numpy as np
 from ..demand import DemandProfile
 from ..parameters import CohortSpec, EFEParams, PopulationParams, SignalParams, SimParams
 from ..utils import smooth_profile
-from .efe import _predictive_moments, efe_route_probabilities
+from .efe import _predictive_moments_jit, efe_route_probabilities_jit
 from .filter import (
     C_IDX,
     CohortPriors,
@@ -46,7 +46,7 @@ from .filter import (
     VariationalState,
     _kalman_one_obs,
     init_variational_state,
-    window_step,
+    window_step_jit,
 )
 
 
@@ -223,7 +223,7 @@ class Population:
     # ----------------------------------------------------- helper accessors
     @property
     def predictive_moments(self) -> tuple[np.ndarray, np.ndarray]:
-        mu_y, var_y = _predictive_moments(
+        mu_y, var_y = _predictive_moments_jit(
             self.state, self.signalised_route, self.phi_lo, self.phi_hi,
         )
         return np.asarray(mu_y), np.asarray(var_y)
@@ -379,7 +379,7 @@ class Population:
         ):
             state = self._fuse_controller_belief(self.state, belief_broadcast)
 
-        P = efe_route_probabilities(
+        P = efe_route_probabilities_jit(
             state=state,
             sigma_obs=jnp.asarray(self.sigma_obs),
             sigma_pref=jnp.asarray(self.sigma_pref),
@@ -497,7 +497,7 @@ class Population:
             self.day_count - self._last_observed_day,
         )
 
-        result = window_step(
+        result = window_step_jit(
             state=self.state,
             cohort_priors=self.cohort_priors,
             route_chosen_window=jnp.asarray(self._obs_buffer_route),

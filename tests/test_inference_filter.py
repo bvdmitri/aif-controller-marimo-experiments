@@ -17,6 +17,7 @@ from aif_traffic.inference.filter import (
     init_variational_state,
 )
 from aif_traffic.inference.filter import window_step as _window_step_impl
+from aif_traffic.inference.filter import window_step_jit
 
 
 W_DEFAULT = 5  # smaller W in tests for speed
@@ -193,6 +194,53 @@ def test_extra_obs_informs_the_unchosen_route():
     assert jnp.all(var1_relayed < var1_base)          # and made more certain
     # Routes are independent: the route-1 relay leaves route 0 unchanged.
     assert jnp.allclose(base.mu[:, 0, L_IDX], relayed.mu[:, 0, L_IDX])
+
+
+def _full_window_kwargs(N=4, W=W_DEFAULT, *, learn_obs_noise):
+    """A representative window exercising TT/L/phi folds, extra-obs relays, and
+    (optionally) VB noise-learning -- used to compare eager vs JIT."""
+    priors = _cohort_priors(N=N)
+    state = init_variational_state(cohort_priors=priors)
+    route, y_tt, sigma_tt, y_L, sigma_L, mask = _empty_window(N, W)
+    for d in range(W):  # every day observed, chosen route 0
+        route, y_tt, sigma_tt, y_L, sigma_L, mask = _fill_window(
+            route, y_tt, sigma_tt, y_L, sigma_L, mask, d, 0, 18.0 + d, 60.0 + 2.0 * d)
+    z = jnp.zeros((N, 2, W))
+    ones = jnp.ones((N, 2, W))
+    y_xL = jnp.zeros((N, 2, W)).at[:, 1, :].set(150.0)   # relay route-1 queue
+    m_xL = jnp.zeros((N, 2, W)).at[:, 1, :].set(1.0)
+    return dict(
+        state=state, cohort_priors=priors, route_chosen_window=route,
+        y_tt_window=y_tt, sigma_tt_window=sigma_tt, y_L_window=y_L,
+        sigma_L_window=sigma_L, y_phi_window=jnp.full((N, W), 0.45),
+        sigma_phi_window=jnp.full((N, W), 0.05), obs_mask=mask,
+        signalised=jnp.asarray([1.0, 0.0]), W=W,
+        y_extra_L_window=y_xL, sigma_extra_L_window=jnp.full((N, 2, W), 10.0),
+        mask_extra_L_window=m_xL, y_extra_phi_window=z,
+        sigma_extra_phi_window=ones, mask_extra_phi_window=z,
+        learn_obs_noise=learn_obs_noise, return_obs_noise=True,
+    )
+
+
+@pytest.mark.parametrize("learn", [False, True])
+def test_jit_smoother_matches_eager(learn):
+    """The JIT-compiled smoother matches the eager ``window_step`` (the speedup
+    does not change the math). Tight tolerance -- only XLA float reassociation
+    may differ from eager. Covers TT/L/phi + extra-obs folds and VB on/off."""
+    import numpy as np
+
+    kw = _full_window_kwargs(learn_obs_noise=learn)
+    eager_state, eager_noise = _window_step_impl(**kw)
+    jit_state, jit_noise = window_step_jit(**kw)
+    assert np.allclose(np.asarray(eager_state.mu), np.asarray(jit_state.mu),
+                       rtol=1e-4, atol=1e-5)
+    assert np.allclose(np.asarray(eager_state.scale_tril),
+                       np.asarray(jit_state.scale_tril), rtol=1e-4, atol=1e-5)
+    if learn:
+        assert np.allclose(np.asarray(eager_noise.b_L),
+                           np.asarray(jit_noise.b_L), rtol=1e-4, atol=1e-5)
+    else:
+        assert eager_noise is None and jit_noise is None
 
 
 def test_init_variational_state_cohort_priors():

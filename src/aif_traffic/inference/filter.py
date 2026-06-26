@@ -49,6 +49,7 @@ from __future__ import annotations
 
 from typing import NamedTuple
 
+import jax
 import jax.numpy as jnp
 
 
@@ -658,3 +659,25 @@ def window_step(
     if return_obs_noise:
         return new_state, obs_noise
     return new_state
+
+
+# JIT-compiled smoother (the per-day hot path). ``window_step`` is eager
+# ``jax.numpy`` with Python loops over the W-day window and the Laplace/VB
+# iterations -- at N=2000 that is hundreds of individually-dispatched tiny ops
+# per day. ``jax.jit`` fuses them into one compiled kernel: identical math (same
+# operations, same float32 precision), just compiled. The static args are the
+# ones that set loop counts / branch structure / output shape; they are constant
+# within a run, so this compiles once (on the first day past the window) and is
+# reused for every later day and every sweep experiment (same N/W/R). The
+# remaining float/array args stay traced (no recompile when their values change).
+window_step_jit = jax.jit(
+    window_step,
+    static_argnames=(
+        "W",
+        "n_laplace_iters",
+        "learn_obs_noise",
+        "obs_noise_a0",
+        "obs_noise_vb_iters",
+        "return_obs_noise",
+    ),
+)
