@@ -13,8 +13,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib.animation import FuncAnimation, PillowWriter
+from matplotlib.colors import Normalize
 
-from .primitives import TEXT_W
+from .network import _network_color_scale, _render_network_axes
+from .primitives import TEXT_W, place_legend_above
 
 
 def animate_days(
@@ -22,12 +24,13 @@ def animate_days(
     out_path: str | Path,
     *,
     seed: int | None = None,
-    fps: int = 4,
+    fps: int = 12,
 ) -> Path:
     """Write a gif with one frame per day (within-day queues + green split).
 
     Returns the path written. Axis limits are fixed across frames so the
-    day-to-day evolution is visually comparable.
+    day-to-day evolution is visually comparable. ``fps`` sets the playback speed
+    (frames per second); raise it for a quicker run-through of a long run.
     """
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -51,7 +54,7 @@ def animate_days(
         ax_q.set_ylim(0, q_max)
         ax_q.set_ylabel("queue [veh]")
         ax_q.set_title(f"AIF controller -- day {day}")
-        ax_q.legend(loc="upper right")
+        place_legend_above(ax_q)
         ax_q.grid(alpha=0.25)
 
         ax_phi.plot(d["tau"], d["phi2"], color="tab:blue", label=r"$\phi_2$")
@@ -60,11 +63,83 @@ def animate_days(
         ax_phi.set_xlim(0, tau_max)
         ax_phi.set_xlabel("time of day [min]")
         ax_phi.set_ylabel("green fraction")
-        ax_phi.legend(loc="upper right")
+        place_legend_above(ax_phi)
         ax_phi.grid(alpha=0.25)
         fig.tight_layout()
 
     anim = FuncAnimation(fig, draw, frames=days, interval=1000 / max(fps, 1))
+    anim.save(out_path, writer=PillowWriter(fps=fps))
+    plt.close(fig)
+    return out_path
+
+
+def animate_network_state(
+    step: pd.DataFrame,
+    net,
+    out_path: str | Path,
+    *,
+    day: int | None = None,
+    color_by: str = "travellers",
+    seed: int | None = None,
+    shared_scale: bool = True,
+    fps: int = 40,
+) -> Path:
+    """Write a gif of the network state, one frame per time of day within a day.
+
+    Animates the node-edge network of :func:`plot_network_state` across the
+    minutes of a single ``day`` (the day chosen by the notebook's inspect-day
+    slider, or the last day when ``day is None``), so the viewer watches the
+    traveller flow (or queue) wave build up and clear across the junction. The
+    colour scale is fixed across frames -- to the run-wide maximum with
+    ``shared_scale`` (default) so it is comparable with the other days, or the
+    day's own maximum otherwise. ``fps`` sets the playback speed (frames per
+    second); the default is brisk because a fine-grained day has many minutes.
+    Returns the path written.
+    """
+    if tuple(net.link_ids) != (1, 2, 3, 4, 5, 6, 7):
+        raise ValueError(
+            "animate_network_state assumes the default 7-link intersection "
+            f"network; got link ids {net.link_ids}."
+        )
+    if color_by not in ("travellers", "queue"):
+        raise ValueError(f"color_by must be 'travellers' or 'queue', got {color_by!r}.")
+
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    sd = step if (seed is None or "seed" not in step.columns) else step[step["seed"] == seed]
+    if "seed" in sd.columns and seed is None:
+        sd = sd[sd["seed"] == sd["seed"].min()]
+    if day is None:
+        day = int(sd["day"].max())
+    day_df = sd[sd["day"] == day].sort_values("tau")
+    taus = [int(t) for t in day_df["tau"].to_numpy()]
+
+    scale_df = sd if shared_scale else day_df
+    cmap, clabel, vmax = _network_color_scale(scale_df, net, color_by)
+    norm = Normalize(vmin=0.0, vmax=max(vmax, 1e-6))
+
+    fig, ax = plt.subplots(figsize=(TEXT_W * 1.35, TEXT_W * 0.9))
+    # Colour key as a slim horizontal strip below the map (created once, out of
+    # the way of the link labels) rather than a cramped vertical side bar.
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+    sm.set_array([])
+    fig.colorbar(sm, ax=ax, label=clabel, orientation="horizontal",
+                 fraction=0.05, pad=0.04)
+
+    def draw(tau: int) -> None:
+        row = day_df[day_df["tau"] == tau].iloc[0]
+        ax.clear()
+        _render_network_axes(ax, row, net, norm, cmap, color_by)
+        phi2, phi6 = float(row["phi2"]), float(row["phi6"])
+        ax.set_title(
+            f"Network state — day {day}, t = {tau} min\n"
+            f"green split $\\phi_2$={phi2:.2f}, $\\phi_6$={phi6:.2f}   "
+            f"(colour: {color_by})",
+            fontsize=8,
+        )
+
+    anim = FuncAnimation(fig, draw, frames=taus, interval=1000 / max(fps, 1))
     anim.save(out_path, writer=PillowWriter(fps=fps))
     plt.close(fig)
     return out_path

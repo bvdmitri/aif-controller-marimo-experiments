@@ -296,6 +296,86 @@ def _link_flows(row, net) -> dict[int, float]:
     return flows
 
 
+def _network_color_scale(scale_df: pd.DataFrame, net, color_by: str):
+    """Colour map, colourbar label and value maximum for a network-state frame.
+
+    ``scale_df`` is the slice the colour scale is normalised over (one day, or
+    all days for a run-wide shared scale). Shared between the static
+    :func:`plot_network_state` and the per-frame animation so the colour scale is
+    computed identically in both.
+    """
+    if color_by == "queue":
+        cmap, clabel = plt.get_cmap("YlOrRd"), "queue length [veh]"
+        vmax = float(np.nanmax([scale_df[f"L{lid}"].max() for lid in net.link_ids]))
+    else:
+        # Max link flow = max over links of the route-flow sums.
+        flow_scale = {lid: np.zeros(len(scale_df)) for lid in net.link_ids}
+        for r in net.routes:
+            qr = scale_df[f"Q_{r}"].to_numpy()
+            for lid in net.route_links[r]:
+                flow_scale[lid] = flow_scale[lid] + qr
+        cmap, clabel = plt.get_cmap("viridis"), "traveller flow [veh/h]"
+        vmax = float(np.nanmax([flow_scale[lid].max() for lid in net.link_ids]))
+    return cmap, clabel, vmax
+
+
+def _render_network_axes(ax, row, net, norm, cmap, color_by: str) -> None:
+    """Draw one network-state frame (links + labels + nodes) onto ``ax``.
+
+    Pure drawing of the graph for a single ``(day, tau)`` ``row``: link arrows
+    coloured by the selected metric, per-link labels (flow / queue / green
+    split) and the OD/junction nodes. Sets the aspect, hides the axis and pins
+    the limits. Shared by the static plot and the animation so the layout is
+    defined once.
+    """
+    flows = _link_flows(row, net)
+    queues = {lid: float(row[f"L{lid}"]) for lid in net.link_ids}
+    phi = {2: float(row["phi2"]), 6: float(row["phi6"])}
+    values = queues if color_by == "queue" else flows
+
+    ax.set_aspect("equal")
+    ax.axis("off")
+
+    for lid, (a, b) in _LINK_FROM_TO.items():
+        (x0, y0), (x1, y1) = _NODE_POS[a], _NODE_POS[b]
+        colour = cmap(norm(values[lid]))
+        # Bypass arcs above the axis (matching the paper figure); rad<0 bows up.
+        arc = -0.45 if lid == _BYPASS_LINK else 0.0
+        ax.add_patch(FancyArrowPatch(
+            (x0, y0), (x1, y1),
+            connectionstyle=f"arc3,rad={arc}",
+            arrowstyle="-|>", mutation_scale=14,
+            linewidth=3.0, color=colour, shrinkA=12, shrinkB=12, zorder=1,
+        ))
+        # Label position: left part of the arc for the bypass (clear of the
+        # vertical C--D links), perpendicular offset otherwise.
+        mx, my = (x0 + x1) / 2.0, (y0 + y1) / 2.0
+        dx, dy = x1 - x0, y1 - y0
+        length = np.hypot(dx, dy) or 1.0
+        nx, ny = -dy / length, dx / length  # unit normal
+        if lid == _BYPASS_LINK:
+            mx, my, off = mx - 1.0, my + 0.95, (0.0, 0.0)
+        else:
+            off = (nx * 0.34, ny * 0.34)
+        label = f"L{lid}\n{flows[lid]:.0f} veh/h\nq={queues[lid]:.0f}"
+        if lid in phi:
+            label += f"\n$\\phi$={phi[lid]:.2f}"
+        ax.text(mx + off[0], my + off[1], label, ha="center", va="center",
+                fontsize=6.5, zorder=3,
+                bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="#cccccc",
+                          alpha=0.85, lw=0.5))
+
+    for name, (x, y) in _NODE_POS.items():
+        is_od = name in ("A", "B", "C", "D")
+        ax.scatter([x], [y], s=380 if is_od else 200,
+                   c="#1f4e79" if is_od else "#888888", zorder=2)
+        ax.text(x, y, name, ha="center", va="center", color="white",
+                fontsize=8, fontweight="bold", zorder=4)
+
+    ax.set_xlim(-1.0, 9.0)
+    ax.set_ylim(-3.2, 3.2)
+
+
 def plot_network_state(
     step: pd.DataFrame,
     net,
@@ -337,66 +417,16 @@ def plot_network_state(
     tau = int(taus[np.argmin(np.abs(taus - tau))])  # snap to an available tau
     row = day_df[day_df["tau"] == tau].iloc[0]
 
-    flows = _link_flows(row, net)
-    queues = {lid: float(row[f"L{lid}"]) for lid in net.link_ids}
     phi = {2: float(row["phi2"]), 6: float(row["phi6"])}
 
     # Normalise the colour scale to the day's maximum, or (default) the global
     # maximum across all recorded days so snapshots are comparable across days.
     scale_df = sd if shared_scale else day_df
-    if color_by == "queue":
-        values, cmap, clabel = queues, plt.get_cmap("YlOrRd"), "queue length [veh]"
-        vmax = float(np.nanmax([scale_df[f"L{lid}"].max() for lid in net.link_ids]))
-    else:
-        # Max link flow = max over links of the route-flow sums.
-        flow_scale = {lid: np.zeros(len(scale_df)) for lid in net.link_ids}
-        for r in net.routes:
-            qr = scale_df[f"Q_{r}"].to_numpy()
-            for lid in net.route_links[r]:
-                flow_scale[lid] = flow_scale[lid] + qr
-        values, cmap, clabel = flows, plt.get_cmap("viridis"), "traveller flow [veh/h]"
-        vmax = float(np.nanmax([flow_scale[lid].max() for lid in net.link_ids]))
+    cmap, clabel, vmax = _network_color_scale(scale_df, net, color_by)
     norm = Normalize(vmin=0.0, vmax=max(vmax, 1e-6))
 
     fig, ax = plt.subplots(figsize=(TEXT_W * 1.35, TEXT_W * 0.85))
-    ax.set_aspect("equal")
-    ax.axis("off")
-
-    for lid, (a, b) in _LINK_FROM_TO.items():
-        (x0, y0), (x1, y1) = _NODE_POS[a], _NODE_POS[b]
-        colour = cmap(norm(values[lid]))
-        # Bypass arcs above the axis (matching the paper figure); rad<0 bows up.
-        arc = -0.45 if lid == _BYPASS_LINK else 0.0
-        ax.add_patch(FancyArrowPatch(
-            (x0, y0), (x1, y1),
-            connectionstyle=f"arc3,rad={arc}",
-            arrowstyle="-|>", mutation_scale=14,
-            linewidth=3.0, color=colour, shrinkA=12, shrinkB=12, zorder=1,
-        ))
-        # Label position: left part of the arc for the bypass (clear of the
-        # vertical C--D links), perpendicular offset otherwise.
-        mx, my = (x0 + x1) / 2.0, (y0 + y1) / 2.0
-        dx, dy = x1 - x0, y1 - y0
-        length = np.hypot(dx, dy) or 1.0
-        nx, ny = -dy / length, dx / length  # unit normal
-        if lid == _BYPASS_LINK:
-            mx, my, off = mx - 1.0, my + 0.95, (0.0, 0.0)
-        else:
-            off = (nx * 0.34, ny * 0.34)
-        label = f"L{lid}\n{flows[lid]:.0f} veh/h\nq={queues[lid]:.0f}"
-        if lid in phi:
-            label += f"\n$\\phi$={phi[lid]:.2f}"
-        ax.text(mx + off[0], my + off[1], label, ha="center", va="center",
-                fontsize=6.5, zorder=3,
-                bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="#cccccc",
-                          alpha=0.85, lw=0.5))
-
-    for name, (x, y) in _NODE_POS.items():
-        is_od = name in ("A", "B", "C", "D")
-        ax.scatter([x], [y], s=380 if is_od else 200,
-                   c="#1f4e79" if is_od else "#888888", zorder=2)
-        ax.text(x, y, name, ha="center", va="center", color="white",
-                fontsize=8, fontweight="bold", zorder=4)
+    _render_network_axes(ax, row, net, norm, cmap, color_by)
 
     sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
     sm.set_array([])
@@ -408,8 +438,6 @@ def plot_network_state(
         f"(colour: {color_by})",
         fontsize=8,
     )
-    ax.set_xlim(-1.0, 9.0)
-    ax.set_ylim(-3.2, 3.2)
     fig.tight_layout()
     return fig
 

@@ -72,6 +72,7 @@ def _():
     )
     from aif_traffic.plotting import (
         animate_days,
+        animate_network_state,
         figure_placeholder,
         plot_daily_system_cost,
         plot_day_overview_grid,
@@ -97,6 +98,7 @@ def _():
         SignalType,
         SimParams,
         animate_days,
+        animate_network_state,
         explainer_pointer,
         figure_block,
         figure_placeholder,
@@ -359,6 +361,30 @@ def _(color_metric, day_sel, figure_block, figure_placeholder, mo, params,
                           justify="start", gap=2)
     mo.vstack([_controls, _out]) if results is not None else _out
     return (fig_network,)
+
+
+@app.cell
+def _(is_deployed, mo):
+    make_net_gif = mo.ui.checkbox(value=False, label="Render network-flow gif")
+    make_net_gif if not is_deployed() else mo.md("")
+    return (make_net_gif,)
+
+
+@app.cell
+def _(animate_network_state, color_metric, day_sel, figure_block, is_deployed,
+      make_net_gif, mo, outputs_dir, params, results):
+    if results is None or is_deployed() or not make_net_gif.value:
+        net_gif_view = mo.md("")
+    else:
+        net_gif_path = animate_network_state(
+            results.step, params.network,
+            outputs_dir() / "aif_network_flow.gif",
+            day=int(day_sel.value), color_by=color_metric.value,
+        )
+        net_gif_view = figure_block("animate_network_state",
+                                    mo.image(str(net_gif_path)))
+    net_gif_view
+    return
 
 
 @app.cell

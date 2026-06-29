@@ -11,7 +11,11 @@ from __future__ import annotations
 
 import matplotlib as mpl
 
-from .animation import animate_controller_comparison, animate_days
+from .animation import (
+    animate_controller_comparison,
+    animate_days,
+    animate_network_state,
+)
 from .comparison import (
     controller_summary,
     plot_controller_metrics,
@@ -71,6 +75,7 @@ __all__ = [
     "plot_green_split_heatmap",
     "plot_daily_system_cost",
     "animate_days",
+    "animate_network_state",
     "plot_controller_metrics",
     "plot_green_split_heatmaps_by_controller",
     "plot_controller_theta_grid",

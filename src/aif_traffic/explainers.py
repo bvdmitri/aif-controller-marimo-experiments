@@ -465,6 +465,17 @@ CHART_GUIDE: dict[str, dict] = {
         "the axes are fixed, shrinking curves mean genuinely smaller queues over the "
         "run.",
     },
+    "animate_network_state": {
+        "title": "Network-flow animation",
+        "slider": "day",
+        "what": "An animation, one frame per time of day within the inspected day, "
+        "of the seven-link network graph; each link is coloured by traveller flow "
+        "(or queue) and labelled with flow, queue and the green split.",
+        "read": "Play it to watch the flow (or congestion) wave build up and clear "
+        "across the junction over the day; the colour scale is fixed across frames "
+        "and days, so brighter links mean genuinely more of the metric. The "
+        "inspect-day slider re-points the animation at another day.",
+    },
     "animate_controller_comparison": {
         "title": "Controller comparison animation",
         "slider": None,
@@ -491,6 +502,7 @@ NOTEBOOK_CHARTS: dict[str, tuple[str, ...]] = {
         "plot_daily_system_cost",
         "plot_route_share_over_days",
         "animate_days",
+        "animate_network_state",
         "plot_sweep_metrics",
     ),
     "controller_benchmark": (
