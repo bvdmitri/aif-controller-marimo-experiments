@@ -47,19 +47,24 @@ experiment notebook.
     controller. Built from the **same-day** realised values. Empty `obs_signals` (BL)
     is bit-identical (masks all-zero → exact no-op).
   - **Controller-belief broadcast** (`BeliefSignal` = `QUEUE_BELIEF` / `SPLIT_PLAN`,
-    `build_belief_broadcast`, `BeliefBroadcast`; settings BL/QB/SP/QB+SP — the
-    **optional, AIF-only** story, kept off by default in the notebook): the
-    controller shares its **smoother posterior** over the upcoming day — its queue
-    belief `N(L_hat, var)` (QB) and/or its planned green split (SP) — *before*
-    travellers choose. A *compliant* traveller **fuses** that Gaussian into a
-    **copy** of its own posterior at decision time (`population._fuse_controller_belief`,
-    reusing `filter._kalman_one_obs`), gated by compliance. The fusion is
-    **transient** — it informs the choice but is never written back, so the
-    traveller smoother stays **first-hand-only** (IWAI-verbatim). Empty
-    `belief_signals` (BL), or zero compliance, is bit-identical to no information.
+    `build_belief_broadcast`, `BeliefBroadcast`; settings BL/QB/SP/QB+SP — **parked
+    for a future "heterogeneity" paper, kept off by default and NOT part of the
+    current paper**): the controller shares its **smoother posterior** over the
+    upcoming day — its queue belief `N(L_hat, var)` (QB) and/or its planned green
+    split (SP) — *before* travellers choose. A *compliant* traveller **fuses** that
+    Gaussian into a **copy** of its own posterior at decision time
+    (`population._fuse_controller_belief`, reusing `filter._kalman_one_obs`), gated
+    by compliance. The fusion is **transient** — it informs the choice but is never
+    written back, so the traveller smoother stays **first-hand-only**
+    (IWAI-verbatim). Empty `belief_signals` (BL), or zero compliance, is
+    bit-identical to no information. (Compliance, being human-level trust toward an
+    assistant agent, is likewise deferred to that future paper — not a paper
+    experiment here.)
   - The Experiment 3 notebook (`03_information_communication.py`) picks the channel
     via the `nc.comm_mechanism()` dropdown (Disable / Extra observations [default] /
-    Belief sharing / Both); belief sharing runs at compliance=1.
+    Belief sharing / Both); the **extra-observations** channel is the paper's
+    Experiment-3 story, belief sharing is the off-by-default exploratory option
+    (run at compliance=1).
 
 ## Conventions
 
@@ -188,8 +193,9 @@ a human or another agent can read it back):
   away or silently encoded. **If a report reads MISMATCH, that is a finding to
   raise against the paper, not a test to "fix".** Use this flavour when you are
   fine with either outcome and want the result reported, not enforced. (As of
-  writing, the communication report flags that QB+SP is *not* the lowest-cost
-  setting, contrary to the Experiment-3 narrative — worth a look.)
+  writing, the communication report runs the **extra-observations** settings
+  BL/CG/SN/CG+SN and confirms the paper's Experiment-3 narrative: SN gives the
+  lowest system cost, CG the sharpest beliefs, and CG+SN does *not* improve on SN.)
 
 ## Notebooks
 
@@ -210,10 +216,15 @@ The three experiment notebooks mirror the paper's Experiment section one-to-one
   a `controller_summary` table, and an optional faceted gif
   (`animate_controller_comparison`).
 - `03_information_communication.py` — **Experiment 3**: fix the AIF controller and
-  sweep what it shares from its belief, BL/QB/SP/QB+SP, via `with_belief_signals(...)`,
-  overlaying outcomes and belief uncertainty (`plot_sweep_metrics`) plus per-day
-  route-choice heatmaps (`plot_route_choice_heatmaps`). A fourth notebook
-  `04_compliance_robustness.py` sweeps the compliance fraction that gates the fusion.
+  sweep the **extra-observations** settings BL/CG/SN/CG+SN via
+  `with_extra_observations(...)` (the relayed *realised* queue / green split of
+  non-chosen routes), overlaying outcomes and belief uncertainty
+  (`plot_sweep_metrics`) plus per-day route-choice heatmaps
+  (`plot_route_choice_heatmaps`). The dropdown can also run the parked
+  belief-sharing channel (QB/SP) for exploration. A fourth notebook
+  `04_compliance_robustness.py` sweeps the compliance fraction that gates the
+  belief-sharing fusion — **exploratory, parked for a future heterogeneity paper,
+  not part of the current paper's experiment set.**
 
 Heavy per-experiment analysis charts (e.g. Experiment 2's theta×controller grid,
 Experiment 3's route-choice heatmaps) are scaffolded but not all built yet.

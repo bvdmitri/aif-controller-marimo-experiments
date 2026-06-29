@@ -238,7 +238,7 @@ slider.
 A caveat the model makes explicit: both channels sharpen each traveller's
 *private* travel-time anticipation, which drives behaviour toward the **user
 equilibrium** -- neither carries an externality/social term, so (unlike the
-cost-offset $\theta\,E_r$ channel of Experiments 1 and 4) there is no guarantee
+cost-offset $\theta\,E_r$ channel of Experiment 1) there is no guarantee
 that fuller information alone reaches the lowest *system* cost. Better
 anticipation can still help by reducing over-/under-reaction; read the
 value-of-information question as empirical, not assumed.
@@ -465,6 +465,17 @@ CHART_GUIDE: dict[str, dict] = {
         "the axes are fixed, shrinking curves mean genuinely smaller queues over the "
         "run.",
     },
+    "animate_route_flows": {
+        "title": "Within-day traveller-flow animation",
+        "slider": None,
+        "what": "An animation, one frame per day, of the within-day per-route "
+        "traveller flow: the A--B total (Q_AB) and its split into the intersection "
+        "route (Q_alpha) and the bypass (Q_beta), with the exogenous C--D stream "
+        "(Q_CD); axis limits are fixed across frames.",
+        "read": "Play it to watch the population redistribute between routes day by "
+        "day; because the axes are fixed, a Q_alpha dip with a matching Q_beta rise "
+        "means travellers have shifted from the intersection to the bypass.",
+    },
     "animate_network_state": {
         "title": "Network-flow animation",
         "slider": "day",
@@ -502,6 +513,7 @@ NOTEBOOK_CHARTS: dict[str, tuple[str, ...]] = {
         "plot_daily_system_cost",
         "plot_route_share_over_days",
         "animate_days",
+        "animate_route_flows",
         "animate_network_state",
         "plot_sweep_metrics",
     ),

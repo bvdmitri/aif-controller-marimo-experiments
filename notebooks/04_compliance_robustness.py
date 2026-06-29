@@ -1,6 +1,12 @@
-"""Experiment 4 -- Traveller compliance / non-compliance robustness.
+"""Compliance / non-compliance robustness (exploratory -- not a paper experiment).
 
-Fixes the AIF signal controller and the traveller population, and shares the
+This notebook exercises the **belief-sharing** channel, which is parked for a
+future "heterogeneity" paper and kept off by default elsewhere; it is **not**
+part of the current paper's experiment set (the paper's communication story is
+the "extra observations" relay of notebook 03). It is retained here as an
+exploratory artifact for the belief-sharing + compliance idea.
+
+It fixes the AIF signal controller and the traveller population, and shares the
 controller's full belief (**QB+SP** -- its forward-predicted queue belief and
 its planned green split) before travellers choose. We then vary only the
 **compliance fraction**: how many travellers actually fuse the controller's

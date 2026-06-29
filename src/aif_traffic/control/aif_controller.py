@@ -122,10 +122,8 @@ class AIFController(BaseController):
         same ``veh^-2`` units as the isotropic precision ``sigma_pref^-2`` and is
         directly comparable to it. With the defaults this makes the balance
         (imbalance-direction) precision the dominant term, i.e. *balance is
-        designed to matter*. (The paper's Table 2 currently lists an
-        un-normalised ``n`` with ``omega = 1``, under which the balance term is
-        numerically negligible -- that table should be updated to match this
-        convention.)
+        designed to matter*. This matches the paper (Appendix, preference
+        precision; ``omega = 0.02`` in the hyperparameter table).
         """
         s = self.spec
         n = np.array([1.0 / self._cbar2, -1.0 / self._cbar6])

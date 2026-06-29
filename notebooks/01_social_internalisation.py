@@ -73,6 +73,7 @@ def _():
     from aif_traffic.plotting import (
         animate_days,
         animate_network_state,
+        animate_route_flows,
         figure_placeholder,
         plot_daily_system_cost,
         plot_day_overview_grid,
@@ -99,6 +100,7 @@ def _():
         SimParams,
         animate_days,
         animate_network_state,
+        animate_route_flows,
         explainer_pointer,
         figure_block,
         figure_placeholder,
@@ -451,6 +453,28 @@ def _(animate_days, figure_block, is_deployed, make_gif, mo, outputs_dir,
         gif_path = animate_days(results.step, outputs_dir() / "aif_controller_days.gif")
         gif_view = figure_block("animate_days", mo.image(str(gif_path)))
     gif_view
+    return
+
+
+@app.cell
+def _(is_deployed, mo):
+    make_flow_gif = mo.ui.checkbox(
+        value=False, label="Render per-day traveller-flow gif")
+    make_flow_gif if not is_deployed() else mo.md("")
+    return (make_flow_gif,)
+
+
+@app.cell
+def _(animate_route_flows, figure_block, is_deployed, make_flow_gif, mo,
+      outputs_dir, results):
+    if results is None or is_deployed() or not make_flow_gif.value:
+        flow_gif_view = mo.md("")
+    else:
+        flow_gif_path = animate_route_flows(
+            results.step, outputs_dir() / "aif_traveller_days.gif")
+        flow_gif_view = figure_block(
+            "animate_route_flows", mo.image(str(flow_gif_path)))
+    flow_gif_view
     return
 
 

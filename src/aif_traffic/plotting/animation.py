@@ -73,6 +73,62 @@ def animate_days(
     return out_path
 
 
+def animate_route_flows(
+    step: pd.DataFrame,
+    out_path: str | Path,
+    *,
+    seed: int | None = None,
+    fps: int = 12,
+) -> Path:
+    """Write a gif with one frame per day of the travellers' per-route flow.
+
+    The day-by-day counterpart of :func:`animate_days` for the *traveller* layer:
+    each frame is the within-day route flow of :func:`plot_route_flows` -- the
+    A--B total demand and its split into the intersection route ``alpha`` and the
+    bypass ``beta``, alongside the exogenous C--D stream ``gamma`` -- so the
+    viewer watches the population redistribute between routes across learning
+    days. Axis limits are fixed to the run-wide maximum across frames so heights
+    are comparable. ``fps`` sets the playback speed. Returns the path written.
+    """
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    sd = step if seed is None else step[step["seed"] == seed]
+    days = sorted(sd["day"].unique())
+
+    tau_max = float(sd["tau"].max())
+    total_all = (sd["Q_alpha"] + sd["Q_beta"]).to_numpy()
+    f_max = max(float(np.nanmax([
+        total_all,
+        sd["Q_alpha"].to_numpy(),
+        sd["Q_beta"].to_numpy(),
+        sd["Q_gamma"].to_numpy(),
+    ])), 1.0) * 1.05
+
+    fig, ax = plt.subplots(figsize=(TEXT_W, TEXT_W * 0.6))
+
+    def draw(day: int) -> None:
+        d = sd[sd["day"] == day].sort_values("tau")
+        ax.clear()
+        ax.plot(d["tau"], d["Q_alpha"] + d["Q_beta"], color="0.6", ls="--",
+                label=r"$Q_{AB}$")
+        ax.plot(d["tau"], d["Q_alpha"], color="tab:blue", label=r"$Q_\alpha$")
+        ax.plot(d["tau"], d["Q_beta"], color="tab:green", label=r"$Q_\beta$")
+        ax.plot(d["tau"], d["Q_gamma"], color="tab:orange", label=r"$Q_{CD}$")
+        ax.set_ylim(0, f_max)
+        ax.set_xlim(0, tau_max)
+        ax.set_xlabel("time of day [min]")
+        ax.set_ylabel("traveller flow [veh/h]")
+        ax.set_title(f"AIF travellers -- day {day}")
+        place_legend_above(ax)
+        ax.grid(alpha=0.25)
+        fig.tight_layout()
+
+    anim = FuncAnimation(fig, draw, frames=days, interval=1000 / max(fps, 1))
+    anim.save(out_path, writer=PillowWriter(fps=fps))
+    plt.close(fig)
+    return out_path
+
+
 def animate_network_state(
     step: pd.DataFrame,
     net,

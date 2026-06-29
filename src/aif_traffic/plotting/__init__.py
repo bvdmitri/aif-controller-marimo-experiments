@@ -15,6 +15,7 @@ from .animation import (
     animate_controller_comparison,
     animate_days,
     animate_network_state,
+    animate_route_flows,
 )
 from .comparison import (
     controller_summary,
@@ -75,6 +76,7 @@ __all__ = [
     "plot_green_split_heatmap",
     "plot_daily_system_cost",
     "animate_days",
+    "animate_route_flows",
     "animate_network_state",
     "plot_controller_metrics",
     "plot_green_split_heatmaps_by_controller",

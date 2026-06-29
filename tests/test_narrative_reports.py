@@ -29,8 +29,8 @@ import pytest
 
 from aif_traffic.parameters import (
     AnticipatoryControllerSpec,
-    BeliefSignal,
     FixedTimeControllerSpec,
+    ObservationSignal,
     Params,
     ReactiveControllerSpec,
     SignalType,
@@ -105,8 +105,11 @@ def _finite(*xs) -> bool:
 # Report 1 -- Experiment 1: traveller social internalisation (theta)
 # ---------------------------------------------------------------------------
 def test_report_theta_effect_on_system_cost():
-    """Does higher social internalisation theta lower total system cost (and
-    even out the load), as Experiment 1 claims? Reported, not asserted.
+    """How does social internalisation theta affect total system cost? The
+    paper's Experiment-1 finding is *nuanced*: higher theta does NOT clearly
+    lower cost, and as theta -> 1 performance variability tends to increase --
+    the adaptive AIF controller "absorbs" much of theta's effect. We report the
+    cost-by-theta profile so that can be read off; the direction is not asserted.
 
     Note on faithfulness: theta enters the perceived cost as
     ``zeta_r = TT_r + theta * E_r``, so it can only bite if the externality
@@ -149,10 +152,11 @@ def test_report_theta_effect_on_system_cost():
         f"Monotone non-increasing in theta: {monotone}",
         f"theta changes the outcome at all:  {theta_does_anything}",
         *_verdict(
-            "higher theta spreads demand and lowers total system cost",
+            "higher theta does not clearly lower total system cost; the "
+            "controller absorbs much of theta's effect",
             f"theta=1 cost is {rel:+.1%} vs theta=0; monotone={monotone}; "
             f"theta-has-effect={theta_does_anything}",
-            holds=(cost_so < cost_ue),
+            holds=(not monotone or abs(rel) < 0.05),
         ),
     ]
     _narrate("REPORT: effect of social internalisation theta", lines)
@@ -167,16 +171,24 @@ def test_report_theta_effect_on_system_cost():
 # Report 2 -- Experiment 3: value of information communication
 # ---------------------------------------------------------------------------
 def test_report_communication_value():
-    """Does sharing the controller's belief (QB / SP / QB+SP) lower system cost
-    and belief uncertainty vs the baseline, with QB+SP best, as Experiment 3
-    claims?"""
-    base = _full_base().with_compliance(1.0)
+    """Experiment 3 ("extra observations"): travellers natively see only the
+    route they took; the system relays the *realised* queue (CG) and/or green
+    split (SN) of the non-chosen routes into their end-of-day belief update,
+    varying partial observability (BL/CG/SN/CG+SN). The paper claims sharing the
+    realised signal split (SN) gives the most stable, lowest-cost outcome, while
+    queue info alone (CG) can add volatility and CG+SN does not necessarily
+    improve on SN. Reported, not asserted.
+
+    (The belief-sharing channel QB/SP is parked for future work and not tested
+    here; see ``test_belief_informing.py`` for its mechanism tests.)
+    """
+    base = _full_base()
     settings = {
-        "BL": base.with_belief_signals(),
-        "QB": base.with_belief_signals(BeliefSignal.QUEUE_BELIEF),
-        "SP": base.with_belief_signals(BeliefSignal.SPLIT_PLAN),
-        "QB+SP": base.with_belief_signals(
-            BeliefSignal.QUEUE_BELIEF, BeliefSignal.SPLIT_PLAN
+        "BL": base.with_extra_observations(),
+        "CG": base.with_extra_observations(ObservationSignal.ROUTE_CONGESTION),
+        "SN": base.with_extra_observations(ObservationSignal.SIGNAL_CONTROL),
+        "CG+SN": base.with_extra_observations(
+            ObservationSignal.ROUTE_CONGESTION, ObservationSignal.SIGNAL_CONTROL
         ),
     }
     cost, sd = {}, {}
@@ -187,7 +199,8 @@ def test_report_communication_value():
 
     best_cost = min(cost, key=cost.get)
     best_sd = min(sd, key=sd.get)
-    any_helps = any(cost[k] < cost["BL"] for k in ("QB", "SP", "QB+SP"))
+    any_helps = any(cost[k] < cost["BL"] for k in ("CG", "SN", "CG+SN"))
+    cg_sn_beats_sn = cost["CG+SN"] < cost["SN"]
 
     lines = [
         "Steady-state system cost and intersection belief SD by setting:",
@@ -199,10 +212,13 @@ def test_report_communication_value():
         f"Lowest system cost:      {best_cost}",
         f"Lowest belief uncertainty: {best_sd}",
         f"Any information beats BL on cost: {any_helps}",
+        f"CG+SN beats SN on cost: {cg_sn_beats_sn}",
         *_verdict(
-            "richer shared belief lowers cost and uncertainty; QB+SP is best",
-            f"cheapest={best_cost}, least-uncertain={best_sd}, any-helps={any_helps}",
-            holds=(best_cost == "QB+SP"),
+            "sharing the realised signal split (SN) gives the lowest-cost, most "
+            "stable outcome; CG+SN does not necessarily improve on SN",
+            f"cheapest={best_cost}, least-uncertain={best_sd}, "
+            f"any-helps={any_helps}, CG+SN<SN={cg_sn_beats_sn}",
+            holds=(best_cost == "SN"),
         ),
     ]
     _narrate("REPORT: value of information communication", lines)
@@ -216,8 +232,10 @@ def test_report_communication_value():
 # Report 3 -- Experiment 2: controller benchmark
 # ---------------------------------------------------------------------------
 def test_report_controller_benchmark():
-    """Does the AIF controller achieve the lowest system cost against the
-    fixed-time, reactive, and anticipatory baselines, as Experiment 2 claims?"""
+    """The paper's Experiment-2 claim is that the AIF controller reaches a system
+    cost *comparable* to the anticipatory controller (AC) while driving a *more
+    stable* green split -- not that it is strictly the cheapest. We report both
+    the cost ranking and the green-split variation so that can be read off."""
     base = _full_base()
     controllers = {
         "fixed_time": FixedTimeControllerSpec(),
@@ -233,7 +251,29 @@ def test_report_controller_benchmark():
 
     ranked = summary.sort_values("mean_SC").reset_index(drop=True)
     cheapest = ranked.loc[0, "controller"]
-    aif_is_cheapest = "AIF" in str(cheapest)
+    by_ctrl = {str(r.controller): r for r in summary.itertuples()}
+
+    def _row(key):  # tolerate label formatting ("AIF", "Anticipatory", ...)
+        for name, row in by_ctrl.items():
+            if key.lower() in name.lower():
+                return row
+        return None
+
+    aif_row, ac_row = _row("aif"), _row("anticipatory")
+    # "Comparable cost": AIF within 10% of the anticipatory controller's cost.
+    cost_gap = (
+        (aif_row.mean_SC - ac_row.mean_SC) / ac_row.mean_SC
+        if aif_row and ac_row and ac_row.mean_SC else float("nan")
+    )
+    comparable_cost = math.isfinite(cost_gap) and abs(cost_gap) <= 0.10
+    # "More stable splits": the paper's claim is specifically that the AIF
+    # controller keeps a smoother green split than the *anticipatory* (predictive)
+    # controller it generalises -- not that it is the smoothest of all (the
+    # reactive controller makes small frequent adjustments).
+    aif_smoother_than_ac = (
+        bool(aif_row) and bool(ac_row)
+        and aif_row.mean_signal_variation < ac_row.mean_signal_variation
+    )
 
     lines = [
         "Controller benchmark (mean over recorded days):",
@@ -245,11 +285,14 @@ def test_report_controller_benchmark():
         ],
         "",
         f"Cheapest controller (lowest mean system cost): {cheapest}",
+        f"AIF cost vs anticipatory:    {cost_gap:+.1%} (comparable={comparable_cost})",
+        f"AIF green split smoother than anticipatory: {aif_smoother_than_ac}",
         *_verdict(
-            "the AIF controller outperforms the fixed-time, reactive, and "
-            "anticipatory baselines on system cost",
-            f"cheapest controller = {cheapest}",
-            holds=aif_is_cheapest,
+            "the AIF controller reaches a system cost comparable to the "
+            "anticipatory controller while keeping a more stable green split",
+            f"AIF-vs-AC cost gap = {cost_gap:+.1%}; "
+            f"AIF-smoother-than-AC = {aif_smoother_than_ac}",
+            holds=(comparable_cost and aif_smoother_than_ac),
         ),
     ]
     _narrate("REPORT: controller benchmark", lines)

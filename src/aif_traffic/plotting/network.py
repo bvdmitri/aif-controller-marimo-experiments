@@ -179,13 +179,10 @@ def plot_route_flows(step: pd.DataFrame, day: int | None = None, *,
     total_ab = d["Q_alpha"] + d["Q_beta"]
 
     fig, ax = plt.subplots(figsize=(TEXT_W, TEXT_W * 0.55))
-    ax.plot(tau, total_ab, color="0.6", ls="--", label="A--B total demand")
-    ax.plot(tau, d["Q_alpha"], color="tab:blue",
-            label=r"A--B via intersection ($Q_\alpha$, link 2)")
-    ax.plot(tau, d["Q_beta"], color="tab:green",
-            label=r"A--B via bypass ($Q_\beta$, link 5)")
-    ax.plot(tau, d["Q_gamma"], color="tab:orange",
-            label=r"C--D ($Q_\gamma$, link 6)")
+    ax.plot(tau, total_ab, color="0.6", ls="--", label=r"$Q_{AB}$")
+    ax.plot(tau, d["Q_alpha"], color="tab:blue", label=r"$Q_\alpha$")
+    ax.plot(tau, d["Q_beta"], color="tab:green", label=r"$Q_\beta$")
+    ax.plot(tau, d["Q_gamma"], color="tab:orange", label=r"$Q_{CD}$")
     ax.set_xlabel("time of day [min]")
     ax.set_ylabel("traveller flow [veh/h]")
     ax.set_title(f"Per-route traveller flow (day {day})")
