@@ -1,12 +1,12 @@
 name: Paper figures
 
 # Render the publication-styled figures and upload them as a downloadable
-# artifact. Heavy (full-scale experiments), so run on demand and on version
-# tags -- not on every push.
+# artifact. Runs on every push (and on demand) so the paper figures for any
+# commit can be grabbed straight from that run's artifacts. NB this renders the
+# full-scale experiments, so it takes several minutes per run.
 on:
-  workflow_dispatch:
   push:
-    tags: ["v*"]
+  workflow_dispatch:
 
 concurrency:
   group: paper-figures-${{ github.ref }}
