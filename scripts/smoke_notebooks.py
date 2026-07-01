@@ -260,15 +260,18 @@ def smoke_controls() -> None:
     panels = {
         "exp1": ["days", "seed", "control_interval", "demand_scale",
                  "traveller_window", "controller_window", "learn_noise",
-                 "theta", "compliance", "gamma", "omega", "sigma_pref", "phi_grid"],
+                 "stationary", "theta", "compliance", "gamma", "omega",
+                 "sigma_pref", "phi_grid"],
         "exp2": ["days", "seed", "control_interval", "demand_scale",
                  "traveller_window", "controller_window", "learn_noise",
-                 "theta", "compliance", "gamma", "omega", "sigma_pref",
-                 "phi_grid", "k_L"],
+                 "stationary", "theta", "compliance", "gamma", "omega",
+                 "sigma_pref", "phi_grid", "k_L"],
         "exp3": ["days", "seed", "control_interval", "demand_scale",
-                 "traveller_window", "controller_window", "learn_noise", "compliance"],
+                 "traveller_window", "controller_window", "learn_noise",
+                 "stationary", "compliance"],
         "exp4": ["days", "seed", "control_interval", "demand_scale",
-                 "traveller_window", "controller_window", "learn_noise"],
+                 "traveller_window", "controller_window", "learn_noise",
+                 "stationary"],
     }
     import marimo as mo
 

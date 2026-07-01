@@ -132,6 +132,7 @@ def _(mo, nc):
     traveller_window = nc.traveller_window()
     controller_window = nc.controller_window()
     learn_noise = nc.learn_noise()
+    stationary = nc.stationary()
     compliance = nc.compliance()
 
     run_btn = mo.ui.run_button(label="Run all communication settings")
@@ -141,6 +142,7 @@ def _(mo, nc):
         "days": days, "seed": seed, "control_interval": control_interval,
         "demand_scale": demand_scale, "traveller_window": traveller_window,
         "controller_window": controller_window, "learn_noise": learn_noise,
+        "stationary": stationary,
         "compliance": compliance,
     }, run_btn)
     controls
@@ -154,6 +156,7 @@ def _(mo, nc):
         learn_noise,
         run_btn,
         seed,
+        stationary,
         traveller_window,
     )
 
@@ -177,6 +180,7 @@ def _(
     run_btn,
     run_experiment,
     seed,
+    stationary,
     sweep_progress_bar,
     traveller_window,
 ):
@@ -206,7 +210,7 @@ def _(
             float(compliance.value)
         ).with_window_size(int(traveller_window.value)).with_learn_obs_noise(
             bool(learn_noise.value)
-        )
+        ).with_stationary(bool(stationary.value))
 
         _CG = ObservationSignal.ROUTE_CONGESTION
         _SN = ObservationSignal.SIGNAL_CONTROL

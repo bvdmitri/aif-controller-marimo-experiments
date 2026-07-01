@@ -116,6 +116,7 @@ def _(mo, nc):
     traveller_window = nc.traveller_window()
     controller_window = nc.controller_window()
     learn_noise = nc.learn_noise()
+    stationary = nc.stationary()
 
     run_btn = mo.ui.run_button(label="Run all compliance settings")
 
@@ -123,6 +124,7 @@ def _(mo, nc):
         "days": days, "seed": seed, "control_interval": control_interval,
         "demand_scale": demand_scale, "traveller_window": traveller_window,
         "controller_window": controller_window, "learn_noise": learn_noise,
+        "stationary": stationary,
     }, run_btn)
     controls
     return (
@@ -133,6 +135,7 @@ def _(mo, nc):
         learn_noise,
         run_btn,
         seed,
+        stationary,
         traveller_window,
     )
 
@@ -153,6 +156,7 @@ def _(
     run_btn,
     run_experiment,
     seed,
+    stationary,
     sweep_progress_bar,
     traveller_window,
 ):
@@ -181,7 +185,7 @@ def _(
             BeliefSignal.QUEUE_BELIEF, BeliefSignal.SPLIT_PLAN
         ).with_window_size(int(traveller_window.value)).with_learn_obs_noise(
             bool(learn_noise.value)
-        )
+        ).with_stationary(bool(stationary.value))
 
         _fractions = [0.0, 0.25, 0.5, 0.75, 1.0]
         _settings = {

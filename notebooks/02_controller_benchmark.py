@@ -124,6 +124,7 @@ def _(mo, nc):
     traveller_window = nc.traveller_window()
     controller_window = nc.controller_window()
     learn_noise = nc.learn_noise()
+    stationary = nc.stationary()
     theta = nc.theta()
     compliance = nc.compliance()
     gamma = nc.gamma()
@@ -138,6 +139,7 @@ def _(mo, nc):
         "days": days, "seed": seed, "control_interval": control_interval,
         "demand_scale": demand_scale, "traveller_window": traveller_window,
         "controller_window": controller_window, "learn_noise": learn_noise,
+        "stationary": stationary,
         "theta": theta, "compliance": compliance,
         "gamma": gamma, "omega": omega, "sigma_pref": sigma_pref,
         "phi_grid": phi_grid, "k_L": k_L,
@@ -157,6 +159,7 @@ def _(mo, nc):
         run_btn,
         seed,
         sigma_pref,
+        stationary,
         theta,
         traveller_window,
     )
@@ -179,6 +182,7 @@ def _(
     gamma,
     k_L,
     learn_noise,
+    stationary,
     omega,
     phi_grid,
     replace,
@@ -229,7 +233,8 @@ def _(
                     float(compliance.value)
                 ).with_theta(float(theta.value)).with_window_size(
                     int(traveller_window.value)
-                ).with_learn_obs_noise(bool(learn_noise.value))
+                ).with_learn_obs_noise(bool(learn_noise.value)).with_stationary(
+                    bool(stationary.value))
                 results_by_ctrl[_name] = run_experiment(
                     _p, seeds=[int(seed.value)], on_step=_bar.update,
                 )
@@ -357,6 +362,7 @@ def _(
     grid_btn,
     k_L,
     learn_noise,
+    stationary,
     omega,
     replace,
     run_experiment,
@@ -404,7 +410,8 @@ def _(
                     float(compliance.value)
                 ).with_theta(_theta).with_window_size(
                     int(traveller_window.value)
-                ).with_learn_obs_noise(bool(learn_noise.value))
+                ).with_learn_obs_noise(bool(learn_noise.value)).with_stationary(
+                    bool(stationary.value))
                 results_by_ctrl_theta[_name][_theta] = run_experiment(
                     _p, seeds=[int(seed.value)], on_step=_bar.update,
                 )

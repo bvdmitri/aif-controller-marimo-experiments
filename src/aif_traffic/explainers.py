@@ -71,6 +71,18 @@ in two stages.
 At the end of the day travellers update their route beliefs from the realised
 travel times. Across days the two layers co-adapt through the shared network.
 
+**Stationary environment vs rolling window (default: stationary).** Both layers'
+smoothers can run in two modes. With **"assume stationary environment"** on (the
+default), they do *continuous filtering*: every observed day is kept (the window
+spans the whole run), the prior is not re-widened, and beliefs simply accumulate
+evidence, so posteriors **tighten monotonically toward convergence**. This suits a
+fixed environment and removes the periodic cost spikes that appear when a rolling
+window first drops its oldest day. Turning it **off** recovers the IWAI
+**rolling-window** smoother, which keeps only the last *window* days and re-inflates
+uncertainty on routes not seen recently -- the right choice when the environment is
+*non-stationary* (disruptions), at the cost of some forgetting-driven churn. While
+stationary is on, the traveller/controller **window sliders have no effect**.
+
 **Controller$\to$traveller communication channels.** The controller has a
 network-wide view and can share it in three distinct ways.
 

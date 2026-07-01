@@ -65,6 +65,14 @@ DESCRIPTIONS: dict[str, str] = {
         "movement, travellers per agent). On by default; the belief band is then "
         "data-driven rather than set by `sigma_obs`."
     ),
+    "stationary": (
+        "Assume the environment is **stationary**: both layers do continuous "
+        "filtering (keep the whole run, never forget) instead of rolling-window "
+        "smoothing, so beliefs accumulate all evidence and converge (no periodic "
+        "spikes from the window dropping old days). On by default; the traveller / "
+        "controller **window sliders are ignored while this is on**. Turn off to "
+        "recover the rolling-window smoother (the non-stationary / disruption case)."
+    ),
     "comm_mechanism": (
         "Which controller->traveller information channel Experiment 3 sweeps. "
         "**Extra observations** relays the *true realised* queue (CG) / green "
@@ -135,6 +143,10 @@ def learn_noise():
     return mo.ui.checkbox(value=True, label="learn observation noise (VB)")
 
 
+def stationary():
+    return mo.ui.checkbox(value=True, label="assume stationary environment")
+
+
 def comm_mechanism():
     return mo.ui.dropdown(
         options=["Disable", "Extra observations", "Belief sharing", "Both"],
@@ -179,7 +191,7 @@ def k_L():
 _GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Simulation", (
         "days", "seed", "control_interval", "demand_scale",
-        "traveller_window", "controller_window", "learn_noise",
+        "traveller_window", "controller_window", "learn_noise", "stationary",
     )),
     ("Communication / social", ("comm_mechanism", "theta", "compliance")),
     ("AIF controller", ("gamma", "omega", "sigma_pref", "phi_grid", "k_L")),
