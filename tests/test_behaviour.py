@@ -250,3 +250,59 @@ def test_controller_belief_tracks_realised_queue(run):
     assert corr > 0.85, corr
     assert realised_argmax in busy, realised_argmax
     assert belief_argmax in busy, belief_argmax
+
+
+def test_surfaced_beliefs_are_sensible(run):
+    """The newly-surfaced belief channels behave as expected as learning settles.
+
+    Three checks on quantities now recorded to the output DataFrames:
+      * the traveller route-alpha *queue* belief L_alpha_post is positive and of
+        the same order as the realised signalised-link queue L2 (travellers do
+        learn a queue, not just a travel time);
+      * the controller's *planned* green split phi2_plan tracks its *realised*
+        phi2 in steady state (the typical-day plan matches what it does);
+      * the controller's cost-belief SD shrinks from early to late days (its
+        uncertainty about the daily queue-delay falls as the window fills).
+    """
+    _params, res, _ = run
+    days = sorted(res.step["day"].unique())
+    late = days[-15:]
+
+    # 1. Traveller queue belief vs realised L2.
+    coh = res.cohort[res.cohort["day"].isin(late)]
+    l_alpha = float(coh["L_alpha_post"].mean())
+    realised_l2 = float(res.step[res.step["day"].isin(late)]["L2"].mean())
+
+    # 2. Planned vs realised split (steady state).
+    late_step = res.step[res.step["day"].isin(late)]
+    split_gap = float((late_step["phi2"] - late_step["phi2_plan"]).abs().mean())
+
+    # 3. Cost-belief SD early vs late.
+    ctrl = res.controller.sort_values("day")
+    sd_series = ctrl.set_index("day")["SC_belief_sd"].dropna()
+    early_sd = float(sd_series.iloc[: max(1, len(sd_series) // 5)].mean())
+    late_sd = float(sd_series.iloc[-max(1, len(sd_series) // 5):].mean())
+
+    _narrate(
+        "BEHAVIOUR: surfaced traveller/controller beliefs are sensible",
+        [
+            "Traveller route-alpha QUEUE belief (the IWAI-translated latent L):",
+            f"   L_alpha_post ~ {l_alpha:.1f} veh   vs realised L2 ~ {realised_l2:.1f} veh",
+            "   (same order of magnitude -> travellers learn a queue, not only a TT)",
+            "",
+            "Controller planned vs realised green split (steady state):",
+            f"   mean |phi2 - phi2_plan| ~ {split_gap:.3f}  (small -> plan matches action)",
+            "",
+            "Controller cost-belief SD (uncertainty about daily queue-delay):",
+            f"   early days ~ {early_sd:.1f}   late days ~ {late_sd:.1f}   veh-min",
+            "",
+            "VERDICT: the queue belief is positive and realistic, the planned "
+            "split tracks the realised one, and cost uncertainty falls as the "
+            "rolling window fills.",
+        ],
+    )
+
+    assert l_alpha > 0.0, l_alpha
+    assert 0.1 * realised_l2 <= l_alpha <= 10.0 * realised_l2, (l_alpha, realised_l2)
+    assert split_gap < 0.15, split_gap
+    assert late_sd <= early_sd * 1.05, (early_sd, late_sd)

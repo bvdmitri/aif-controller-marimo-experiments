@@ -16,36 +16,19 @@ import pandas as pd
 from matplotlib.lines import Line2D
 
 from .network import _edges
+from .palette import (
+    CTRL_ORDER as _CTRL_ORDER,
+    controller_colour,
+    controller_label,
+    ordered_controllers,
+)
 from .primitives import TEXT_W, light_borders
-
-# Display order, labels, and styling. Keys match each controller's
-# ``snapshot()["name"]`` (and the keys the notebook uses).
-_CTRL_ORDER = ("fixed_time", "reactive", "anticipatory", "aif")
-_CTRL_LABELS = {
-    "fixed_time": "Fixed-time",
-    "reactive": "Reactive (SCOOT-like)",
-    "anticipatory": "Anticipatory (predictive)",
-    "aif": "AIF (proposed)",
-}
-# Distinct but unbiased styling: every controller gets the same line weight so
-# no controller is visually favoured; colours only serve to tell them apart.
-_CTRL_COLOURS = {
-    "fixed_time": "#9e9e9e",   # grey
-    "reactive": "#4393c3",     # blue
-    "anticipatory": "#ff9800",  # amber
-    "aif": "#1b5e20",          # green
-}
-_CTRL_LINEWIDTHS = {
-    "fixed_time": 1.5,
-    "reactive": 1.5,
-    "anticipatory": 1.5,
-    "aif": 1.5,
-}
+from .style import active_style
 
 
 def _ordered(results_by_ctrl: Mapping[str, object]) -> list[tuple[str, object]]:
     """(name, result) pairs in canonical order, for the controllers present."""
-    return [(k, results_by_ctrl[k]) for k in _CTRL_ORDER if k in results_by_ctrl]
+    return [(k, results_by_ctrl[k]) for k in ordered_controllers(results_by_ctrl)]
 
 
 # --- per-day metric series --------------------------------------------------
@@ -96,20 +79,20 @@ def plot_controller_metrics(results_by_ctrl: Mapping[str, object]):
     fig, axes = plt.subplots(
         len(panels), 1, figsize=(TEXT_W, TEXT_W * 1.45), sharex=True,
     )
+    lw = active_style().line_main
     for ax, (ylabel, fn) in zip(axes, panels):
         for name, res in items:
             s = fn(res.step)
             ax.plot(s.index.to_numpy(), s.to_numpy(),
-                    color=_CTRL_COLOURS.get(name, "k"),
-                    linewidth=_CTRL_LINEWIDTHS.get(name, 1.3))
+                    color=controller_colour(name), linewidth=lw)
         ax.set_ylabel(ylabel)
         ax.grid(alpha=0.25)
     axes[-1].set_xlabel("day")
     light_borders(axes)
 
     handles = [
-        Line2D([0], [0], color=_CTRL_COLOURS[k],
-               linewidth=_CTRL_LINEWIDTHS[k], label=_CTRL_LABELS[k])
+        Line2D([0], [0], color=controller_colour(k),
+               linewidth=lw, label=controller_label(k))
         for k, _ in items
     ]
     fig.legend(handles=handles, loc="upper center", ncol=len(handles),
@@ -145,7 +128,8 @@ def plot_green_split_heatmaps_by_controller(
         days = hm.columns.to_numpy(dtype=float)
         im = ax.pcolormesh(_edges(days), _edges(taus), hm.values,
                            cmap="viridis", vmin=vmin, vmax=vmax, shading="flat")
-        ax.set_title(_CTRL_LABELS.get(name, name), fontsize=7.5)
+        # Abbreviation titles (FT/RF/AC/AIF) keep the heatmap text clean (Xue).
+        ax.set_title(controller_label(name, abbr=True), fontsize=8)
         ax.set_xlabel("day")
     axes[0].set_ylabel("time of day [min]")
     label = {"phi2": r"green split $\phi_2$", "L2": r"queue $L_2$",
@@ -182,8 +166,8 @@ def plot_controller_theta_grid(
     im = ax.imshow(grid, cmap="viridis_r", aspect="auto", origin="lower")
 
     ax.set_xticks(range(len(ctrls)))
-    ax.set_xticklabels([_CTRL_LABELS.get(c, c) for c in ctrls],
-                       rotation=20, ha="right", fontsize=7.5)
+    ax.set_xticklabels([controller_label(c, abbr=True) for c in ctrls],
+                       fontsize=8)
     ax.set_yticks(range(len(thetas)))
     ax.set_yticklabels([f"{t:g}" for t in thetas])
     ax.set_ylabel(r"social internalisation $\theta$")
@@ -203,6 +187,118 @@ def plot_controller_theta_grid(
     return fig
 
 
+def _theta_axis(results_by_ctrl_theta):
+    ctrls = [k for k in _CTRL_ORDER if k in results_by_ctrl_theta]
+    thetas = sorted({t for c in ctrls for t in results_by_ctrl_theta[c]})
+    return ctrls, thetas
+
+
+def plot_theta_summary(
+    results_by_ctrl_theta: Mapping[str, Mapping[float, object]],
+    n_last: int = 15,
+):
+    """Steady-state performance vs social internalisation ``theta``, per
+    controller (Xue's Experiment-1 theta Figure 1).
+
+    Four panels -- mean and SD of the daily system cost, and mean and SD of the
+    daily peak total queue ``L_2+L_6`` -- each over the last ``n_last`` days.
+    x-axis is ``theta``; one line per controller (canonical colour). Reveals
+    whether increasing ``theta`` moves performance and whether the adaptive
+    controller "absorbs" that effect.
+    """
+    ctrls, thetas = _theta_axis(results_by_ctrl_theta)
+    lw = active_style().line_main
+
+    def _tail(series):
+        return series.iloc[-n_last:]
+
+    panels = [
+        ("mean system cost [veh-min]", _daily_cost, "mean"),
+        ("SD system cost [veh-min]", _daily_cost, "std"),
+        ("mean peak queue [veh]", _daily_peak_total_queue, "mean"),
+        ("SD peak queue [veh]", _daily_peak_total_queue, "std"),
+    ]
+    fig, axgrid = plt.subplots(2, 2, figsize=(TEXT_W, TEXT_W * 0.85))
+    axes = axgrid.ravel()
+    for ax, (ylabel, fn, stat) in zip(axes, panels):
+        for c in ctrls:
+            ys = []
+            for t in thetas:
+                res = results_by_ctrl_theta[c].get(t)
+                if res is None:
+                    ys.append(np.nan)
+                    continue
+                tail = _tail(fn(res.step))
+                ys.append(float(tail.mean() if stat == "mean" else tail.std()))
+            ax.plot(thetas, ys, color=controller_colour(c), linewidth=lw,
+                    marker="o", markersize=3, label=controller_label(c, abbr=True))
+        ax.set_ylabel(ylabel)
+        ax.grid(alpha=0.25)
+    for ax in axes[2:]:
+        ax.set_xlabel(r"social internalisation $\theta$")
+    light_borders(axes)
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.legend(handles=handles, labels=labels, loc="upper center",
+               ncol=len(handles), frameon=False, bbox_to_anchor=(0.5, 1.02),
+               fontsize=7.5)
+    fig.tight_layout(rect=(0, 0, 1, 0.94))
+    return fig
+
+
+def plot_theta_route_choice(
+    results_by_ctrl_theta: Mapping[str, Mapping[float, object]],
+    n_last: int = 30,
+):
+    """Behavioural mechanism of ``theta``: the distribution of the daily
+    intersection share ``P_alpha`` at each ``theta``, per controller (Xue's
+    Experiment-1 theta Figure 2).
+
+    A grouped box plot: x = ``theta``, one box per controller within each theta
+    group (canonical colour), summarising the last ``n_last`` days' daily mean
+    ``P_alpha``. Shows whether route choice actually responds to ``theta`` or the
+    behavioural response is too small to matter.
+    """
+    ctrls, thetas = _theta_axis(results_by_ctrl_theta)
+    n = max(len(ctrls), 1)
+    width = 0.8 / n
+
+    fig, ax = plt.subplots(figsize=(TEXT_W, TEXT_W * 0.5))
+    for j, c in enumerate(ctrls):
+        data, positions = [], []
+        for i, t in enumerate(thetas):
+            res = results_by_ctrl_theta[c].get(t)
+            if res is None:
+                continue
+            daily = res.step.groupby("day")["P_alpha"].mean().iloc[-n_last:]
+            data.append(daily.to_numpy())
+            positions.append(i + (j - (n - 1) / 2) * width)
+        if not data:
+            continue
+        colour = controller_colour(c)
+        bp = ax.boxplot(data, positions=positions, widths=width * 0.9,
+                        patch_artist=True, showfliers=False,
+                        medianprops=dict(color="black", linewidth=0.8))
+        for box in bp["boxes"]:
+            box.set(facecolor=colour, alpha=0.55, linewidth=0.6)
+        for whisk in bp["whiskers"] + bp["caps"]:
+            whisk.set(color=colour, linewidth=0.6)
+    ax.set_xticks(range(len(thetas)))
+    ax.set_xticklabels([f"{t:g}" for t in thetas])
+    ax.set_xlabel(r"social internalisation $\theta$")
+    ax.set_ylabel(r"daily intersection share $P_\alpha$")
+    ax.grid(alpha=0.25, axis="y")
+    handles = [
+        Line2D([0], [0], color=controller_colour(c), linewidth=6, alpha=0.55,
+               label=controller_label(c, abbr=True))
+        for c in ctrls
+    ]
+    ax.legend(handles=handles, ncol=len(handles), frameon=False, fontsize=7,
+              loc="lower center", bbox_to_anchor=(0.5, 1.0))
+    light_borders([ax])
+    fig.tight_layout(rect=(0, 0, 1, 0.94))
+    return fig
+
+
 def controller_summary(results_by_ctrl: Mapping[str, object]) -> pd.DataFrame:
     """One row per controller: mean cost, day-to-day cost stability (std),
     mean green-split variation, and mean daily peak total queue."""
@@ -210,7 +306,7 @@ def controller_summary(results_by_ctrl: Mapping[str, object]) -> pd.DataFrame:
     for name, res in _ordered(results_by_ctrl):
         cost = _daily_cost(res.step)
         rows.append({
-            "controller": _CTRL_LABELS.get(name, name),
+            "controller": controller_label(name),
             "mean_SC": float(cost.mean()),
             "std_SC": float(cost.std()),
             "mean_signal_variation": float(_daily_signal_variation(res.step).mean()),

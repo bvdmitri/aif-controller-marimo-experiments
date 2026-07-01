@@ -149,6 +149,13 @@ def simulate_one_day(
     # with no learned belief (baselines) or before the first observed day.
     belief = controller.belief_trajectory()
 
+    # The controller's *planned / believed* green split for the day, scored from
+    # its typical-day belief alone (no within-day reaction), recorded so a
+    # realised-vs-believed phi_2 chart can be drawn. ``None`` for controllers
+    # with no such plan (baselines) or before the first observed day.
+    plan_fn = getattr(controller, "planned_split", None)
+    phi2_plan = plan_fn() if callable(plan_fn) else None
+
     # Controller-belief broadcast for the NEXT day's route choice (Experiment
     # 3/4): the controller forward-predicts tomorrow's queue belief + planned
     # split using today's realised inflows as a persistence forecast, and shares
@@ -184,6 +191,8 @@ def simulate_one_day(
         "belief_broadcast_next": belief_broadcast_next,
         # (mu, sd) each (2, K) for movements (L_2, L_6), or None.
         "belief_trajectory": belief,
+        # Planned/believed green split phi_2 over the day (length K), or None.
+        "phi2_plan": phi2_plan,
     }
 
 
@@ -216,6 +225,18 @@ def _cohort_record(seed: int, day_index: int, population: Population,
             "F_beta_post": float(latents["F_mean"][mask, 1].mean()),
             "C_alpha_post": float(latents["C_mean"][mask, 0].mean()),
             "C_beta_post": float(latents["C_mean"][mask, 1].mean()),
+            # Traveller *queue* belief L (mean +/- SD) per route -- the
+            # IWAI-translated latent, surfaced so belief-vs-realised queue
+            # charts can be drawn. Route alpha traverses the signalised link L2.
+            "L_alpha_post": float(latents["L_mean"][mask, 0].mean()),
+            "L_beta_post": float(latents["L_mean"][mask, 1].mean()),
+            "sigma_L_alpha_post": float(latents["L_sd"][mask, 0].mean()),
+            "sigma_L_beta_post": float(latents["L_sd"][mask, 1].mean()),
+            # Traveller *green-split* belief phi (mean +/- SD) per route.
+            "phi_alpha_post": float(latents["phi_mean"][mask, 0].mean()),
+            "phi_beta_post": float(latents["phi_mean"][mask, 1].mean()),
+            "sigma_phi_alpha_post": float(latents["phi_sd"][mask, 0].mean()),
+            "sigma_phi_beta_post": float(latents["phi_sd"][mask, 1].mean()),
             "P_alpha_efe": float(population.last_P_alpha[mask].mean()),
             "frac_chose_alpha": float((population.last_choice[mask] == 0).mean()),
         })
@@ -302,6 +323,7 @@ def run_experiment(
                 continue
 
             belief = out["belief_trajectory"]
+            phi2_plan = out["phi2_plan"]
             for k, tau in enumerate(sim.time):
                 rec = {
                     "seed": seed, "day": d, "tau": int(tau),
@@ -328,6 +350,9 @@ def run_experiment(
                     rec["L2_belief_sd"] = float(sd_b[0, k])
                     rec["L6_belief_mu"] = float(mu_b[1, k])
                     rec["L6_belief_sd"] = float(sd_b[1, k])
+                # Controller's planned/believed green split (realised is phi2).
+                if phi2_plan is not None:
+                    rec["phi2_plan"] = float(phi2_plan[k])
                 step_records.append(rec)
             cohort_records.extend(
                 _cohort_record(seed, d, population, out["prior"], signal_name)

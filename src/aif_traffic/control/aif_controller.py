@@ -460,11 +460,67 @@ class AIFController(BaseController):
         ])
         return mu, sd
 
+    def planned_split(self) -> np.ndarray | None:
+        """The green-split schedule the controller would apply from its **belief
+        about the typical day alone** -- i.e. scoring the EFE at each node using
+        the smoother posterior, *without* the within-day Bayesian correction from
+        today's realised queues that :meth:`decide` folds in.
+
+        This is the controller's *planned / believed* ``phi_2(t)``, the macro
+        analogue of a traveller's predicted travel time; the realised ``phi_2``
+        (from :meth:`decide`, reacting to the actual within-day queues) is what to
+        compare it against. Returns a per-minute profile of length ``K``, or
+        ``None`` before any day has been observed / if ``prepare_day`` was never
+        called."""
+        if self._post_mu is None or self._Sigma_pref is None or self._K <= 0:
+            return None
+        s = self.spec
+        sat = self.signal.phi_sat
+        H = max(1, int(s.horizon_min))
+        node_minutes = self._node_minutes()
+        plan = np.empty(self._M)
+        prev = sat / 2.0
+        for j in range(self._M):
+            k = int(node_minutes[j])
+            mu_b = self._post_mu[:, j]
+            var_state = self._post_var[:, j] + H * (s.sigma_proc ** 2)
+            best_phi2, _ = self._score_best_split(mu_b, var_state, k, prev)
+            plan[j] = best_phi2
+            prev = best_phi2
+        return cs.expand_to_minutes(plan, self._ci, self._K)
+
+    def cost_belief(self) -> tuple[float, float] | None:
+        """The controller's belief over the daily **queue-delay** (veh-min), its
+        belief-side proxy for the system cost.
+
+        Derived by mapping the queue-trajectory posterior through the delay
+        integral: ``sum_t (L_2(t) + L_6(t)) * dt_min``. Returns
+        ``(mean, sd)``; the SD treats per-minute marginals as independent (an
+        upper-bound-free approximation, since only marginal variances are
+        exposed). ``None`` before any day has been observed. NB this is a
+        queue-delay proxy, not the full multi-route travel-time system cost."""
+        if self._post_mu is None or self._K <= 0:
+            return None
+        dt_min = self._dt_h * 60.0
+        mu_min = np.stack([
+            cs.expand_to_minutes(self._post_mu[mv], self._ci, self._K)
+            for mv in (0, 1)
+        ])
+        var_min = np.stack([
+            cs.expand_to_minutes(self._post_var[mv], self._ci, self._K)
+            for mv in (0, 1)
+        ])
+        mu_cost = float(dt_min * mu_min.sum())
+        sd_cost = float(dt_min * np.sqrt(var_min.sum()))
+        return mu_cost, sd_cost
+
     def snapshot(self) -> dict:
         total_var = (
             float(np.mean(self._post_var)) if self._post_var is not None
             else float("nan")
         )
+        cost_bel = self.cost_belief()
+        sc_mu, sc_sd = cost_bel if cost_bel is not None else (float("nan"), float("nan"))
         # Learned observation-noise SD per movement (NaN until learning has run);
         # sigma_obs_last is the fixed default when learning is off.
         sigma_obs2 = self._sigma_obs2 if self._learn_obs_noise else np.full(
@@ -474,4 +530,7 @@ class AIFController(BaseController):
                 "efe_last": self._last_efe,
                 "belief_var_mean": total_var, "days_observed": self._day_count,
                 "sigma_obs_l2": float(np.sqrt(sigma_obs2[0])),
-                "sigma_obs_l6": float(np.sqrt(sigma_obs2[1]))}
+                "sigma_obs_l6": float(np.sqrt(sigma_obs2[1])),
+                # Controller belief over daily queue-delay (proxy for system
+                # cost): mean and SD. NaN for controllers with no queue belief.
+                "SC_belief_mu": sc_mu, "SC_belief_sd": sc_sd}

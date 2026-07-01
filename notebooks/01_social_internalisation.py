@@ -65,8 +65,11 @@ def _():
     )
     from aif_traffic.parameters import (
         AIFControllerSpec,
+        AnticipatoryControllerSpec,
         DemandParams,
+        FixedTimeControllerSpec,
         Params,
+        ReactiveControllerSpec,
         SignalType,
         SimParams,
     )
@@ -75,17 +78,24 @@ def _():
         animate_network_state,
         animate_route_flows,
         figure_placeholder,
+        plot_belief_reality_queues,
+        plot_co_adaptation,
+        plot_coupled_within_day,
         plot_daily_system_cost,
         plot_day_overview_grid,
         plot_demand_profile,
         plot_green_split_heatmap,
         plot_learned_obs_noise,
+        plot_learning_uncertainty,
         plot_network_state,
         plot_queue_belief_day,
         plot_route_flows,
         plot_route_share_over_days,
         plot_signal_day,
         plot_sweep_metrics,
+        plot_theta_route_choice,
+        plot_theta_summary,
+        plot_within_day_tt_vs_belief,
         setup_style,
     )
     from aif_traffic.simulator import run_experiment
@@ -93,9 +103,12 @@ def _():
     setup_style()
     return (
         AIFControllerSpec,
+        AnticipatoryControllerSpec,
         DemandParams,
+        FixedTimeControllerSpec,
         Params,
         Path,
+        ReactiveControllerSpec,
         SignalType,
         SimParams,
         animate_days,
@@ -108,17 +121,24 @@ def _():
         nc,
         notebook_explainer,
         outputs_dir,
+        plot_belief_reality_queues,
+        plot_co_adaptation,
+        plot_coupled_within_day,
         plot_daily_system_cost,
         plot_day_overview_grid,
         plot_demand_profile,
         plot_green_split_heatmap,
         plot_learned_obs_noise,
+        plot_learning_uncertainty,
         plot_network_state,
         plot_queue_belief_day,
         plot_route_flows,
         plot_route_share_over_days,
         plot_signal_day,
         plot_sweep_metrics,
+        plot_theta_route_choice,
+        plot_theta_summary,
+        plot_within_day_tt_vs_belief,
         replace,
         run_experiment,
         sweep_progress_bar,
@@ -241,8 +261,11 @@ def _(
         ).with_window_size(int(traveller_window.value)).with_learn_obs_noise(
             bool(learn_noise.value)
         )
+        # Snapshot every day so the belief-vs-realised charts have the per-agent
+        # posterior on the days they overlay.
         results = run_experiment(
             params, seeds=[int(seed.value)], progress=mo.status.progress_bar,
+            snapshot_days=range(int(days.value)),
         )
     return params, results
 
@@ -269,6 +292,30 @@ def _(figure_block, figure_placeholder, plot_day_overview_grid, results):
     )
     figure_block("plot_day_overview_grid", fig_overview)
     return (fig_overview,)
+
+
+@app.cell
+def _(figure_block, figure_placeholder, params, plot_within_day_tt_vs_belief,
+      results):
+    fig_tt_belief = (
+        figure_placeholder("Within-day travel time: realised vs belief")
+        if results is None
+        else plot_within_day_tt_vs_belief(results.step, results.snapshots, params)
+    )
+    figure_block("plot_within_day_tt_vs_belief", fig_tt_belief)
+    return (fig_tt_belief,)
+
+
+@app.cell
+def _(figure_block, figure_placeholder, params, plot_coupled_within_day,
+      results):
+    fig_coupled = (
+        figure_placeholder("Coupled within-day: flow & green split")
+        if results is None
+        else plot_coupled_within_day(results.step, params)
+    )
+    figure_block("plot_coupled_within_day", fig_coupled)
+    return (fig_coupled,)
 
 
 @app.cell
@@ -310,6 +357,20 @@ def _(day_sel, figure_block, figure_placeholder, mo, plot_queue_belief_day,
 
 
 @app.cell
+def _(day_sel, figure_block, figure_placeholder, mo, params,
+      plot_belief_reality_queues, results):
+    fig_bel_real = (
+        figure_placeholder("Belief vs realised queue")
+        if results is None
+        else plot_belief_reality_queues(
+            results.step, results.snapshots, params, day=int(day_sel.value))
+    )
+    _out = figure_block("plot_belief_reality_queues", fig_bel_real)
+    mo.vstack([day_sel, _out]) if results is not None else _out
+    return (fig_bel_real,)
+
+
+@app.cell
 def _(figure_block, figure_placeholder, learn_noise, plot_learned_obs_noise,
       results):
     fig_obs_noise = (
@@ -319,6 +380,17 @@ def _(figure_block, figure_placeholder, learn_noise, plot_learned_obs_noise,
     )
     figure_block("plot_learned_obs_noise", fig_obs_noise)
     return (fig_obs_noise,)
+
+
+@app.cell
+def _(figure_block, figure_placeholder, plot_learning_uncertainty, results):
+    fig_uncert = (
+        figure_placeholder("Learning uncertainty over days")
+        if results is None
+        else plot_learning_uncertainty(results.cohort, results.controller)
+    )
+    figure_block("plot_learning_uncertainty", fig_uncert)
+    return (fig_uncert,)
 
 
 @app.cell
@@ -438,6 +510,17 @@ def _(figure_block, figure_placeholder, plot_route_share_over_days, results):
 
 
 @app.cell
+def _(figure_block, figure_placeholder, plot_co_adaptation, results):
+    fig_coadapt = (
+        figure_placeholder("Day-to-day co-adaptation")
+        if results is None
+        else plot_co_adaptation(results.step)
+    )
+    figure_block("plot_co_adaptation", fig_coadapt)
+    return (fig_coadapt,)
+
+
+@app.cell
 def _(is_deployed, mo):
     make_gif = mo.ui.checkbox(value=False, label="Render per-day gif")
     make_gif if not is_deployed() else mo.md("")
@@ -526,6 +609,88 @@ def _(figure_block, mo, params, plot_sweep_metrics, run_experiment,
             "plot_sweep_metrics", plot_sweep_metrics(_results_by_theta)
         )
     fig_sweep
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md(
+        r"""
+        ## Does the controller absorb $\theta$? (controller $\times\,\theta$)
+
+        Re-runs the sweep for **all four controllers** at each
+        $\theta\in\{0,0.25,0.5,0.75,1\}$ so the summary can show whether an
+        adaptive controller "absorbs" the effect of social internalisation that
+        a fixed policy would expose. This is the heaviest run in the notebook
+        (four controllers $\times$ five $\theta$), so it is gated behind its own
+        button.
+        """
+    )
+    return
+
+
+@app.cell
+def _(mo):
+    ctrl_theta_btn = mo.ui.run_button(label="Run controller x theta sweep")
+    ctrl_theta_btn
+    return (ctrl_theta_btn,)
+
+
+@app.cell
+def _(AIFControllerSpec, AnticipatoryControllerSpec, FixedTimeControllerSpec,
+      ReactiveControllerSpec, ctrl_theta_btn, params, run_experiment,
+      sweep_progress_bar):
+    if not ctrl_theta_btn.value or params is None:
+        theta_ctrl_results = None
+    else:
+        _thetas = [0.0, 0.25, 0.5, 0.75, 1.0]
+        _ctrls = {
+            "fixed_time": FixedTimeControllerSpec(),
+            "reactive": ReactiveControllerSpec(),
+            "anticipatory": AnticipatoryControllerSpec(),
+            "aif": params.controller,
+        }
+        theta_ctrl_results = {}
+        with sweep_progress_bar(
+            len(_ctrls) * len(_thetas), params.sim, title="controller x theta"
+        ) as _bar:
+            for _name, _spec in _ctrls.items():
+                theta_ctrl_results[_name] = {}
+                for _th in _thetas:
+                    theta_ctrl_results[_name][_th] = run_experiment(
+                        params.with_controller(_spec).with_theta(_th),
+                        seeds=[params.sim.seed], on_step=_bar.update,
+                    )
+    return (theta_ctrl_results,)
+
+
+@app.cell
+def _(figure_block, mo, plot_theta_summary, theta_ctrl_results):
+    if theta_ctrl_results is None:
+        fig_theta_sum = mo.md(
+            "_Run the single experiment above, then click **Run controller x "
+            "theta sweep**._"
+        )
+    else:
+        fig_theta_sum = figure_block(
+            "plot_theta_summary", plot_theta_summary(theta_ctrl_results)
+        )
+    fig_theta_sum
+    return
+
+
+@app.cell
+def _(figure_block, mo, plot_theta_route_choice, theta_ctrl_results):
+    if theta_ctrl_results is None:
+        fig_theta_pa = mo.md(
+            "_Run the controller x theta sweep above to see the behavioural "
+            "mechanism._"
+        )
+    else:
+        fig_theta_pa = figure_block(
+            "plot_theta_route_choice", plot_theta_route_choice(theta_ctrl_results)
+        )
+    fig_theta_pa
     return
 
 

@@ -82,6 +82,7 @@ def _():
         plot_queue_belief_day,
         plot_route_choice_heatmaps,
         plot_sweep_metrics,
+        plot_within_day_by_setting,
         setup_style,
     )
     from aif_traffic.simulator import run_experiment
@@ -103,6 +104,7 @@ def _():
         plot_queue_belief_day,
         plot_route_choice_heatmaps,
         plot_sweep_metrics,
+        plot_within_day_by_setting,
         replace,
         run_experiment,
         sweep_progress_bar,
@@ -180,6 +182,7 @@ def _(
 ):
     if not run_btn.value:
         results_by_setting = None
+        sweep_params = None
     else:
         base_d = DemandParams()
         _scale = float(demand_scale.value)
@@ -238,23 +241,40 @@ def _(
                 "CG+SN": _base.with_extra_observations(_CG, _SN),
             }
         results_by_setting = {}
+        sweep_params = _base
         with sweep_progress_bar(
             len(_settings), _base.sim, title="communication settings"
         ) as _bar:
             for _name, _p in _settings.items():
+                # Snapshot every day so the per-setting belief-vs-realised chart
+                # has the travellers' posterior on the days it overlays.
                 results_by_setting[_name] = run_experiment(
-                    _p, seeds=[int(seed.value)], on_step=_bar.update)
-    return (results_by_setting,)
+                    _p, seeds=[int(seed.value)], on_step=_bar.update,
+                    snapshot_days=range(int(days.value)))
+    return results_by_setting, sweep_params
 
 
 @app.cell
 def _(figure_block, figure_placeholder, plot_sweep_metrics, results_by_setting):
+    # 2x2 grid layout (Xue's Experiment-3 Figure 1).
     fig_comm = (
         figure_placeholder("Communication settings overlay")
         if results_by_setting is None
-        else plot_sweep_metrics(results_by_setting)
+        else plot_sweep_metrics(results_by_setting, layout="grid")
     )
     figure_block("plot_sweep_metrics", fig_comm)
+    return
+
+
+@app.cell
+def _(figure_block, figure_placeholder, plot_within_day_by_setting,
+      results_by_setting, sweep_params):
+    fig_by_setting = (
+        figure_placeholder("Within-day belief vs reality by setting")
+        if results_by_setting is None
+        else plot_within_day_by_setting(results_by_setting, sweep_params)
+    )
+    figure_block("plot_within_day_by_setting", fig_by_setting)
     return
 
 
@@ -359,6 +379,21 @@ def _(figure_block, figure_placeholder, plot_route_choice_heatmaps,
         else plot_route_choice_heatmaps(results_by_setting)
     )
     figure_block("plot_route_choice_heatmaps", fig_routes)
+    return
+
+
+@app.cell
+def _(figure_block, figure_placeholder, plot_route_choice_heatmaps,
+      results_by_setting):
+    # Across-day queue patterns (L_2) alongside the route-choice patterns above.
+    fig_queue_hm = (
+        figure_placeholder("Queue heatmaps by setting")
+        if results_by_setting is None
+        else plot_route_choice_heatmaps(results_by_setting, value="L2")
+    )
+    figure_block(
+        "plot_route_choice_heatmaps", fig_queue_hm,
+        extra="_Showing the A--B queue $L_2$ instead of the route share._")
     return
 
 

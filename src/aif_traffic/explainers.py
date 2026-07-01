@@ -496,6 +496,102 @@ CHART_GUIDE: dict[str, dict] = {
         "read": "Play it to compare how the controllers' within-day behaviour "
         "evolves over the run on a common scale.",
     },
+    "plot_within_day_tt_vs_belief": {
+        "title": "Within-day travel time: realised vs belief",
+        "slider": None,
+        "what": "Per route (alpha top, beta bottom): the realised within-day "
+        "travel time (line) and the travellers' mean predictive-TT belief (dots), "
+        "both against the within-day departure minute. A few learning days are "
+        "overlaid as a shade gradient (earliest dim, last saturated).",
+        "read": "The line is what actually happened; the dots are what travellers "
+        "expected. On later (darker) days the dots should sit closer to the line -- "
+        "that tightening is the travellers learning the within-day travel-time "
+        "profile of the route they take.",
+    },
+    "plot_belief_reality_queues": {
+        "title": "Belief vs realised queue",
+        "slider": "day",
+        "what": "Per signalised link (L_2 top, L_6 bottom): the realised within-day "
+        "queue (solid) and the controller's queue belief (dashed mean + band). On "
+        "L_2, the traveller route-alpha queue belief is a dotted line + band with "
+        "markers -- each A--B traveller that took the intersection placed at the "
+        "minute it meets the queue (its arrival minute), agents in a minute "
+        "averaged, the band their across-agent spread. L_6 (exogenous C--D) shows "
+        "the controller only.",
+        "read": "Where the belief lines/bands sit on the realised curve, that agent "
+        "type has a consistent picture of the queue. The traveller line forms a "
+        "within-day profile because travellers departing at different minutes meet "
+        "and learn different queues; the band width is how much they disagree, and "
+        "the markers show which minutes actually had intersection-takers (sparse at "
+        "the peak). L_6 shows the controller alone. The Y-axis is fixed across days.",
+    },
+    "plot_coupled_within_day": {
+        "title": "Coupled within-day: flow & green split",
+        "slider": None,
+        "what": "Top: within-day traveller flow on the intersection route alpha "
+        "(blue) and bypass beta (green). Bottom: the controller's green split "
+        "phi_2 -- realised (solid) vs planned/believed (dots). A few learning days "
+        "are overlaid as a shade gradient.",
+        "read": "Read with the travel-time belief chart: it shows the *controller* "
+        "half of the coupled decision. Where realised and believed phi_2 diverge, "
+        "the controller reacted within the day to queues that differed from its "
+        "typical-day belief.",
+    },
+    "plot_co_adaptation": {
+        "title": "Day-to-day co-adaptation",
+        "slider": None,
+        "what": "Top and middle: heatmaps of the intersection share P_alpha(d,t) "
+        "and the green split phi_2(d,t) over (day x time-of-day). Bottom: daily "
+        "demand-weighted P_alpha and mean phi_2 (left axis) with total system cost "
+        "(right axis).",
+        "read": "Scan the heatmaps left-to-right to see the daily patterns settle; "
+        "the bottom panel ties route choice and signal control to whether system "
+        "cost falls. Together they show the two layers co-adapting over days.",
+    },
+    "plot_learning_uncertainty": {
+        "title": "Learning uncertainty over days",
+        "slider": None,
+        "what": "Top: traveller posterior SD on the route travel times TT_alpha "
+        "(blue) and TT_beta (green). Bottom: the controller's learned queue "
+        "observation-noise SD per movement (L_2, L_6) and, on a right axis, its "
+        "belief SD on the daily queue-delay (a proxy for system cost).",
+        "read": "Falling curves mean the agents are getting surer. The top panel is "
+        "traveller uncertainty, the bottom controller uncertainty; compare how fast "
+        "each layer's confidence grows over the run.",
+    },
+    "plot_theta_summary": {
+        "title": "theta-sweep performance summary",
+        "slider": None,
+        "what": "Four panels -- mean and SD of daily system cost, and mean and SD of "
+        "the daily peak queue L_2+L_6 -- against social internalisation theta, one "
+        "line per controller (canonical colour), over the last days of each run.",
+        "read": "Read each controller's line across theta: a flat line means theta "
+        "barely changes that metric for that controller. Comparing controllers "
+        "shows whether an adaptive controller absorbs the effect of theta that a "
+        "fixed one would expose.",
+    },
+    "plot_within_day_by_setting": {
+        "title": "Within-day belief vs reality by setting",
+        "slider": None,
+        "what": "One panel per communication setting (BL/CG/SN/CG+SN): the "
+        "realised within-day travel time on the intersection route (line) vs the "
+        "travellers' mean predictive-TT belief (dots), a few learning days "
+        "overlaid as a shade gradient.",
+        "read": "Compare panels: the setting whose belief dots sit closest to the "
+        "realised line is the one that best resolves travellers' uncertainty about "
+        "what they will actually face. Darker (later) days should track the line "
+        "more tightly as learning proceeds.",
+    },
+    "plot_theta_route_choice": {
+        "title": "theta behavioural mechanism",
+        "slider": None,
+        "what": "Grouped box plots of the daily intersection share P_alpha at each "
+        "theta, one box per controller within each theta group (canonical colour), "
+        "over the last days of each run.",
+        "read": "If the boxes shift as theta grows, route choice responds to social "
+        "internalisation; if they barely move, the behavioural response is small. "
+        "Compare controllers to see whether the signal policy masks that response.",
+    },
 }
 
 # Which charts each notebook shows, in display order. Drives both the generated
@@ -504,18 +600,25 @@ NOTEBOOK_CHARTS: dict[str, tuple[str, ...]] = {
     "social_internalisation": (
         "plot_demand_profile",
         "plot_day_overview_grid",
+        "plot_within_day_tt_vs_belief",
+        "plot_coupled_within_day",
         "plot_signal_day",
         "plot_queue_belief_day",
+        "plot_belief_reality_queues",
         "plot_learned_obs_noise",
+        "plot_learning_uncertainty",
         "plot_route_flows",
         "plot_network_state",
         "plot_green_split_heatmap",
         "plot_daily_system_cost",
         "plot_route_share_over_days",
+        "plot_co_adaptation",
         "animate_days",
         "animate_route_flows",
         "animate_network_state",
         "plot_sweep_metrics",
+        "plot_theta_summary",
+        "plot_theta_route_choice",
     ),
     "controller_benchmark": (
         "plot_controller_metrics",
@@ -526,6 +629,7 @@ NOTEBOOK_CHARTS: dict[str, tuple[str, ...]] = {
     ),
     "information_communication": (
         "plot_sweep_metrics",
+        "plot_within_day_by_setting",
         "plot_day_overview_grid",
         "plot_queue_belief_day",
         "plot_route_choice_heatmaps",

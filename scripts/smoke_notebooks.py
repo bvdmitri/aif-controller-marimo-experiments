@@ -37,9 +37,13 @@ from aif_traffic.parameters import (
     SimParams,
 )
 from aif_traffic.plotting import (
+    plot_belief_reality_queues,
+    plot_co_adaptation,
     plot_controller_theta_grid,
+    plot_coupled_within_day,
     plot_demand_profile,
     plot_learned_obs_noise,
+    plot_learning_uncertainty,
     plot_network_state,
     plot_queue_belief_day,
     plot_route_choice_heatmaps,
@@ -47,6 +51,10 @@ from aif_traffic.plotting import (
     plot_route_share_over_days,
     plot_signal_day,
     plot_sweep_metrics,
+    plot_theta_route_choice,
+    plot_theta_summary,
+    plot_within_day_by_setting,
+    plot_within_day_tt_vs_belief,
     setup_style,
 )
 from aif_traffic.simulator import run_experiment
@@ -96,6 +104,22 @@ def smoke_controllers() -> None:
         _save_figure(plot_route_share_over_days(res.step), f"route_share_{name}.png")
 
 
+def smoke_mechanism() -> None:
+    """Experiment-1 mechanism composites: coupled within-day, belief-vs-reality
+    queue, co-adaptation, and learning-uncertainty figures, plus the
+    within-day travel-time-vs-belief chart (needs per-agent snapshots)."""
+    params = _small_params(AIFControllerSpec())
+    res = run_experiment(params, snapshot_days=range(params.sim.days))
+    _save_figure(plot_coupled_within_day(res.step, params), "coupled_within_day.png")
+    _save_figure(plot_within_day_tt_vs_belief(res.step, res.snapshots, params),
+                 "within_day_tt_vs_belief.png")
+    _save_figure(plot_belief_reality_queues(res.step, res.snapshots, params),
+                 "belief_reality_queues.png")
+    _save_figure(plot_co_adaptation(res.step), "co_adaptation.png")
+    _save_figure(plot_learning_uncertainty(res.cohort, res.controller),
+                 "learning_uncertainty.png")
+
+
 def smoke_communication() -> None:
     """Run every cost-offset broadcast signal type with a compliant cohort."""
     for st in SignalType:
@@ -120,7 +144,7 @@ def smoke_extra_observations() -> None:
     }
     results = {}
     for name, params in settings.items():
-        res = run_experiment(params)
+        res = run_experiment(params, snapshot_days=range(params.sim.days))
         assert not res.step.empty, f"extra-obs {name}: empty step frame"
         results[name] = res
 
@@ -131,8 +155,13 @@ def smoke_extra_observations() -> None:
         results["BL"].step["P_alpha"].values, default.step["P_alpha"].values
     ), "BL extra-obs is not bit-identical to no information"
 
-    _save_figure(plot_sweep_metrics(results), "extra_observations_sweep.png")
+    _save_figure(plot_sweep_metrics(results, layout="grid"),
+                 "extra_observations_sweep.png")
     _save_figure(plot_route_choice_heatmaps(results), "extra_observations_route_choice.png")
+    _save_figure(plot_route_choice_heatmaps(results, value="L2"),
+                 "extra_observations_queue_heatmap.png")
+    _save_figure(plot_within_day_by_setting(results, base),
+                 "extra_observations_by_setting.png")
 
 
 def smoke_belief_communication() -> None:
@@ -202,6 +231,8 @@ def smoke_theta_grid() -> None:
                 _small_params(spec).with_theta(theta)
             )
     _save_figure(plot_controller_theta_grid(grid), "theta_controller_grid.png")
+    _save_figure(plot_theta_summary(grid, n_last=3), "theta_summary.png")
+    _save_figure(plot_theta_route_choice(grid, n_last=3), "theta_route_choice.png")
 
 
 def smoke_learn_obs_noise() -> None:
@@ -257,6 +288,7 @@ def main() -> int:
     smokes = {
         "demand": smoke_demand,
         "controllers": smoke_controllers,
+        "mechanism": smoke_mechanism,
         "communication": smoke_communication,
         "extra_observations": smoke_extra_observations,
         "belief_communication": smoke_belief_communication,
