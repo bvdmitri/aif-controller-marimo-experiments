@@ -120,6 +120,27 @@ def smoke_mechanism() -> None:
                  "learning_uncertainty.png")
 
 
+def smoke_stationary() -> None:
+    """Stationary (continuous filtering, the default) vs the rolling window:
+    the same short experiment should end with a TIGHTER traveller posterior
+    under stationary (evidence accumulates instead of being forgotten)."""
+    import numpy as np
+
+    base = _small_params(AIFControllerSpec())
+
+    def late_sigma(res):
+        s = res.cohort.groupby("day")["sigma_alpha_post"].mean()
+        return float(s.iloc[-2:].mean())
+
+    st = run_experiment(base.with_stationary(True))
+    wd = run_experiment(base.with_stationary(False))
+    st_sig, wd_sig = late_sigma(st), late_sigma(wd)
+    assert np.isfinite(st_sig) and np.isfinite(wd_sig)
+    assert st_sig <= wd_sig + 1e-6, (
+        f"stationary posterior not tighter: stationary={st_sig:.3f} "
+        f"windowed={wd_sig:.3f}")
+
+
 def smoke_communication() -> None:
     """Run every cost-offset broadcast signal type with a compliant cohort."""
     for st in SignalType:
@@ -292,6 +313,7 @@ def main() -> int:
         "demand": smoke_demand,
         "controllers": smoke_controllers,
         "mechanism": smoke_mechanism,
+        "stationary": smoke_stationary,
         "communication": smoke_communication,
         "extra_observations": smoke_extra_observations,
         "belief_communication": smoke_belief_communication,
