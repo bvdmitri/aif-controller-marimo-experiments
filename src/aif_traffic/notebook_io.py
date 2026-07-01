@@ -50,8 +50,31 @@ def figure_block(chart_id: str, content, *, extra: str | None = None):
 
     from .explainers import chart_caption
 
+    _widen_for_display(content)
     caption = mo.md(chart_caption(chart_id, extra=extra))
     return mo.center(mo.vstack([caption, content], align="center"))
+
+
+def _widen_for_display(content) -> None:
+    """Widen a matplotlib ``Figure`` to the notebook display width (keeping its
+    height) so charts fill the marimo content column instead of rendering at the
+    narrow paper text width. No-op for non-figures (gifs, ``mo`` layouts) and for
+    figures already at least that wide. The target lives in the active style, so
+    a future paper style leaves figures at their authored print width."""
+    try:
+        from matplotlib.figure import Figure
+    except Exception:  # pragma: no cover - matplotlib always present in practice
+        return
+    if not isinstance(content, Figure):
+        return
+    from .plotting.style import active_style
+
+    target = getattr(active_style(), "fig_display_w", None)
+    if not target:
+        return
+    w, h = content.get_size_inches()
+    if target > w:
+        content.set_size_inches(target, h)
 
 
 def sweep_progress_bar(n_experiments: int, sim, *, title: str, n_seeds: int = 1):

@@ -38,6 +38,11 @@ class StyleContext:
     # LLNCS figure-width budget (inches); mirrors ``primitives.TEXT_W(_HALF)``.
     text_w: float = 4.8
     text_w_half: float = 3.3
+    # On-screen display width (inches) that notebook figures are widened to so
+    # they fill the marimo content column (height is left unchanged). Applied
+    # centrally in ``notebook_io.figure_block``; a paper style would set this to
+    # ``text_w`` so figures keep their authored print width.
+    fig_display_w: float = 9.0
     # Semantic line weights / band opacities charts read instead of literals.
     line_main: float = 1.5
     line_ref: float = 0.9
