@@ -41,6 +41,8 @@ def explainer_pointer() -> str:
     )
 
 
+
+
 _SHARED = r"""
 ### How the simulation actually works
 
@@ -745,23 +747,6 @@ def chart_caption(chart_id: str, *, extra: str | None = None) -> str:
     return "\n\n".join(parts)
 
 
-def chart_caption_parts(chart_id: str, *, extra: str | None = None) -> tuple[str, str]:
-    """``(headline, details)`` for a foldable caption: a short one-liner shown
-    always (the chart title, plus a slider hint), and the full "what / how to
-    read" prose to tuck under an accordion. Mirrors :func:`chart_caption` (which
-    stays the flat single-string form used by the end-of-notebook guide)."""
-    g = CHART_GUIDE[chart_id]
-    headline = f"**{g['title']}**" + (" \U0001F39A️" if g["slider"] else "")
-    details: list[str] = []
-    badge = _SLIDER_BADGE.get(g["slider"])
-    if badge:
-        details.append("> " + badge)
-    details.append(f"{g['what']} {g['read']}")
-    if extra:
-        details.append(extra)
-    return headline, "\n\n".join(details)
-
-
 def charts_section(nb_id: str) -> str:
     """The "How to read the charts" markdown list for an end-of-notebook cell,
     generated from CHART_GUIDE so it stays in sync with the per-figure captions."""
@@ -784,16 +769,6 @@ def table_caption(table_id: str, *, extra: str | None = None) -> str:
     if extra:
         parts.append(extra)
     return "\n\n".join(parts)
-
-
-def table_caption_parts(table_id: str, *, extra: str | None = None) -> tuple[str, str]:
-    """``(headline, details)`` for a foldable table caption: the table title as a
-    one-liner, and the "what / how to read" prose to tuck under an accordion."""
-    g = TABLE_GUIDE[table_id]
-    details = [f"{g['what']} {g['read']}"]
-    if extra:
-        details.append(extra)
-    return f"**{g['title']}**", "\n\n".join(details)
 
 
 def tables_section(nb_id: str) -> str:

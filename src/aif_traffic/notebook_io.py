@@ -48,13 +48,10 @@ def figure_block(chart_id: str, content, *, extra: str | None = None):
     notebook-specific note (e.g. another control that filters the chart)."""
     import marimo as mo
 
-    from .explainers import chart_caption_parts
+    from .explainers import chart_caption
 
     _widen_for_display(content)
-    headline, details = chart_caption_parts(chart_id, extra=extra)
-    # Short one-liner always visible; the full "what / how to read" folds away
-    # under a collapsed accordion so it does not eat vertical space.
-    caption = mo.accordion({headline: mo.md(details)})
+    caption = mo.md(chart_caption(chart_id, extra=extra))
     return mo.center(mo.vstack([caption, content], align="center"))
 
 
@@ -68,10 +65,9 @@ def table_block(table_id: str, df, *, extra: str | None = None, round_to: int = 
     ``mo.vstack`` of the caption above the table."""
     import marimo as mo
 
-    from .explainers import table_caption_parts
+    from .explainers import table_caption
 
-    headline, details = table_caption_parts(table_id, extra=extra)
-    caption = mo.accordion({headline: mo.md(details)})
+    caption = mo.md(table_caption(table_id, extra=extra))
     if df is None:
         body = mo.md("*Run the experiment above to populate this table.*")
     else:
