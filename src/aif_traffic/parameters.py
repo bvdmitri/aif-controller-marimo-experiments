@@ -245,6 +245,17 @@ class CohortSpec:
     window_size: int = 30
     n_laplace_iters: int = 3
 
+    # -- Assume a stationary environment (continuous filtering) ----------------
+    stationary: bool = True
+    """When ``True`` (the default) the traveller smoother assumes the environment
+    is **stationary** and does *continuous filtering* instead of rolling-window
+    forgetting: it keeps the **entire run** in its window (never drops a day),
+    fits from day 1, and disables the per-route staleness re-inflation, so the
+    posterior accumulates all evidence and tightens toward convergence.
+    ``window_size`` (and the between-window drift SDs / ``mean_revert_days``) are
+    then ignored. Set ``False`` to recover the rolling ``window_size``-day
+    smoother with forgetting (the IWAI non-stationary / disruption setting)."""
+
     # -- Learn the observation noise (per-agent variational Gamma) -------------
     learn_obs_noise: bool = True
     """When ``True`` (the default), each traveller *learns* its observation-noise
@@ -378,7 +389,16 @@ class AIFControllerSpec:
     # the last ``controller_window_size`` days (the macro analogue of the
     # travellers' window smoother). The smoothed posterior is what it broadcasts.
     controller_window_size: int = 30
-    """Number of past days the controller smooths over (its window ``W``)."""
+    """Number of past days the controller smooths over (its window ``W``).
+    Ignored when ``stationary`` is ``True`` (the window then spans the whole run)."""
+    stationary: bool = True
+    """When ``True`` (the default) the controller assumes a **stationary**
+    environment and does *continuous filtering*: its window spans the **entire
+    run** (never drops a day) and any across-day drift (``sigma_proc_day``) is
+    forced to zero, so its within-day queue-trajectory posterior accumulates all
+    days and tightens toward convergence. ``controller_window_size`` is then
+    ignored. Set ``False`` for the rolling ``controller_window_size``-day window
+    with forgetting (the non-stationary setting)."""
     controller_state_resolution: str = "minute"
     """Grid for the trajectory latent: ``"minute"`` (one node per within-day
     minute -- a genuinely big state) or ``"epoch"`` (one node per control
@@ -580,6 +600,21 @@ class Params:
         if isinstance(self.controller, AIFControllerSpec):
             out = replace(out, controller=replace(self.controller,
                                                    learn_obs_noise=bool(flag)))
+        return out
+
+    def with_stationary(self, flag: bool = True) -> "Params":
+        """Toggle the stationary-environment assumption on both layers: every
+        cohort's traveller smoother and (if the controller is the AIF one) the
+        controller smoother. When ``True`` (the default) both do continuous
+        filtering over the whole run instead of rolling-window forgetting, so
+        posteriors accumulate all evidence and converge. This is the single
+        switch the experiment notebooks flip."""
+        cohorts = tuple(replace(c, stationary=bool(flag))
+                        for c in self.population.cohorts)
+        out = self.with_cohorts(cohorts)
+        if isinstance(self.controller, AIFControllerSpec):
+            out = replace(out, controller=replace(self.controller,
+                                                   stationary=bool(flag)))
         return out
 
     def with_controller(self, spec: object) -> "Params":

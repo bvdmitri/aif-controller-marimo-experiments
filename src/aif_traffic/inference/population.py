@@ -87,13 +87,30 @@ class Population:
         self.phi_lo = float(signal.phi_min)
         self.phi_hi = float(signal.phi_sat)
 
+        # Stationary-environment mode is a single switch for the joint smoother
+        # (it changes the window length), so all cohorts must agree on it.
+        stationary_flags = {bool(getattr(c, "stationary", False)) for c in cohorts}
+        if len(stationary_flags) != 1:
+            raise ValueError(
+                "All cohorts must share the same CohortSpec.stationary; "
+                f"got {stationary_flags}."
+            )
+        self.stationary: bool = next(iter(stationary_flags))
+
         window_sizes = {int(c.window_size) for c in cohorts}
         if len(window_sizes) != 1:
             raise ValueError(
                 "All cohorts must share the same CohortSpec.window_size; "
                 f"got {sorted(window_sizes)}."
             )
-        self.W: int = next(iter(window_sizes))
+        # Stationary (continuous filtering): the window spans the WHOLE run so no
+        # day is ever dropped -- the posterior then accumulates all evidence and
+        # tightens toward convergence (window_size is ignored). Otherwise it is
+        # the rolling window_size-day smoother with forgetting.
+        self.W: int = (
+            int(sim.burn_in + sim.days) if self.stationary
+            else next(iter(window_sizes))
+        )
 
         # Observation-noise learning is a single switch for the joint smoother
         # call, so all cohorts must agree on it (like window_size).
@@ -488,7 +505,10 @@ class Population:
 
         self._last_observed_day[np.arange(self.N), self.last_choice] = self.day_count
 
-        if self.day_count < self.W:
+        # Stationary (continuous filtering) fits from the very first day (the
+        # window spans the whole run, so we never wait for it to "fill"); the
+        # rolling-window mode waits until it has W days.
+        if self.day_count < (1 if self.stationary else self.W):
             return
 
         n_stale = np.where(
@@ -496,6 +516,19 @@ class Population:
             self.day_count,
             self.day_count - self._last_observed_day,
         )
+        if self.stationary:
+            # No forgetting: the prior is the pure cohort default (no staleness
+            # re-inflation on non-chosen routes, no between-window drift, no mean
+            # reversion) so the accumulated posterior tightens toward convergence.
+            n_stale = np.zeros_like(n_stale)
+            _zeros = np.zeros(self.N)
+            _sig_F, _sig_C = _zeros, _zeros
+            _sig_L, _sig_phi = _zeros, _zeros
+            _mean_revert = _zeros
+        else:
+            _sig_F, _sig_C = self._sigma_F_drift, self._sigma_C_drift
+            _sig_L, _sig_phi = self._sigma_L_drift, self._sigma_phi_drift
+            _mean_revert = self._mean_revert_days
 
         result = window_step_jit(
             state=self.state,
@@ -517,12 +550,12 @@ class Population:
             sigma_extra_phi_window=jnp.asarray(self._extra_sigma_phi),
             mask_extra_phi_window=jnp.asarray(self._extra_mask_phi),
             n_stale_days=jnp.asarray(n_stale),
-            sigma_F_drift=jnp.asarray(self._sigma_F_drift)[:, None],
-            sigma_C_drift=jnp.asarray(self._sigma_C_drift)[:, None],
-            sigma_L_drift=jnp.asarray(self._sigma_L_drift)[:, None],
-            sigma_phi_drift=jnp.asarray(self._sigma_phi_drift)[:, None],
+            sigma_F_drift=jnp.asarray(_sig_F)[:, None],
+            sigma_C_drift=jnp.asarray(_sig_C)[:, None],
+            sigma_L_drift=jnp.asarray(_sig_L)[:, None],
+            sigma_phi_drift=jnp.asarray(_sig_phi)[:, None],
             n_laplace_iters=self._n_laplace_iters,
-            mean_revert_days=jnp.asarray(self._mean_revert_days)[:, None],
+            mean_revert_days=jnp.asarray(_mean_revert)[:, None],
             phi_lo=self.phi_lo,
             phi_hi=self.phi_hi,
             learn_obs_noise=self._learn_obs_noise,

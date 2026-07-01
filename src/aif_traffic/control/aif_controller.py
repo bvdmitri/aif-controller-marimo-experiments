@@ -92,6 +92,11 @@ class AIFController(BaseController):
         self._minute_res = (spec.controller_state_resolution != "epoch")
         self._ci = max(1, int(spec.control_interval_min))
         self._M = 0
+        # Stationary (continuous filtering): the window spans the WHOLE run so no
+        # day is dropped and the posterior tightens toward convergence. The final
+        # size needs the run length, so it is set in _setup_context (which has
+        # ``sim``); until then fall back to the configured window.
+        self._stationary = bool(getattr(spec, "stationary", False))
         self._W = max(1, int(spec.controller_window_size))
         # Window buffers per movement (0 = L_2/sig_ab, 1 = L_6/sig_cd), filled by
         # observe(); the smoother posterior carried across days.
@@ -147,6 +152,10 @@ class AIFController(BaseController):
         self._cbar6 = net.cbar(self.sig_cd)
         self._dt_h = sim.dt_h
         self._K = sim.K
+        # Stationary: size the window to the whole run so it accumulates every
+        # observed day (continuous filtering) rather than a rolling W-day window.
+        if self._stationary:
+            self._W = max(1, int(sim.burn_in + sim.days))
         nd = net.n_delay(sim.dt_min)
         self._N2 = nd[self.sig_ab]
         self._N6 = nd[self.sig_cd]
@@ -185,9 +194,16 @@ class AIFController(BaseController):
 
     def _q_proc(self) -> float:
         """Per-node random-walk process variance: per-minute process variance
-        scaled by the minutes per node, plus the optional across-day inflation."""
+        scaled by the minutes per node, plus the optional across-day inflation.
+
+        In stationary mode the across-day drift (``sigma_proc_day``, the
+        forgetting term) is forced to zero, so only the within-day random walk
+        couples adjacent nodes and the posterior accumulates across all days."""
         minutes_per_node = 1 if self._minute_res else self._ci
-        return self.spec.sigma_proc ** 2 * minutes_per_node + self.spec.sigma_proc_day ** 2
+        q = self.spec.sigma_proc ** 2 * minutes_per_node
+        if not self._stationary:
+            q += self.spec.sigma_proc_day ** 2
+        return q
 
     def prepare_day(self, context: Mapping) -> None:
         self._setup_context(context)
