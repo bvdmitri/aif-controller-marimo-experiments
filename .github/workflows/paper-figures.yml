@@ -1,0 +1,42 @@
+name: Paper figures
+
+# Render the publication-styled figures and upload them as a downloadable
+# artifact. Heavy (full-scale experiments), so run on demand and on version
+# tags -- not on every push.
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+concurrency:
+  group: paper-figures-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  export:
+    name: Export paper figures
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install
+
+      - name: Install project + dev deps
+        run: uv sync --extra dev
+
+      - name: Render paper figures (paper style, vector PDF)
+        run: uv run python scripts/export_paper_figures.py --out paper_figures
+
+      - name: Upload figures artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: paper-figures-${{ github.sha }}
+          path: paper_figures/
+          if-no-files-found: error

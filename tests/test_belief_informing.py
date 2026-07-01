@@ -33,6 +33,11 @@ from aif_traffic.inference.population import build_population
 from aif_traffic.parameters import BeliefSignal, Params
 from aif_traffic.simulator import run_experiment
 
+# Full-scale characterization (~6 x 90-day runs): heavy, so gated behind
+# --runslow (off per-push CI; run on demand / nightly). See tests/conftest.py
+# and .github/workflows/heavy-tests.yml.
+pytestmark = pytest.mark.slow
+
 SEED = 7
 DAYS = 90  # the full default experiment (past burn-in + window)
 

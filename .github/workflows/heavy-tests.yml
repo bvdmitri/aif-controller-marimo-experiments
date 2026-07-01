@@ -1,0 +1,36 @@
+name: Heavy tests
+
+# The full-scale behavioural characterization + narrative-report tests
+# (tests marked `slow`) are excluded from the per-push CI to keep it fast.
+# Run them here on demand and nightly, so regressions in emergent behaviour are
+# still caught -- just off the critical path.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 4 * * *"  # 04:00 UTC daily
+
+concurrency:
+  group: heavy-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  runslow:
+    name: Full-scale behavioural + narrative tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install
+
+      - name: Install project + dev deps
+        run: uv sync --extra dev
+
+      - name: Run the slow / full-scale test suite
+        run: uv run --extra dev pytest --runslow -q

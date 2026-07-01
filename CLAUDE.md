@@ -168,10 +168,14 @@ understanding of how the model behaves. Guidelines:
   population (no shrunk `n_agents`/horizon) — so the verdicts reflect the model
   as actually used. Share one `run_experiment` via a module-scoped fixture and
   prefer the deterministic (noise-free) path to keep them tractable.
-- Tests that are genuinely expensive at full scale (the externality re-roll, or
-  multi-run sweeps) are marked `@pytest.mark.slow` and **skipped unless** you pass
-  `--runslow` (see `tests/conftest.py`). The fast `pytest tests/` still runs the
-  in-suite behavioural tests; the full-scale reports are run on demand.
+- The **full-scale behavioural characterization modules** themselves
+  (`tests/test_behaviour.py`, `tests/test_belief_informing.py`) are now marked
+  `@pytest.mark.slow` (module-level `pytestmark`), together with the externality
+  re-roll, multi-run sweeps, and the narrative reports. All `slow` tests are
+  **skipped unless** you pass `--runslow` (see `tests/conftest.py`), so the fast
+  `pytest tests/` and the per-push CI stay quick. Run the heavy tier on demand
+  with `uv run --extra dev pytest --runslow` — CI runs it nightly / on dispatch
+  via `.github/workflows/heavy-tests.yml`, not per push.
 - When the throwaway `/tmp` analysis you wrote to understand a behaviour proves a
   point worth keeping, promote it into `tests/test_behaviour.py`.
 

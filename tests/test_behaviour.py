@@ -36,6 +36,11 @@ from aif_traffic.demand import DemandProfile
 from aif_traffic.parameters import Params, SimParams
 from aif_traffic.simulator import run_experiment
 
+# Full-scale (90-day, default-population) characterization: heavy, so gated
+# behind --runslow (kept off per-push CI; run on demand / nightly). See
+# tests/conftest.py and .github/workflows/heavy-tests.yml.
+pytestmark = pytest.mark.slow
+
 SEED = 42
 DAYS = 90  # the full default experiment (reaches the learned equilibrium)
 
