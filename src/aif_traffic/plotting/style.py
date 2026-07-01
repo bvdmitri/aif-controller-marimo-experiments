@@ -49,6 +49,10 @@ class StyleContext:
     band_alpha: float = 0.20
     band_alpha_light: float = 0.12
     rc: dict = field(default_factory=dict)
+    # Per-style colour overrides consulted by :mod:`.palette` (empty = use the
+    # palette's built-in marimo colours). Keyed by palette kind:
+    # ``{"controller": {name: hex}, "route": {...}, "comm": {...}}``.
+    palette_overrides: dict = field(default_factory=dict)
 
 
 # The current marimo look, factored out of the old ``setup_style``.
@@ -73,8 +77,65 @@ _MARIMO = StyleContext(
     },
 )
 
-# Registry of known styles. A ``"paper"`` entry is added in a later session.
-_STYLES: dict[str, StyleContext] = {"marimo": _MARIMO}
+# The publication style for the paper (Elsevier ``elsarticle`` 3p, single
+# column, Times; ``\textwidth = 486 pt ~= 6.72 in``). Serif/Times print fonts,
+# vector PDF output, colourblind-/greyscale-safe (Okabe-Ito) palette overrides.
+# ``fig_display_w == text_w`` so nothing is widened on export.
+_PAPER = StyleContext(
+    name="paper",
+    text_w=6.72,
+    text_w_half=3.3,
+    fig_display_w=6.72,
+    line_main=1.2,
+    line_ref=0.8,
+    band_alpha=0.18,
+    band_alpha_light=0.10,
+    rc={
+        "font.family": "serif",
+        "font.serif": ["Times New Roman", "Times", "STIX Two Text",
+                       "DejaVu Serif"],
+        "mathtext.fontset": "stix",
+        "font.size": 8,
+        "axes.titlesize": 8,
+        "axes.labelsize": 8,
+        "xtick.labelsize": 7,
+        "ytick.labelsize": 7,
+        "legend.fontsize": 7,
+        "figure.titlesize": 9,
+        "axes.linewidth": 0.6,
+        "grid.alpha": 0.25,
+        "legend.framealpha": 0.9,
+        "savefig.dpi": 600,
+        "savefig.format": "pdf",
+        "savefig.bbox": "tight",
+        "pdf.fonttype": 42,   # embed TrueType (editable text in the PDF)
+        "ps.fonttype": 42,
+        "figure.constrained_layout.use": False,
+    },
+    palette_overrides={
+        # Okabe-Ito colourblind-safe hues; distinct in greyscale too.
+        "controller": {
+            "fixed_time": "#000000",    # black
+            "reactive": "#0072B2",      # blue
+            "anticipatory": "#E69F00",  # orange
+            "aif": "#009E73",           # bluish green
+        },
+        "route": {
+            "alpha": "#0072B2",   # blue (A--B intersection)
+            "beta": "#009E73",    # bluish green (A--B bypass)
+            "gamma": "#D55E00",   # vermillion (C--D)
+        },
+        "comm": {
+            "BL": "#666666",      # grey (reference)
+            "CG": "#0072B2",      # blue
+            "SN": "#D55E00",      # vermillion
+            "CG+SN": "#CC79A7",   # reddish purple
+        },
+    },
+)
+
+# Registry of known styles.
+_STYLES: dict[str, StyleContext] = {"marimo": _MARIMO, "paper": _PAPER}
 
 _ACTIVE: StyleContext = _MARIMO
 
@@ -83,8 +144,10 @@ def apply_style(name: str = "marimo") -> StyleContext:
     """Make ``name`` the active style and push its rcParams into matplotlib.
 
     Called once by the notebook (via :func:`aif_traffic.plotting.setup_style`)
-    or, in the future, by the CI exporter with ``name="paper"`` before saving.
-    Returns the resolved :class:`StyleContext`.
+    or by the CI exporter with ``name="paper"`` before saving. rcParams are
+    first reset to the matplotlib defaults so styles do not leak keys into one
+    another (e.g. paper's serif family / PDF font type must not persist after
+    switching back to marimo). Returns the resolved :class:`StyleContext`.
     """
     global _ACTIVE
     try:
@@ -94,6 +157,7 @@ def apply_style(name: str = "marimo") -> StyleContext:
             f"unknown style {name!r}; known styles: {sorted(_STYLES)}"
         ) from exc
     _ACTIVE = style
+    mpl.rcParams.update(mpl.rcParamsDefault)
     mpl.rcParams.update(style.rc)
     return style
 
@@ -101,3 +165,13 @@ def apply_style(name: str = "marimo") -> StyleContext:
 def active_style() -> StyleContext:
     """The style currently in effect (defaults to the marimo look)."""
     return _ACTIVE
+
+
+def text_w() -> float:
+    """Full figure-authoring width (inches) of the active style."""
+    return _ACTIVE.text_w
+
+
+def text_w_half() -> float:
+    """Half (side-by-side) figure-authoring width (inches) of the active style."""
+    return _ACTIVE.text_w_half

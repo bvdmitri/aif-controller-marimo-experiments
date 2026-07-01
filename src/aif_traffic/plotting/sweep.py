@@ -16,7 +16,7 @@ import numpy as np
 from .comparison import _daily_cost, _daily_peak_total_queue
 from .network import _edges
 from .palette import COMM_ORDER, comm_colour
-from .primitives import TEXT_W, light_borders
+from .primitives import light_borders, text_w
 from .style import active_style
 
 
@@ -75,13 +75,13 @@ def plot_sweep_metrics(
     ]
 
     if layout == "grid":
-        fig, axgrid = plt.subplots(2, 2, figsize=(TEXT_W, TEXT_W * 0.85))
+        fig, axgrid = plt.subplots(2, 2, figsize=(text_w(), text_w() * 0.85))
         axes = axgrid.ravel()
         xlabel_axes = axes[2:]  # bottom row
         rect_top = 0.90
     else:
         fig, axes = plt.subplots(
-            len(panels), 1, figsize=(TEXT_W, TEXT_W * 1.9), sharex=True,
+            len(panels), 1, figsize=(text_w(), text_w() * 1.9), sharex=True,
         )
         xlabel_axes = [axes[-1]]
         rect_top = 0.965
@@ -121,7 +121,7 @@ def plot_route_choice_heatmaps(
     items = list(results_by_label.items())
     n = len(items)
     fig, axes = plt.subplots(
-        1, n, figsize=(TEXT_W, TEXT_W * 0.5), sharex=True, sharey=True,
+        1, n, figsize=(text_w(), text_w() * 0.5), sharex=True, sharey=True,
         squeeze=False,
     )
     axes = axes[0]

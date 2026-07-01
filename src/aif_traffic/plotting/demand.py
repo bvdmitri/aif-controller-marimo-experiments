@@ -6,12 +6,12 @@ import matplotlib.pyplot as plt
 
 from ..demand import DemandProfile
 from ..parameters import Params
-from .primitives import TEXT_W
+from .primitives import text_w
 
 
 def plot_demand_profile(params: Params):
     profile = DemandProfile.from_params(params.sim, params.demand)
-    fig, ax = plt.subplots(figsize=(TEXT_W, TEXT_W * 3.5 / 5.0))
+    fig, ax = plt.subplots(figsize=(text_w(), text_w() * 3.5 / 5.0))
     ax.plot(params.sim.time, profile.d_AB, label=r"$D_{AB}(t)$",
             linewidth=1.5, color="tab:blue")
     ax.plot(params.sim.time, profile.d_CD, label=r"$D_{CD}(t)$",

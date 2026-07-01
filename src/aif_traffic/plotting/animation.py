@@ -16,7 +16,7 @@ from matplotlib.animation import FuncAnimation, PillowWriter
 from matplotlib.colors import Normalize
 
 from .network import _network_color_scale, _render_network_axes
-from .primitives import TEXT_W, place_legend_above
+from .primitives import place_legend_above, text_w
 
 
 def animate_days(
@@ -42,7 +42,7 @@ def animate_days(
     phi_max = float(sd["phi2"].max() + sd["phi6"].max())  # phi_sat
 
     fig, (ax_q, ax_phi) = plt.subplots(
-        2, 1, figsize=(TEXT_W, TEXT_W * 0.9), sharex=True,
+        2, 1, figsize=(text_w(), text_w() * 0.9), sharex=True,
     )
 
     def draw(day: int) -> None:
@@ -104,7 +104,7 @@ def animate_route_flows(
         sd["Q_gamma"].to_numpy(),
     ])), 1.0) * 1.05
 
-    fig, ax = plt.subplots(figsize=(TEXT_W, TEXT_W * 0.6))
+    fig, ax = plt.subplots(figsize=(text_w(), text_w() * 0.6))
 
     def draw(day: int) -> None:
         d = sd[sd["day"] == day].sort_values("tau")
@@ -175,7 +175,7 @@ def animate_network_state(
     cmap, clabel, vmax = _network_color_scale(scale_df, net, color_by)
     norm = Normalize(vmin=0.0, vmax=max(vmax, 1e-6))
 
-    fig, ax = plt.subplots(figsize=(TEXT_W * 1.35, TEXT_W * 0.9))
+    fig, ax = plt.subplots(figsize=(text_w() * 1.35, text_w() * 0.9))
     # Colour key as a slim horizontal strip below the map (created once, out of
     # the way of the link labels) rather than a cramped vertical side bar.
     sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
@@ -230,7 +230,7 @@ def animate_controller_comparison(
     phi_max = float(all_step["phi2"].max() + all_step["phi6"].max())
 
     fig, axes = plt.subplots(
-        2, n, figsize=(TEXT_W, TEXT_W * 0.55), sharex=True, squeeze=False,
+        2, n, figsize=(text_w(), text_w() * 0.55), sharex=True, squeeze=False,
     )
 
     def draw(day: int) -> None:

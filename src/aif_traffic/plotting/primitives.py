@@ -5,18 +5,23 @@ from __future__ import annotations
 import matplotlib.pyplot as plt
 import numpy as np
 
-# --- LLNCS figure-width budget (inches) -------------------------------------
-# The paper uses ``\documentclass[runningheads]{llncs}`` whose text block is
-# ~122 mm ≈ 4.8 in wide. Figures are authored at (close to) their final
-# rendered width so ``\includegraphics[width=...\linewidth]`` applies (almost)
-# no down-scaling and the rcParams point sizes survive intact. These live here
-# (not in ``__init__``) so every plot module can import them without a circular
-# import; ``__init__`` re-exports them as the public names.
-#
-#   TEXT_W      -> width=\linewidth      (full text block)
-#   TEXT_W_HALF -> width=0.48\linewidth  (a side-by-side subfigure pair)
+from .style import text_w, text_w_half
+
+# --- figure-width budget (inches) -------------------------------------------
+# Figures are authored at ``text_w()`` (full block) / ``text_w_half()``
+# (side-by-side pair), which come from the **active style** so the same chart
+# code renders at the marimo width or the paper (elsarticle 3p, ~6.72 in) width
+# without edits. Chart functions call ``text_w()`` / ``text_w_half()`` in their
+# ``figsize``. ``TEXT_W`` / ``TEXT_W_HALF`` remain as the marimo constants for
+# back-compat (and any non-figsize use). These live here (not in ``__init__``)
+# so every plot module imports them without a circular import.
 TEXT_W = 4.8
 TEXT_W_HALF = 3.3
+
+__all__ = [
+    "TEXT_W", "TEXT_W_HALF", "text_w", "text_w_half",
+    "figure_placeholder", "place_legend_above", "panel_label", "light_borders",
+]
 
 
 def figure_placeholder(

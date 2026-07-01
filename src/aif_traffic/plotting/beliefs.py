@@ -21,7 +21,7 @@ import pandas as pd
 from matplotlib.lines import Line2D
 
 from .palette import route_colour
-from .primitives import TEXT_W, light_borders, panel_label
+from .primitives import light_borders, text_w, panel_label
 from .style import active_style
 
 # Realised link that stands in for each traveller route's queue.
@@ -124,7 +124,7 @@ def plot_within_day_tt_vs_belief(
     # content width (~2 in per day) rather than being squeezed into the narrow
     # paper text width.
     fig, axes = plt.subplots(
-        2, ncols, figsize=(max(TEXT_W, 2.1 * ncols), 3.8), sharex=True,
+        2, ncols, figsize=(max(text_w(), 2.1 * ncols), 3.8), sharex=True,
         sharey="row", squeeze=False,
     )
     for col, d in enumerate(picked_days):
@@ -189,7 +189,7 @@ def plot_within_day_by_setting(
     cmap = {"alpha": plt.cm.Blues, "beta": plt.cm.Greens}[route]
     tt_col, mu_col = _ROUTE_TT[route], _ROUTE_MU[route]
 
-    fig, axgrid = plt.subplots(nrows, ncols, figsize=(TEXT_W, TEXT_W * 0.42 * nrows),
+    fig, axgrid = plt.subplots(nrows, ncols, figsize=(text_w(), text_w() * 0.42 * nrows),
                                sharex=True, sharey=True, squeeze=False)
     axes = axgrid.ravel()
     picked_ref = None
@@ -326,7 +326,7 @@ def plot_belief_reality_queues(
             delay_min = 0
         trav = _alpha_queue_belief_profile(snap, dt_min, delay_min, tau_max)
 
-    fig, axes = plt.subplots(2, 1, figsize=(TEXT_W, TEXT_W * 0.92), sharex=True)
+    fig, axes = plt.subplots(2, 1, figsize=(text_w(), text_w() * 0.92), sharex=True)
     specs = [
         ("L2", r"$L_2$ (A--B)", route_colour("alpha"), "L2_belief_mu",
          "L2_belief_sd", True),

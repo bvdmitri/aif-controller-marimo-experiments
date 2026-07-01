@@ -17,7 +17,7 @@ from .beliefs import _pick_evolution_days, _seed_slice
 from .comparison import _daily_cost
 from .network import _edges
 from .palette import route_colour
-from .primitives import TEXT_W, light_borders
+from .primitives import light_borders, text_w
 from .style import active_style
 
 
@@ -53,7 +53,7 @@ def plot_coupled_within_day(
     # One column per day: scale the width to fill the notebook content width
     # (~2 in per day) instead of the narrow paper text width.
     fig, axes = plt.subplots(
-        2, ncols, figsize=(max(TEXT_W, 2.1 * ncols), 3.8), sharex=True,
+        2, ncols, figsize=(max(text_w(), 2.1 * ncols), 3.8), sharex=True,
         sharey="row", squeeze=False,
     )
     for col, d in enumerate(picked):
@@ -119,7 +119,7 @@ def plot_co_adaptation(step_df: pd.DataFrame, *, seed: int | None = None):
     cost = _daily_cost(sd)
 
     fig, axes = plt.subplots(
-        3, 1, figsize=(TEXT_W, TEXT_W * 1.35), sharex=True,
+        3, 1, figsize=(text_w(), text_w() * 1.35), sharex=True,
         gridspec_kw={"height_ratios": [3, 3, 2.2], "hspace": 0.22},
     )
     im0 = axes[0].pcolormesh(_edges(days), _edges(taus), pa.values,
@@ -178,7 +178,7 @@ def plot_learning_uncertainty(
         cd = cd[cd["seed"] == cd["seed"].min()]
     trav = cd.groupby("day")[["sigma_alpha_post", "sigma_beta_post"]].mean()
 
-    fig, axes = plt.subplots(2, 1, figsize=(TEXT_W, TEXT_W * 0.9), sharex=True)
+    fig, axes = plt.subplots(2, 1, figsize=(text_w(), text_w() * 0.9), sharex=True)
     lw = active_style().line_main
     axes[0].plot(trav.index.to_numpy(), trav["sigma_alpha_post"].to_numpy(),
                  color=route_colour("alpha"), linewidth=lw, label=r"$TT_\alpha$")

@@ -9,7 +9,7 @@ import pandas as pd
 from matplotlib.colors import Normalize
 from matplotlib.patches import FancyArrowPatch
 
-from .primitives import TEXT_W, TEXT_W_HALF
+from .primitives import text_w
 
 # Fixed layout for the default 7-link intersection network (paper figure
 # ``intersection_network_v2``): A--n1--nX--n3--B on a horizontal axis, with the
@@ -49,7 +49,7 @@ def plot_signal_day(step: pd.DataFrame, day: int | None = None, *,
     d = step[step["day"] == day].sort_values("tau")
 
     fig, (ax_q, ax_phi) = plt.subplots(
-        2, 1, figsize=(TEXT_W, TEXT_W * 0.9), sharex=True,
+        2, 1, figsize=(text_w(), text_w() * 0.9), sharex=True,
     )
     ax_q.plot(d["tau"], d["L2"], color="tab:blue", label=r"$L_2$ (A--B)")
     ax_q.plot(d["tau"], d["L6"], color="tab:orange", label=r"$L_6$ (C--D)")
@@ -96,7 +96,7 @@ def plot_queue_belief_day(step: pd.DataFrame, day: int | None = None, *,
     has_belief = "L2_belief_mu" in d.columns and d["L2_belief_mu"].notna().any()
 
     fig, axes = plt.subplots(
-        2, 1, figsize=(TEXT_W, TEXT_W * 0.9), sharex=True,
+        2, 1, figsize=(text_w(), text_w() * 0.9), sharex=True,
     )
     panels = [
         (axes[0], "L2", "tab:blue", r"$L_2$ (A--B)"),
@@ -145,7 +145,7 @@ def plot_learned_obs_noise(controller: pd.DataFrame):
     c = controller if "seed" not in controller else (
         controller[controller["seed"] == controller["seed"].min()])
     c = c.sort_values("day")
-    fig, ax = plt.subplots(figsize=(TEXT_W, TEXT_W * 0.5))
+    fig, ax = plt.subplots(figsize=(text_w(), text_w() * 0.5))
     if "sigma_obs_l2" in c.columns:
         ax.plot(c["day"], c["sigma_obs_l2"], color="tab:blue",
                 label=r"learned $\sigma_{obs}$, $L_2$ (A--B)")
@@ -178,7 +178,7 @@ def plot_route_flows(step: pd.DataFrame, day: int | None = None, *,
     tau = d["tau"]
     total_ab = d["Q_alpha"] + d["Q_beta"]
 
-    fig, ax = plt.subplots(figsize=(TEXT_W, TEXT_W * 0.55))
+    fig, ax = plt.subplots(figsize=(text_w(), text_w() * 0.55))
     ax.plot(tau, total_ab, color="0.6", ls="--", label=r"$Q_{AB}$")
     ax.plot(tau, d["Q_alpha"], color="tab:blue", label=r"$Q_\alpha$")
     ax.plot(tau, d["Q_beta"], color="tab:green", label=r"$Q_\beta$")
@@ -230,7 +230,7 @@ def plot_day_overview_grid(step: pd.DataFrame, *, days=None):
                 bmax = max(bmax, float(np.nanmax(env)))
 
     fig, axes = plt.subplots(
-        4, 3, figsize=(TEXT_W * 1.7, TEXT_W * 1.75), sharex=True,
+        4, 3, figsize=(text_w() * 1.7, text_w() * 1.75), sharex=True,
     )
     row_ylabels = [
         "queue [veh]", "green fraction",
@@ -422,7 +422,7 @@ def plot_network_state(
     cmap, clabel, vmax = _network_color_scale(scale_df, net, color_by)
     norm = Normalize(vmin=0.0, vmax=max(vmax, 1e-6))
 
-    fig, ax = plt.subplots(figsize=(TEXT_W * 1.35, TEXT_W * 0.85))
+    fig, ax = plt.subplots(figsize=(text_w() * 1.35, text_w() * 0.85))
     _render_network_axes(ax, row, net, norm, cmap, color_by)
 
     sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
@@ -459,7 +459,7 @@ def plot_green_split_heatmap(
     if is_phi:
         vmax = float(sd["phi2"].max() + sd["phi6"].max())  # = phi_sat
 
-    fig, ax = plt.subplots(figsize=(TEXT_W, TEXT_W * 0.62))
+    fig, ax = plt.subplots(figsize=(text_w(), text_w() * 0.62))
     im = ax.pcolormesh(
         _edges(days), _edges(taus), hm.values,
         cmap=cmap, vmin=vmin, vmax=vmax, shading="flat",
@@ -480,7 +480,7 @@ def plot_green_split_heatmap(
 def plot_daily_system_cost(step: pd.DataFrame):
     """Daily total system cost (veh-min) over days."""
     g = step.groupby("day")["SC"].first()
-    fig, ax = plt.subplots(figsize=(TEXT_W, TEXT_W * 3.5 / 5.0))
+    fig, ax = plt.subplots(figsize=(text_w(), text_w() * 3.5 / 5.0))
     ax.plot(g.index, g.values, color="tab:red", marker="o", markersize=3)
     ax.set_xlabel("day")
     ax.set_ylabel("system cost [veh-min]")
@@ -495,7 +495,7 @@ def plot_route_share_over_days(step: pd.DataFrame):
     g = step.groupby("day").apply(
         lambda x: (x["Q_alpha"].sum() / max(x["Q_alpha"].sum() + x["Q_beta"].sum(), 1e-9))
     )
-    fig, ax = plt.subplots(figsize=(TEXT_W, TEXT_W * 3.5 / 5.0))
+    fig, ax = plt.subplots(figsize=(text_w(), text_w() * 3.5 / 5.0))
     ax.plot(g.index, g.values, color="tab:blue", marker="o", markersize=3)
     ax.set_xlabel("day")
     ax.set_ylabel(r"share on route $\alpha$")

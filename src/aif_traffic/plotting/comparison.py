@@ -22,7 +22,7 @@ from .palette import (
     controller_label,
     ordered_controllers,
 )
-from .primitives import TEXT_W, light_borders
+from .primitives import light_borders, text_w
 from .style import active_style
 
 
@@ -77,7 +77,7 @@ def plot_controller_metrics(results_by_ctrl: Mapping[str, object]):
         (r"green-split variation $\sum|\Delta\phi_2|$", _daily_signal_variation),
     ]
     fig, axes = plt.subplots(
-        len(panels), 1, figsize=(TEXT_W, TEXT_W * 1.45), sharex=True,
+        len(panels), 1, figsize=(text_w(), text_w() * 1.45), sharex=True,
     )
     lw = active_style().line_main
     for ax, (ylabel, fn) in zip(axes, panels):
@@ -109,7 +109,7 @@ def plot_green_split_heatmaps_by_controller(
     items = _ordered(results_by_ctrl)
     n = len(items)
     fig, axes = plt.subplots(
-        1, n, figsize=(TEXT_W, TEXT_W * 0.5), sharex=True, sharey=True,
+        1, n, figsize=(text_w(), text_w() * 0.5), sharex=True, sharey=True,
         squeeze=False,
     )
     axes = axes[0]
@@ -162,7 +162,7 @@ def plot_controller_theta_grid(
             cost = _daily_cost(res.step)
             grid[i, j] = float(cost.iloc[-n_last:].mean())
 
-    fig, ax = plt.subplots(figsize=(TEXT_W, TEXT_W * 0.62))
+    fig, ax = plt.subplots(figsize=(text_w(), text_w() * 0.62))
     im = ax.imshow(grid, cmap="viridis_r", aspect="auto", origin="lower")
 
     ax.set_xticks(range(len(ctrls)))
@@ -218,7 +218,7 @@ def plot_theta_summary(
         ("mean peak queue [veh]", _daily_peak_total_queue, "mean"),
         ("SD peak queue [veh]", _daily_peak_total_queue, "std"),
     ]
-    fig, axgrid = plt.subplots(2, 2, figsize=(TEXT_W, TEXT_W * 0.85))
+    fig, axgrid = plt.subplots(2, 2, figsize=(text_w(), text_w() * 0.85))
     axes = axgrid.ravel()
     for ax, (ylabel, fn, stat) in zip(axes, panels):
         for c in ctrls:
@@ -262,7 +262,7 @@ def plot_theta_route_choice(
     n = max(len(ctrls), 1)
     width = 0.8 / n
 
-    fig, ax = plt.subplots(figsize=(TEXT_W, TEXT_W * 0.5))
+    fig, ax = plt.subplots(figsize=(text_w(), text_w() * 0.5))
     for j, c in enumerate(ctrls):
         data, positions = [], []
         for i, t in enumerate(thetas):
