@@ -118,14 +118,13 @@ def _(mo, nc):
     # benchmark broadcasts the externality advisory (so the controllers are
     # compared at a chosen social-internalisation level, matching the theta-grid).
     days = nc.days()
+    warmup = nc.warmup()
     seed = nc.seed()
     control_interval = nc.control_interval()
     demand_scale = nc.demand_scale()
-    traveller_window = nc.traveller_window()
-    controller_window = nc.controller_window()
     learn_noise = nc.learn_noise()
+    noise_regime = nc.noise_regime()
     stationary = nc.stationary()
-    noise_free = nc.noise_free()
     theta = nc.theta()
     compliance = nc.compliance()
     gamma = nc.gamma()
@@ -135,27 +134,15 @@ def _(mo, nc):
     k_L = nc.k_L()
 
     run_btn = mo.ui.run_button(label="Run experiment")
-
-    controls = nc.standard_panel({
-        "days": days, "seed": seed, "control_interval": control_interval,
-        "demand_scale": demand_scale, "traveller_window": traveller_window,
-        "controller_window": controller_window, "learn_noise": learn_noise,
-        "stationary": stationary, "noise_free": noise_free,
-        "theta": theta, "compliance": compliance,
-        "gamma": gamma, "omega": omega, "sigma_pref": sigma_pref,
-        "phi_grid": phi_grid, "k_L": k_L,
-    }, run_btn)
-    controls
     return (
         compliance,
         control_interval,
-        controller_window,
         days,
         demand_scale,
         gamma,
         k_L,
         learn_noise,
-        noise_free,
+        noise_regime,
         omega,
         phi_grid,
         run_btn,
@@ -163,8 +150,30 @@ def _(mo, nc):
         sigma_pref,
         stationary,
         theta,
-        traveller_window,
+        warmup,
     )
+
+
+@app.cell
+def _(compliance, control_interval, days, demand_scale, gamma, k_L,
+      learn_noise, nc, noise_regime, omega, phi_grid, run_btn, seed,
+      sigma_pref, stationary, theta, warmup):
+    # Window sliders under (and disabled by) the stationary toggle.
+    traveller_window = nc.traveller_window(disabled=stationary.value)
+    controller_window = nc.controller_window(disabled=stationary.value)
+
+    controls = nc.standard_panel({
+        "days": days, "warmup": warmup, "seed": seed,
+        "control_interval": control_interval, "demand_scale": demand_scale,
+        "learn_noise": learn_noise, "noise_regime": noise_regime,
+        "stationary": stationary, "traveller_window": traveller_window,
+        "controller_window": controller_window,
+        "theta": theta, "compliance": compliance,
+        "gamma": gamma, "omega": omega, "sigma_pref": sigma_pref,
+        "phi_grid": phi_grid, "k_L": k_L,
+    }, run_btn)
+    controls
+    return controller_window, traveller_window
 
 
 @app.cell
@@ -184,9 +193,10 @@ def _(
     gamma,
     k_L,
     learn_noise,
-    noise_free,
+    noise_regime,
     stationary,
     omega,
+    warmup,
     phi_grid,
     replace,
     run_btn,
@@ -221,7 +231,8 @@ def _(
             d_CD_max=base.demand.d_CD_max * scale,
         )
         results_by_ctrl = {}
-        _sim = replace(SimParams(), days=int(days.value), seed=int(seed.value))
+        _sim = replace(SimParams(), days=int(days.value), seed=int(seed.value),
+                       burn_in=int(warmup.value))
         with sweep_progress_bar(len(specs), _sim, title="controllers") as _bar:
             for _name, _spec in specs.items():
                 # Broadcast the externality advisory at the chosen theta/compliance
@@ -237,7 +248,7 @@ def _(
                 ).with_theta(float(theta.value)).with_window_size(
                     int(traveller_window.value)
                 ).with_learn_obs_noise(bool(learn_noise.value)).with_stationary(
-                    bool(stationary.value)).with_noise_free(bool(noise_free.value))
+                    bool(stationary.value)).with_noise_regime(noise_regime.value)
                 results_by_ctrl[_name] = run_experiment(
                     _p, seeds=[int(seed.value)], on_step=_bar.update,
                 )
@@ -365,9 +376,10 @@ def _(
     grid_btn,
     k_L,
     learn_noise,
-    noise_free,
+    noise_regime,
     stationary,
     omega,
+    warmup,
     replace,
     run_experiment,
     seed,
@@ -400,7 +412,8 @@ def _(
         _thetas = [0.0, 0.25, 0.5, 0.75, 1.0]
         _cells = [(n, s, t) for n, s in _specs.items() for t in _thetas]
         results_by_ctrl_theta = {n: {} for n in _specs}
-        _sim = replace(SimParams(), days=int(days.value), seed=int(seed.value))
+        _sim = replace(SimParams(), days=int(days.value), seed=int(seed.value),
+                       burn_in=int(warmup.value))
         with sweep_progress_bar(
             len(_cells), _sim, title="theta x controller",
         ) as _bar:
@@ -415,7 +428,7 @@ def _(
                 ).with_theta(_theta).with_window_size(
                     int(traveller_window.value)
                 ).with_learn_obs_noise(bool(learn_noise.value)).with_stationary(
-                    bool(stationary.value)).with_noise_free(bool(noise_free.value))
+                    bool(stationary.value)).with_noise_regime(noise_regime.value)
                 results_by_ctrl_theta[_name][_theta] = run_experiment(
                     _p, seeds=[int(seed.value)], on_step=_bar.update,
                 )

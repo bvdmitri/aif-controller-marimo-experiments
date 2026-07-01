@@ -86,17 +86,17 @@ def plot_within_day_tt_vs_belief(
     """Realised within-day travel time vs the travellers' mean predictive-TT
     belief, both on the within-day departure-minute axis.
 
-    Two stacked panels (route alpha, route beta). The realised ``TT(tau)`` is a
-    line (a centered ``W``-day rolling mean, the windowed quantity the posterior
-    actually estimates); the belief is **dots** -- the cross-agent mean
-    posterior-predictive TT at each departure minute. ``n_days`` learning days
-    are overlaid as a shade gradient (earliest dimmed, last saturated, always
-    including the first and last day), so the belief cloud tightening onto the
-    realised line reads as the quality of day-to-day learning.
+    A grid with **one column per representative day** and two rows (route alpha
+    top, route beta bottom), so each day is read on its own axes rather than
+    overlaid. In each panel the realised ``TT(tau)`` is a line (a centered
+    ``W``-day rolling mean, the windowed quantity the posterior estimates) and
+    the belief is **dots** -- the cross-agent mean posterior-predictive TT at
+    each departure minute. Reading a row left-to-right shows the belief dots
+    settling onto the realised line as the agents learn.
 
-    Requires per-agent ``snapshots`` on the plotted days (pass
-    ``snapshot_days`` to :func:`run_experiment`). Days without a snapshot are
-    silently skipped for the belief dots.
+    Requires per-agent ``snapshots`` on the plotted days (pass ``snapshot_days``
+    to :func:`run_experiment`). Days without a snapshot show the realised line
+    only.
     """
     day_step, sample_seed = _seed_slice(step_df, seed)
     all_days = sorted(day_step["day"].unique())
@@ -108,9 +108,8 @@ def plot_within_day_tt_vs_belief(
     )
 
     routes = ("alpha", "beta")
-    cmaps = {"alpha": plt.cm.Blues, "beta": plt.cm.Greens}
-    shade = np.linspace(0.40, 1.0, len(picked_days))
-    lw_lo, lw_hi = 1.0, active_style().line_main + 0.6
+    colours = {r: route_colour(r) for r in routes}
+    lw = active_style().line_main
 
     # Per route: (day x tau) realised TT smoothed with a centered W-day window.
     smoothed = {}
@@ -120,41 +119,40 @@ def plot_within_day_tt_vs_belief(
         ).sort_index()
         smoothed[r] = pivot.rolling(w_smooth, center=True, min_periods=1).mean()
 
-    fig, axes = plt.subplots(2, 1, figsize=(TEXT_W, 4.2), sharex=True)
-    for row, r in enumerate(routes):
-        ax = axes[row]
-        sm = smoothed[r]
-        tau = sm.columns.to_numpy(dtype=float)
-        for k, d in enumerate(picked_days):
-            lw = lw_lo + (lw_hi - lw_lo) * (shade[k] - shade[0]) / max(
-                shade[-1] - shade[0], 1e-9)
-            ax.plot(tau, sm.loc[d].to_numpy(), color=cmaps[r](shade[k]),
-                    linewidth=lw, zorder=4)
-            snap = snapshots.get((sample_seed, int(d)))
-            if snap is not None:
-                prof = _belief_profile_by_minute(snap, dt_min)
+    ncols = max(len(picked_days), 1)
+    fig, axes = plt.subplots(
+        2, ncols, figsize=(TEXT_W, 3.6), sharex=True, sharey="row",
+        squeeze=False,
+    )
+    for col, d in enumerate(picked_days):
+        snap = snapshots.get((sample_seed, int(d))) if snapshots else None
+        prof = _belief_profile_by_minute(snap, dt_min) if snap is not None else None
+        for row, r in enumerate(routes):
+            ax = axes[row][col]
+            sm = smoothed[r]
+            tau = sm.columns.to_numpy(dtype=float)
+            ax.plot(tau, sm.loc[d].to_numpy(), color=colours[r], linewidth=lw,
+                    zorder=4)
+            if prof is not None:
                 ax.plot(prof.index.to_numpy(), prof[_ROUTE_MU[r]].to_numpy(),
-                        linestyle="none", marker="o", markersize=1.8,
-                        color=cmaps[r](shade[k]), alpha=0.6, zorder=2)
-        ax.set_ylabel("travel time [min]")
-        ax.set_title(f"{'ab'[row]}. Route {_ROUTE_TEX[r]}", fontsize=8)
-        ax.grid(alpha=0.25)
-    axes[-1].set_xlabel("within-day time [min]")
-    fig.align_ylabels(axes)
+                        linestyle="none", marker="o", markersize=2.0,
+                        color=colours[r], alpha=0.65, zorder=2)
+            ax.grid(alpha=0.25)
+            if row == 0:
+                ax.set_title(f"day {int(d)}", fontsize=8)
+    axes[0][0].set_ylabel(f"TT {_ROUTE_TEX['alpha']} [min]")
+    axes[1][0].set_ylabel(f"TT {_ROUTE_TEX['beta']} [min]")
+    for ax in axes[1]:
+        ax.set_xlabel("time [min]")
+    fig.align_ylabels(axes[:, 0])
 
-    day_handles = [
-        Line2D([0], [0], color=plt.cm.Greys(shade[k]), linewidth=1.8,
-               label=f"day {int(d)}")
-        for k, d in enumerate(picked_days)
-    ]
-    kind_handles = [
+    handles = [
         Line2D([0], [0], color="grey", linewidth=1.8, label="realised"),
         Line2D([0], [0], color="grey", linestyle="none", marker="o",
                markersize=3.5, label="belief (pred. TT)"),
     ]
-    fig.legend(handles=day_handles + kind_handles, loc="upper center",
-               bbox_to_anchor=(0.5, 1.0), ncol=len(day_handles) + len(kind_handles),
-               frameon=False, fontsize=6.5, columnspacing=1.2, handlelength=1.6)
+    fig.legend(handles=handles, loc="upper center", bbox_to_anchor=(0.5, 1.0),
+               ncol=2, frameon=False, fontsize=7, columnspacing=1.4)
     light_borders(axes)
     fig.tight_layout(rect=(0, 0, 1, 0.90))
     return fig

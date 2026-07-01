@@ -518,14 +518,14 @@ CHART_GUIDE: dict[str, dict] = {
     "plot_within_day_tt_vs_belief": {
         "title": "Within-day travel time: realised vs belief",
         "slider": None,
-        "what": "Per route (alpha top, beta bottom): the realised within-day "
-        "travel time (line) and the travellers' mean predictive-TT belief (dots), "
-        "both against the within-day departure minute. A few learning days are "
-        "overlaid as a shade gradient (earliest dim, last saturated).",
+        "what": "A grid with one column per representative day and two rows (route "
+        "alpha top, beta bottom). In each panel: the realised within-day travel "
+        "time (line) and the travellers' mean predictive-TT belief (dots), against "
+        "the within-day departure minute.",
         "read": "The line is what actually happened; the dots are what travellers "
-        "expected. On later (darker) days the dots should sit closer to the line -- "
-        "that tightening is the travellers learning the within-day travel-time "
-        "profile of the route they take.",
+        "expected. Read a row left-to-right (earliest to latest day): the dots "
+        "should settle onto the line as the travellers learn the within-day "
+        "travel-time profile of the route they take.",
     },
     "plot_belief_reality_queues": {
         "title": "Belief vs realised queue",
@@ -547,14 +547,14 @@ CHART_GUIDE: dict[str, dict] = {
     "plot_coupled_within_day": {
         "title": "Coupled within-day: flow & green split",
         "slider": None,
-        "what": "Top: within-day traveller flow on the intersection route alpha "
-        "(blue) and bypass beta (green). Bottom: the controller's green split "
-        "phi_2 -- realised (solid) vs planned/believed (dots). A few learning days "
-        "are overlaid as a shade gradient.",
+        "what": "A grid with one column per representative day and two rows. Top: "
+        "within-day traveller flow on the intersection route alpha (blue) and "
+        "bypass beta (green). Bottom: the controller's green split phi_2 -- "
+        "realised (solid) vs planned/believed (dots).",
         "read": "Read with the travel-time belief chart: it shows the *controller* "
-        "half of the coupled decision. Where realised and believed phi_2 diverge, "
-        "the controller reacted within the day to queues that differed from its "
-        "typical-day belief.",
+        "half of the coupled decision, day by day across the columns. Where "
+        "realised and believed phi_2 diverge, the controller reacted within the "
+        "day to queues that differed from its typical-day belief.",
     },
     "plot_co_adaptation": {
         "title": "Day-to-day co-adaptation",

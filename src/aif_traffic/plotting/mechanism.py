@@ -28,10 +28,10 @@ def plot_coupled_within_day(
     n_days: int = 4,
     seed: int | None = None,
 ):
-    """The controller half of the coupled within-day picture, over several days.
+    """The controller half of the coupled within-day picture, one column per day.
 
-    Two stacked panels, ``n_days`` learning days overlaid as a shade gradient
-    (earliest dimmed, last saturated; always the first and last day):
+    A grid with **one column per representative day** and two rows, so each day
+    is read on its own axes rather than overlaid:
 
     * top -- per-route traveller flow: intersection ``alpha`` (blue) and bypass
       ``beta`` (green) [veh/h];
@@ -45,55 +45,48 @@ def plot_coupled_within_day(
     day_step, _ = _seed_slice(step_df, seed)
     all_days = sorted(day_step["day"].unique())
     picked = _pick_evolution_days(all_days, n_days)
-    shade = np.linspace(0.40, 1.0, len(picked))
-    lw_lo, lw_hi = 1.0, active_style().line_main + 0.6
+    lw = active_style().line_main
     has_plan = "phi2_plan" in day_step.columns and day_step["phi2_plan"].notna().any()
+    c_alpha, c_beta = route_colour("alpha"), route_colour("beta")
 
-    fig, (ax_q, ax_phi) = plt.subplots(
-        2, 1, figsize=(TEXT_W, TEXT_W * 0.92), sharex=True,
+    ncols = max(len(picked), 1)
+    fig, axes = plt.subplots(
+        2, ncols, figsize=(TEXT_W, 3.6), sharex=True, sharey="row",
+        squeeze=False,
     )
-    greys = plt.cm.Greys
-    for k, d in enumerate(picked):
+    for col, d in enumerate(picked):
         dd = day_step[day_step["day"] == d].sort_values("tau")
         tau = dd["tau"].to_numpy(dtype=float)
-        lw = lw_lo + (lw_hi - lw_lo) * (shade[k] - shade[0]) / max(
-            shade[-1] - shade[0], 1e-9)
-        ax_q.plot(tau, dd["Q_alpha"].to_numpy(),
-                  color=plt.cm.Blues(shade[k]), linewidth=lw)
-        ax_q.plot(tau, dd["Q_beta"].to_numpy(),
-                  color=plt.cm.Greens(shade[k]), linewidth=lw)
-        ax_phi.plot(tau, dd["phi2"].to_numpy(), color=greys(shade[k]),
-                    linewidth=lw, zorder=4)
+        ax_q, ax_phi = axes[0][col], axes[1][col]
+        ax_q.plot(tau, dd["Q_alpha"].to_numpy(), color=c_alpha, linewidth=lw)
+        ax_q.plot(tau, dd["Q_beta"].to_numpy(), color=c_beta, linewidth=lw)
+        ax_q.set_title(f"day {int(d)}", fontsize=8)
+        ax_q.grid(alpha=0.25)
+        ax_phi.plot(tau, dd["phi2"].to_numpy(), color="0.25", linewidth=lw,
+                    zorder=4)
         if has_plan and dd["phi2_plan"].notna().any():
             ax_phi.plot(tau, dd["phi2_plan"].to_numpy(), linestyle="none",
-                        marker="o", markersize=1.8, color=greys(shade[k]),
-                        alpha=0.7, zorder=2)
-    ax_q.set_ylabel("route flow [veh/h]")
-    ax_q.set_title("a. Traveller route flow", fontsize=8)
-    ax_q.grid(alpha=0.25)
-    ax_phi.set_ylabel(r"green split $\phi_2$")
-    ax_phi.set_ylim(0, 1)
-    ax_phi.set_title("b. Controller green split (realised vs believed)", fontsize=8)
-    ax_phi.set_xlabel("within-day time [min]")
-    ax_phi.grid(alpha=0.25)
+                        marker="o", markersize=2.0, color="0.25", alpha=0.7,
+                        zorder=2)
+        ax_phi.set_ylim(0, 1)
+        ax_phi.grid(alpha=0.25)
+        ax_phi.set_xlabel("time [min]")
+    axes[0][0].set_ylabel("route flow [veh/h]")
+    axes[1][0].set_ylabel(r"green split $\phi_2$")
+    fig.align_ylabels(axes[:, 0])
 
     handles = [
-        Line2D([0], [0], color=route_colour("alpha"), lw=2, label=r"flow $\alpha$"),
-        Line2D([0], [0], color=route_colour("beta"), lw=2, label=r"flow $\beta$"),
-        Line2D([0], [0], color="grey", lw=2, label=r"realised $\phi_2$"),
+        Line2D([0], [0], color=c_alpha, lw=2, label=r"flow $\alpha$"),
+        Line2D([0], [0], color=c_beta, lw=2, label=r"flow $\beta$"),
+        Line2D([0], [0], color="0.25", lw=2, label=r"realised $\phi_2$"),
     ]
     if has_plan:
-        handles.append(Line2D([0], [0], color="grey", linestyle="none",
+        handles.append(Line2D([0], [0], color="0.25", linestyle="none",
                               marker="o", markersize=3.5, label=r"believed $\phi_2$"))
-    day_handles = [
-        Line2D([0], [0], color=plt.cm.Greys(shade[k]), lw=1.8, label=f"day {int(d)}")
-        for k, d in enumerate(picked)
-    ]
-    fig.legend(handles=handles + day_handles, loc="upper center",
-               bbox_to_anchor=(0.5, 1.0), ncol=len(handles) + len(day_handles),
-               frameon=False, fontsize=6.5, columnspacing=1.1, handlelength=1.6)
-    light_borders([ax_q, ax_phi])
-    fig.tight_layout(rect=(0, 0, 1, 0.92))
+    fig.legend(handles=handles, loc="upper center", bbox_to_anchor=(0.5, 1.0),
+               ncol=len(handles), frameon=False, fontsize=7, columnspacing=1.4)
+    light_borders(axes)
+    fig.tight_layout(rect=(0, 0, 1, 0.90))
     return fig
 
 

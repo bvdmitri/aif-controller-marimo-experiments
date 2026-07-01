@@ -158,14 +158,13 @@ def _(mo, nc):
     # knobs theta + compliance (the externality is broadcast, so they bite) and
     # the AIF-controller knobs.
     days = nc.days()
+    warmup = nc.warmup()
     seed = nc.seed()
     control_interval = nc.control_interval()
     demand_scale = nc.demand_scale()
-    traveller_window = nc.traveller_window()
-    controller_window = nc.controller_window()
     learn_noise = nc.learn_noise()
+    noise_regime = nc.noise_regime()
     stationary = nc.stationary()
-    noise_free = nc.noise_free()
     theta = nc.theta()
     compliance = nc.compliance()
     gamma = nc.gamma()
@@ -174,35 +173,48 @@ def _(mo, nc):
     phi_grid = nc.phi_grid()
 
     run_btn = mo.ui.run_button(label="Run experiment")
+    return (
+        compliance,
+        control_interval,
+        days,
+        demand_scale,
+        gamma,
+        learn_noise,
+        noise_regime,
+        omega,
+        phi_grid,
+        run_btn,
+        seed,
+        sigma_pref,
+        stationary,
+        theta,
+        warmup,
+    )
+
+
+@app.cell
+def _(compliance, control_interval, days, demand_scale, gamma, learn_noise,
+      nc, noise_regime, omega, phi_grid, run_btn, seed, sigma_pref, stationary,
+      theta, warmup):
+    # The rolling-window sliders live under (and are disabled by) the stationary
+    # toggle: they only bite in the non-stationary mode. Defined here, downstream
+    # of `stationary`, so toggling it re-renders them (updating `disabled`)
+    # without resetting the other controls.
+    traveller_window = nc.traveller_window(disabled=stationary.value)
+    controller_window = nc.controller_window(disabled=stationary.value)
 
     controls = nc.standard_panel({
-        "days": days, "seed": seed, "control_interval": control_interval,
-        "demand_scale": demand_scale, "traveller_window": traveller_window,
-        "controller_window": controller_window, "learn_noise": learn_noise,
-        "stationary": stationary, "noise_free": noise_free,
+        "days": days, "warmup": warmup, "seed": seed,
+        "control_interval": control_interval, "demand_scale": demand_scale,
+        "learn_noise": learn_noise, "noise_regime": noise_regime,
+        "stationary": stationary, "traveller_window": traveller_window,
+        "controller_window": controller_window,
         "theta": theta, "compliance": compliance,
         "gamma": gamma, "omega": omega, "sigma_pref": sigma_pref,
         "phi_grid": phi_grid,
     }, run_btn)
     controls
-    return (
-        compliance,
-        control_interval,
-        controller_window,
-        days,
-        demand_scale,
-        gamma,
-        learn_noise,
-        noise_free,
-        omega,
-        phi_grid,
-        run_btn,
-        stationary,
-        seed,
-        sigma_pref,
-        theta,
-        traveller_window,
-    )
+    return controller_window, traveller_window
 
 
 @app.cell
@@ -219,7 +231,7 @@ def _(
     gamma,
     learn_noise,
     mo,
-    noise_free,
+    noise_regime,
     omega,
     phi_grid,
     replace,
@@ -231,6 +243,7 @@ def _(
     stationary,
     theta,
     traveller_window,
+    warmup,
 ):
     if not run_btn.value:
         params = None
@@ -258,7 +271,8 @@ def _(
         # multiplies a zero offset and every theta gives an identical result.
         params = replace(
             Params(),
-            sim=replace(SimParams(), days=int(days.value), seed=int(seed.value)),
+            sim=replace(SimParams(), days=int(days.value), seed=int(seed.value),
+                        burn_in=int(warmup.value)),
             controller=spec,
             demand=demand,
         ).with_comm(SignalType.EXTERNALITY).with_compliance(
@@ -267,8 +281,8 @@ def _(
             float(theta.value)
         ).with_window_size(int(traveller_window.value)).with_learn_obs_noise(
             bool(learn_noise.value)
-        ).with_stationary(bool(stationary.value)).with_noise_free(
-            bool(noise_free.value)
+        ).with_stationary(bool(stationary.value)).with_noise_regime(
+            noise_regime.value
         )
         # Snapshot every day so the belief-vs-realised charts have the per-agent
         # posterior on the days they overlay.

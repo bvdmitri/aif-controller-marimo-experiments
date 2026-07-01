@@ -39,7 +39,12 @@ import marimo as mo
 # Canonical one-line descriptions (channel-agnostic, reused verbatim everywhere).
 # ---------------------------------------------------------------------------
 DESCRIPTIONS: dict[str, str] = {
-    "days": "Total days to simulate (the first warm-up days are discarded).",
+    "days": "Recorded days to simulate (after the warm-up days).",
+    "warmup": (
+        "Warm-up days run before recording starts, to let the two layers settle "
+        "out of their cold-start transient; these days are discarded from the "
+        "output."
+    ),
     "seed": "Master seed; redraws all stochastic elements.",
     "control_interval": (
         "Minutes between green-split decisions, and the controller's prediction "
@@ -73,12 +78,12 @@ DESCRIPTIONS: dict[str, str] = {
         "controller **window sliders are ignored while this is on**. Turn off to "
         "recover the rolling-window smoother (the non-stationary / disruption case)."
     ),
-    "noise_free": (
-        "Make the environment fully **deterministic**: travellers fold in the "
-        "*exact* realised travel time / queue / green split (no added measurement "
-        "noise) and choose routes deterministically, and demand is identical every "
-        "day. Off by default (a realistic run has measurement noise and "
-        "finite-population sampling); turn on to see clean, jitter-free convergence."
+    "noise_regime": (
+        "How much measurement noise the environment injects into what travellers "
+        "observe (travel time / queue / green split). **off** = fully "
+        "deterministic (exact observations + deterministic route choice, for "
+        "clean convergence); **low / medium / high** scale the noise, with "
+        "**medium** the realistic default and **low**/**high** half/double it."
     ),
     "comm_mechanism": (
         "Which controller->traveller information channel Experiment 3 sweeps. "
@@ -126,6 +131,10 @@ def days():
     return mo.ui.slider(10, 180, value=90, label="days")
 
 
+def warmup():
+    return mo.ui.slider(0, 90, value=30, label="warm-up days")
+
+
 def seed():
     return mo.ui.slider(0, 100, value=42, label="seed")
 
@@ -138,12 +147,14 @@ def demand_scale():
     return mo.ui.slider(0.5, 2.5, step=0.1, value=1.0, label="demand scale")
 
 
-def traveller_window():
-    return mo.ui.slider(0, 60, value=30, label="traveller window [days]")
+def traveller_window(disabled: bool = False):
+    return mo.ui.slider(0, 60, value=30, label="traveller window [days]",
+                        disabled=disabled)
 
 
-def controller_window():
-    return mo.ui.slider(0, 60, value=30, label="controller window [days]")
+def controller_window(disabled: bool = False):
+    return mo.ui.slider(0, 60, value=30, label="controller window [days]",
+                        disabled=disabled)
 
 
 def learn_noise():
@@ -154,8 +165,12 @@ def stationary():
     return mo.ui.checkbox(value=True, label="assume stationary environment")
 
 
-def noise_free():
-    return mo.ui.checkbox(value=False, label="noise-free environment (deterministic)")
+def noise_regime():
+    return mo.ui.dropdown(
+        options=["off", "low", "medium", "high"],
+        value="medium",
+        label="noise regime",
+    )
 
 
 def comm_mechanism():
@@ -201,9 +216,11 @@ def k_L():
 # ---------------------------------------------------------------------------
 _GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Simulation", (
-        "days", "seed", "control_interval", "demand_scale",
-        "traveller_window", "controller_window", "learn_noise", "stationary",
-        "noise_free",
+        "days", "warmup", "seed", "control_interval", "demand_scale",
+        "learn_noise", "noise_regime",
+        # The window sliders sit under (and are disabled by) the stationary
+        # toggle -- they only bite in the rolling-window (non-stationary) mode.
+        "stationary", "traveller_window", "controller_window",
     )),
     ("Communication / social", ("comm_mechanism", "theta", "compliance")),
     ("AIF controller", ("gamma", "omega", "sigma_pref", "phi_grid", "k_L")),

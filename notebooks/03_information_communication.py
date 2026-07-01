@@ -126,41 +126,50 @@ def _(mo, nc):
     # and the AIF-tuning knobs are not used here.
     comm_mechanism = nc.comm_mechanism()
     days = nc.days()
+    warmup = nc.warmup()
     seed = nc.seed()
     control_interval = nc.control_interval()
     demand_scale = nc.demand_scale()
-    traveller_window = nc.traveller_window()
-    controller_window = nc.controller_window()
     learn_noise = nc.learn_noise()
+    noise_regime = nc.noise_regime()
     stationary = nc.stationary()
-    noise_free = nc.noise_free()
     compliance = nc.compliance()
 
     run_btn = mo.ui.run_button(label="Run all communication settings")
-
-    controls = nc.standard_panel({
-        "comm_mechanism": comm_mechanism,
-        "days": days, "seed": seed, "control_interval": control_interval,
-        "demand_scale": demand_scale, "traveller_window": traveller_window,
-        "controller_window": controller_window, "learn_noise": learn_noise,
-        "stationary": stationary, "noise_free": noise_free,
-        "compliance": compliance,
-    }, run_btn)
-    controls
     return (
         comm_mechanism,
         compliance,
         control_interval,
-        controller_window,
         days,
         demand_scale,
         learn_noise,
-        noise_free,
+        noise_regime,
         run_btn,
         seed,
         stationary,
-        traveller_window,
+        warmup,
     )
+
+
+@app.cell
+def _(comm_mechanism, compliance, control_interval, days, demand_scale,
+      learn_noise, nc, noise_regime, run_btn, seed, stationary, warmup):
+    # Window sliders under (and disabled by) the stationary toggle -- see the
+    # note in Experiment 1's control panel.
+    traveller_window = nc.traveller_window(disabled=stationary.value)
+    controller_window = nc.controller_window(disabled=stationary.value)
+
+    controls = nc.standard_panel({
+        "comm_mechanism": comm_mechanism,
+        "days": days, "warmup": warmup, "seed": seed,
+        "control_interval": control_interval, "demand_scale": demand_scale,
+        "learn_noise": learn_noise, "noise_regime": noise_regime,
+        "stationary": stationary, "traveller_window": traveller_window,
+        "controller_window": controller_window,
+        "compliance": compliance,
+    }, run_btn)
+    controls
+    return controller_window, traveller_window
 
 
 @app.cell
@@ -178,7 +187,7 @@ def _(
     days,
     demand_scale,
     learn_noise,
-    noise_free,
+    noise_regime,
     replace,
     run_btn,
     run_experiment,
@@ -186,6 +195,7 @@ def _(
     stationary,
     sweep_progress_bar,
     traveller_window,
+    warmup,
 ):
     if not run_btn.value:
         results_by_setting = None
@@ -203,7 +213,8 @@ def _(
         # observations reach every traveller regardless.
         _base = replace(
             Params(),
-            sim=replace(SimParams(), days=int(days.value), seed=int(seed.value)),
+            sim=replace(SimParams(), days=int(days.value), seed=int(seed.value),
+                        burn_in=int(warmup.value)),
             controller=AIFControllerSpec(
                 control_interval_min=int(control_interval.value),
                 horizon_min=int(control_interval.value),
@@ -213,8 +224,8 @@ def _(
             float(compliance.value)
         ).with_window_size(int(traveller_window.value)).with_learn_obs_noise(
             bool(learn_noise.value)
-        ).with_stationary(bool(stationary.value)).with_noise_free(
-            bool(noise_free.value)
+        ).with_stationary(bool(stationary.value)).with_noise_regime(
+            noise_regime.value
         )
 
         _CG = ObservationSignal.ROUTE_CONGESTION

@@ -279,20 +279,20 @@ def smoke_controls() -> None:
     from aif_traffic import notebook_controls as nc
 
     panels = {
-        "exp1": ["days", "seed", "control_interval", "demand_scale",
+        "exp1": ["days", "warmup", "seed", "control_interval", "demand_scale",
                  "traveller_window", "controller_window", "learn_noise",
-                 "stationary", "noise_free", "theta", "compliance", "gamma",
+                 "stationary", "noise_regime", "theta", "compliance", "gamma",
                  "omega", "sigma_pref", "phi_grid"],
-        "exp2": ["days", "seed", "control_interval", "demand_scale",
+        "exp2": ["days", "warmup", "seed", "control_interval", "demand_scale",
                  "traveller_window", "controller_window", "learn_noise",
-                 "stationary", "noise_free", "theta", "compliance", "gamma",
+                 "stationary", "noise_regime", "theta", "compliance", "gamma",
                  "omega", "sigma_pref", "phi_grid", "k_L"],
-        "exp3": ["days", "seed", "control_interval", "demand_scale",
+        "exp3": ["days", "warmup", "seed", "control_interval", "demand_scale",
                  "traveller_window", "controller_window", "learn_noise",
-                 "stationary", "noise_free", "compliance"],
-        "exp4": ["days", "seed", "control_interval", "demand_scale",
+                 "stationary", "noise_regime", "compliance"],
+        "exp4": ["days", "warmup", "seed", "control_interval", "demand_scale",
                  "traveller_window", "controller_window", "learn_noise",
-                 "stationary", "noise_free"],
+                 "stationary", "noise_regime"],
     }
     import marimo as mo
 

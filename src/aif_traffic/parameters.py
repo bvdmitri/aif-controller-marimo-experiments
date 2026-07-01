@@ -340,6 +340,17 @@ class NoiseParams:
     0 = identical demand every day."""
 
 
+# Named measurement-noise regimes for ``Params.with_noise_regime`` (the notebook
+# dropdown): (obs_noise_sd [min], sigma_L_obs [veh], sigma_phi_obs [fraction]).
+# "medium" is the default; "low" is half, "high" is double. "off" is handled
+# separately (fully deterministic via ``with_noise_free``).
+_NOISE_REGIMES: dict[str, tuple[float, float, float]] = {
+    "low": (0.25, 1.5, 0.015),
+    "medium": (0.5, 3.0, 0.03),
+    "high": (1.0, 6.0, 0.06),
+}
+
+
 # ============================================================================
 #  Controller (macro layer) -- a pluggable spec family
 # ============================================================================
@@ -653,6 +664,36 @@ class Params:
             out = replace(out, controller=replace(self.controller,
                                                    stationary=bool(flag)))
         return out
+
+    def with_noise_regime(self, regime: str) -> "Params":
+        """Set the environment noise to a named regime (the notebook dropdown):
+
+        * ``"off"``    -- fully deterministic (delegates to ``with_noise_free``);
+        * ``"low"``    -- half the medium measurement noise;
+        * ``"medium"`` -- the default measurement noise (TT 0.5 min, queue 3 veh,
+          split 0.03);
+        * ``"high"``   -- twice the medium measurement noise.
+
+        Regimes scale the *added measurement noise* on the travel-time / queue /
+        green-split observations (which is also the smoother's assumed likelihood
+        SD); demand stays deterministic. ``"low"/"medium"/"high"`` also clear the
+        ``noise_free`` flag so a prior "off" selection is undone."""
+        r = str(regime).strip().lower()
+        if r == "off":
+            return self.with_noise_free(True)
+        try:
+            obs_sd, sig_L, sig_phi = _NOISE_REGIMES[r]
+        except KeyError as exc:  # pragma: no cover - guards a bad dropdown value
+            raise ValueError(
+                f"unknown noise regime {regime!r}; options: "
+                f"off, {', '.join(_NOISE_REGIMES)}"
+            ) from exc
+        out = self.with_noise_free(False).with_noise(obs_noise_sd=obs_sd)
+        cohorts = tuple(
+            replace(c, sigma_L_obs=sig_L, sigma_phi_obs=sig_phi)
+            for c in out.population.cohorts
+        )
+        return out.with_cohorts(cohorts)
 
     def with_noise_free(self, flag: bool = True) -> "Params":
         """Toggle a fully deterministic, noise-free environment. When ``True``
