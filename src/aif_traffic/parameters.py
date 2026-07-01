@@ -44,7 +44,10 @@ import numpy as np
 class SimParams:
     seed: int = 42
     days: int = 90
-    burn_in: int = 30
+    burn_in: int = 0
+    """Warm-up days run before recording starts (discarded from the output).
+    0 by default: the whole run is recorded, so the cold-start convergence is
+    visible."""
     h_min: int = 300
     dt_min: int = 1
     selected_days: tuple[int, ...] = (0, 1, 3, 7, 14, 21, 29)

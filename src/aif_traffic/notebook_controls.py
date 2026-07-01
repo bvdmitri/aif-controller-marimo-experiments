@@ -39,11 +39,12 @@ import marimo as mo
 # Canonical one-line descriptions (channel-agnostic, reused verbatim everywhere).
 # ---------------------------------------------------------------------------
 DESCRIPTIONS: dict[str, str] = {
-    "days": "Recorded days to simulate (after the warm-up days).",
+    "days": "Recorded days to simulate (after any warm-up days).",
     "warmup": (
         "Warm-up days run before recording starts, to let the two layers settle "
         "out of their cold-start transient; these days are discarded from the "
-        "output."
+        "output. 0 by default (the whole run, including the cold start, is "
+        "recorded)."
     ),
     "seed": "Master seed; redraws all stochastic elements.",
     "control_interval": (
@@ -132,7 +133,7 @@ def days():
 
 
 def warmup():
-    return mo.ui.slider(0, 90, value=30, label="warm-up days")
+    return mo.ui.slider(0, 90, value=0, label="warm-up days")
 
 
 def seed():

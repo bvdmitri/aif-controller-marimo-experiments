@@ -49,8 +49,13 @@ in two stages.
 
 1. **Route choice (once per day).** Every A--B traveller is an Active Inference
    agent that picks the intersection route $\alpha$ or the bypass $\beta$ by
-   minimising expected free energy over its belief about route travel times
-   (the IWAI rolling-window Gaussian smoother). Each route's latent is
+   minimising expected free energy. The outcome it has preferences about is the
+   **perceived generalized cost** $\zeta_r = TT_r + \theta\,E_r$ (its predicted
+   travel time plus the internalised externality; $\theta=0$ makes it the
+   private travel time). The pragmatic term is the divergence of that predicted
+   cost from a preference centred on the free-flow ideal; the epistemic term
+   rewards resolving uncertainty in the belief (the IWAI rolling-window Gaussian
+   smoother) and is independent of $\theta$. Each route's latent is
    $(F, C, L, \phi)$: free-flow time, capacity, queue, and -- extending the IWAI
    model -- the **expected green split** $\phi$. On the signalised intersection
    route $C$ is the saturation flow and the effective capacity is $\phi\,C$, so
@@ -94,11 +99,14 @@ default (a realistic run is noisy).
 network-wide view and can share it in three distinct ways.
 
 - *Cost-offset advisory* ($\theta$): a per-route signal (e.g. the congestion
-  externality $E_r$) is folded into the traveller's **perceived cost**
+  externality $E_r$) enters the traveller's **preference** as the internalised
+  term of its outcome, the perceived generalized cost
   $\zeta_r = TT_r + \theta\,E_r$, where $\theta\in[0,1]$ is the traveller's
   social internalisation ($0$ = purely selfish / user equilibrium, $1$ = fully
-  cooperative / system optimum). This shifts route *choice* only; it never
-  touches the belief update.
+  cooperative / system optimum). It is a *goal* term (it shapes what the agent
+  prefers, via the pragmatic EFE term), **not** a distortion of its belief about
+  its own trip: it shifts route *choice* only and never enters the belief update
+  or the epistemic term.
 - *Extra observations* (CG / SN): travellers natively observe only the route
   they took. The controller relays the **true realised** route congestion
   $L_r$ (**CG**) and/or signal green split $\phi_r$ (**SN**) of the routes they

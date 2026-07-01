@@ -1,22 +1,30 @@
 """Closed-form Expected Free Energy from the smoother posterior.
 
 Reused from the IWAI route-choice model. Given the per-(agent, route) joint
-MVN posterior over ``z = (F, C, L)``, the predictive TT moments are computed
-by a first-order Taylor expansion of ``h(F,C,L) = F + 60 L/C`` around the
-posterior mean, and the EFE components are closed-form:
+MVN posterior over ``z = (F, C, L)``, the predictive travel-time moments are
+computed by a first-order Taylor expansion of ``h(F,C,L) = F + 60 L/C`` around
+the posterior mean.
 
-* ``risk(a)      = KL[N(mu_y, sigma_y^2 + sigma_obs^2) || N(mu_F_r, sigma_pref^2)]``
-* ``info_gain(a) = 1/2 log(1 + sigma_y^2 / sigma_obs^2)``
+**The agent's outcome is the perceived generalized cost.** In active-inference
+terms the outcome the traveller has preferences about is
+``zeta_r = TT_r + theta * E_r`` -- its predicted travel time plus the share
+``theta`` of the congestion externality ``E_r`` it internalises. This is the
+textbook-clean way to encode a *social* preference: ``theta`` scales a goal /
+preference term, it is **not** a distortion of the agent's belief about its own
+private trip. Because ``E_r`` is relayed as a *known* offset
+``cost_offset = theta * E_r`` (per agent; zero for non-compliant agents or with
+no broadcast), it shifts the predictive *mean* of the outcome
+``mu_zeta = mu_TT + cost_offset`` but carries no belief uncertainty, so it does
+**not** touch the predictive variance or the epistemic term. The preference is a
+prior over this outcome, ``N(mu_F_r, sigma_pref^2)`` ("prefer a generalized cost
+near the free-flow ideal ``F``"). The closed-form EFE components are then:
+
+* ``risk(a)      = KL[N(mu_zeta, sigma_y^2 + sigma_obs^2) || N(mu_F_r, sigma_pref^2)]``
+* ``info_gain(a) = 1/2 log(1 + sigma_y^2 / sigma_obs^2)``   (unaffected by theta)
 
 with ``G(a) = w_R*risk - w_I*info_gain`` and route probability a softmax over
-``-gamma*G``.
-
-**Macro coupling (this repo).** An optional ``cost_offset`` of shape
-``(N, n_routes)`` shifts the predicted perceived cost used in the risk term:
-``mu_y -> mu_y + cost_offset``. This is how the controller broadcast enters
-route choice -- the offset is ``theta * E_r`` per agent (zero for
-non-compliant agents or no broadcast). ``cost_offset=None`` reproduces the
-IWAI behaviour exactly.
+``-gamma*G``. ``cost_offset=None`` gives ``zeta_r = TT_r`` -- the purely selfish
+(user-equilibrium) IWAI behaviour.
 """
 
 from __future__ import annotations
@@ -105,23 +113,31 @@ def efe_route_probabilities(
 ) -> jnp.ndarray:
     """Return ``p(a | i)`` of shape ``(N, n_routes)`` for each agent.
 
-    ``cost_offset`` (``(N, n_routes)`` or ``None``) shifts the predicted
-    perceived cost in the risk term, implementing the perceived route cost
-    ``zeta_r = TT_r + theta * E_r`` when the controller broadcast is active.
-    ``signalised`` (``(n_routes,)`` 0/1) marks routes where the green-split
-    latent couples into the predicted travel time.
+    The outcome the agent has preferences about is the **perceived generalized
+    cost** ``zeta_r = TT_r + theta * E_r``. ``cost_offset`` (``(N, n_routes)`` or
+    ``None``) is the externality term ``theta * E_r`` folded into the *mean* of
+    that outcome (a known offset, so it does not change the predictive variance
+    or the epistemic term). With ``cost_offset=None`` the outcome is just the
+    private travel time ``TT_r``. ``signalised`` (``(n_routes,)`` 0/1) marks
+    routes where the green-split latent couples into the predicted travel time.
     """
-    mu_y, var_y = _predictive_moments(state, signalised, phi_lo, phi_hi)
+    mu_tt, var_y = _predictive_moments(state, signalised, phi_lo, phi_hi)
     sigma_obs_sq = sigma_obs ** 2
     var_pred = var_y + sigma_obs_sq[:, None]
 
-    if cost_offset is not None:
-        mu_y = mu_y + cost_offset
+    # Predictive mean of the outcome = the perceived generalized cost zeta_r:
+    # the private travel time plus the internalised externality (a known offset).
+    mu_zeta = mu_tt if cost_offset is None else mu_tt + cost_offset
 
+    # Preference: a prior over the perceived generalized cost, centred on the
+    # free-flow ideal F (empty road, no externality).
     preferred_mean = state.mu[..., F_IDX]
 
+    # Pragmatic value (risk): divergence of the predicted generalized cost from
+    # the preferred one. Epistemic value (info_gain): expected reduction in
+    # state uncertainty -- independent of the preference, hence of theta.
     risk = _gaussian_kl(
-        mu_q=mu_y, var_q=var_pred,
+        mu_q=mu_zeta, var_q=var_pred,
         mu_p=preferred_mean, var_p=(sigma_pref[:, None]) ** 2,
     )
     info_gain = 0.5 * jnp.log1p(var_y / sigma_obs_sq[:, None])
