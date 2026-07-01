@@ -302,7 +302,10 @@ def _network_color_scale(scale_df: pd.DataFrame, net, color_by: str):
     computed identically in both.
     """
     if color_by == "queue":
-        cmap, clabel = plt.get_cmap("YlOrRd"), "queue length [veh]"
+        # Traffic-signal palette: green = empty, red = congested. Unlike YlOrRd
+        # (pale yellow at 0, invisible on the white background) an empty link is
+        # a clearly visible green here and only the mid-range is pale.
+        cmap, clabel = plt.get_cmap("RdYlGn_r"), "queue length [veh]"
         vmax = float(np.nanmax([scale_df[f"L{lid}"].max() for lid in net.link_ids]))
     else:
         # Max link flow = max over links of the route-flow sums.
