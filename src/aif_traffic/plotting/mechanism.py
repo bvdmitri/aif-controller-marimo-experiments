@@ -50,9 +50,11 @@ def plot_coupled_within_day(
     c_alpha, c_beta = route_colour("alpha"), route_colour("beta")
 
     ncols = max(len(picked), 1)
+    # One column per day: scale the width to fill the notebook content width
+    # (~2 in per day) instead of the narrow paper text width.
     fig, axes = plt.subplots(
-        2, ncols, figsize=(TEXT_W, 3.6), sharex=True, sharey="row",
-        squeeze=False,
+        2, ncols, figsize=(max(TEXT_W, 2.1 * ncols), 3.8), sharex=True,
+        sharey="row", squeeze=False,
     )
     for col, d in enumerate(picked):
         dd = day_step[day_step["day"] == d].sort_values("tau")

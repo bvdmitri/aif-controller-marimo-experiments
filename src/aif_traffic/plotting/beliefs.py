@@ -120,9 +120,12 @@ def plot_within_day_tt_vs_belief(
         smoothed[r] = pivot.rolling(w_smooth, center=True, min_periods=1).mean()
 
     ncols = max(len(picked_days), 1)
+    # One column per day: scale the width so the columns fill the notebook's
+    # content width (~2 in per day) rather than being squeezed into the narrow
+    # paper text width.
     fig, axes = plt.subplots(
-        2, ncols, figsize=(TEXT_W, 3.6), sharex=True, sharey="row",
-        squeeze=False,
+        2, ncols, figsize=(max(TEXT_W, 2.1 * ncols), 3.8), sharex=True,
+        sharey="row", squeeze=False,
     )
     for col, d in enumerate(picked_days):
         snap = snapshots.get((sample_seed, int(d))) if snapshots else None
