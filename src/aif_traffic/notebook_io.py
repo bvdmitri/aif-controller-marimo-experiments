@@ -55,6 +55,26 @@ def figure_block(chart_id: str, content, *, extra: str | None = None):
     return mo.center(mo.vstack([caption, content], align="center"))
 
 
+def table_block(table_id: str, df, *, extra: str | None = None, round_to: int = 2):
+    """Render a summary table with its caption, centred (mirrors ``figure_block``).
+
+    ``table_id`` is registered in :data:`aif_traffic.explainers.TABLE_GUIDE`;
+    ``df`` is a pandas ``DataFrame`` (rounded to ``round_to`` decimals and shown
+    via ``mo.ui.table``), or ``None`` before a run (a placeholder is shown).
+    ``extra`` appends a notebook-specific note. Returns a centred
+    ``mo.vstack`` of the caption above the table."""
+    import marimo as mo
+
+    from .explainers import table_caption
+
+    caption = mo.md(table_caption(table_id, extra=extra))
+    if df is None:
+        body = mo.md("*Run the experiment above to populate this table.*")
+    else:
+        body = mo.ui.table(df.round(round_to), selection=None)
+    return mo.center(mo.vstack([caption, body], align="center"))
+
+
 def _widen_for_display(content) -> None:
     """Widen a matplotlib ``Figure`` to the notebook display width (keeping its
     height) so charts fill the marimo content column instead of rendering at the

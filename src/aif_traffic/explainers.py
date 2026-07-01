@@ -666,6 +666,61 @@ NOTEBOOK_CHARTS: dict[str, tuple[str, ...]] = {
     ),
 }
 
+# --- summary-table registry (the quantitative companions to the charts) -----
+# Parallel to CHART_GUIDE but for the DataFrame summary tables; no slider field
+# (tables are static steady-state summaries). Rendered via
+# ``notebook_io.table_block`` with a caption from :func:`table_caption`.
+TABLE_GUIDE: dict[str, dict] = {
+    "run_summary_table": {
+        "title": "Run summary",
+        "what": "Steady-state values (mean over the last recorded days, with "
+        "their day-to-day std) for this single run: system cost, peak queue "
+        "L_2+L_6, intersection share P_alpha, green-split variation, and the "
+        "traveller / controller belief SDs.",
+        "read": "The numbers behind the day-series charts above: `mean` is the "
+        "level the run settles at, `std` how much it still wobbles day to day "
+        "(smaller = more converged).",
+    },
+    "controller_summary": {
+        "title": "Controller summary",
+        "what": "One row per controller: mean and day-to-day std of the daily "
+        "system cost, the green-split variation (mean and std -- signal "
+        "stability), the mean daily peak queue L_2+L_6, and the mean daily peak "
+        "on the C--D movement L_6.",
+        "read": "Compare controllers row by row: lower `mean_SC` is cheaper, "
+        "lower `*_signal_variation` is a steadier signal, lower peak-queue "
+        "columns mean less congestion. Pairs with the controller-metrics chart.",
+    },
+    "theta_summary_table": {
+        "title": "theta x controller summary",
+        "what": "One row per (controller, theta): mean/std of daily system cost, "
+        "mean/std of the peak queue L_2+L_6, and mean/std of the intersection "
+        "share P_alpha, over the last recorded days.",
+        "read": "Read a controller's rows down theta: if the metrics barely move "
+        "with theta, that controller is 'absorbing' the social-internalisation "
+        "effect; compare controllers to see which expose it. Pairs with the "
+        "theta-sweep charts.",
+    },
+    "communication_summary_table": {
+        "title": "Communication summary",
+        "what": "One row per information setting (BL/CG/SN/CG+SN): mean system "
+        "cost and its change vs the baseline (%), the traveller belief SD on "
+        "TT_alpha and TT_beta (uncertainty), and the mean intersection share.",
+        "read": "Lower `mean_SC` / more-negative `dSC_vs_BL_pct` is better; lower "
+        "`belief_SD_*` means sharper beliefs. Read against the sweep chart to see "
+        "which channel helps cost vs which sharpens beliefs.",
+    },
+}
+
+# Which tables each notebook renders, in display order (drives the table test
+# and the end-of-notebook guide).
+NOTEBOOK_TABLES: dict[str, tuple[str, ...]] = {
+    "social_internalisation": ("run_summary_table", "theta_summary_table"),
+    "controller_benchmark": ("controller_summary",),
+    "information_communication": ("communication_summary_table",),
+    "compliance_robustness": (),
+}
+
 _SLIDER_NOTE: dict[str, str] = {
     "day": " *(follows the inspect-day slider)*",
     "tod": " *(follows the time-of-day slider)*",
@@ -699,4 +754,29 @@ def charts_section(nb_id: str) -> str:
         g = CHART_GUIDE[cid]
         note = _SLIDER_NOTE.get(g["slider"], "")
         lines.append(f"- **{g['title']}**{note} -- {g['what']} {g['read']}")
+    return "\n".join(lines)
+
+
+def table_caption(table_id: str, *, extra: str | None = None) -> str:
+    """Short markdown for the caption rendered above a summary table.
+
+    ``**title.** what read`` then any ``extra`` note. Raises ``KeyError`` for an
+    unregistered ``table_id`` (forces registration in ``TABLE_GUIDE``)."""
+    g = TABLE_GUIDE[table_id]
+    parts = [f"**{g['title']}.** {g['what']} {g['read']}"]
+    if extra:
+        parts.append(extra)
+    return "\n\n".join(parts)
+
+
+def tables_section(nb_id: str) -> str:
+    """The "Summary tables" markdown list for an end-of-notebook cell, generated
+    from TABLE_GUIDE. Empty string when the notebook has no tables."""
+    ids = NOTEBOOK_TABLES.get(nb_id, ())
+    if not ids:
+        return ""
+    lines = ["### Summary tables", ""]
+    for tid in ids:
+        g = TABLE_GUIDE[tid]
+        lines.append(f"- **{g['title']}** -- {g['what']} {g['read']}")
     return "\n".join(lines)

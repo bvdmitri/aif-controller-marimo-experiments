@@ -48,6 +48,11 @@ from .network import (
 from .primitives import TEXT_W, TEXT_W_HALF, figure_placeholder
 from .style import active_style, apply_style
 from .sweep import plot_route_choice_heatmaps, plot_sweep_metrics
+from .tables import (
+    communication_summary_table,
+    run_summary_table,
+    theta_summary_table,
+)
 
 
 def setup_style() -> None:
@@ -86,6 +91,9 @@ __all__ = [
     "plot_theta_summary",
     "plot_theta_route_choice",
     "controller_summary",
+    "run_summary_table",
+    "theta_summary_table",
+    "communication_summary_table",
     "animate_controller_comparison",
     "plot_sweep_metrics",
     "plot_route_choice_heatmaps",

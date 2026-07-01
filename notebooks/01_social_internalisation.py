@@ -62,6 +62,7 @@ def _():
         is_deployed,
         outputs_dir,
         sweep_progress_bar,
+        table_block,
     )
     from aif_traffic.parameters import (
         AIFControllerSpec,
@@ -96,7 +97,9 @@ def _():
         plot_theta_route_choice,
         plot_theta_summary,
         plot_within_day_tt_vs_belief,
+        run_summary_table,
         setup_style,
+        theta_summary_table,
     )
     from aif_traffic.simulator import run_experiment
 
@@ -141,7 +144,10 @@ def _():
         plot_within_day_tt_vs_belief,
         replace,
         run_experiment,
+        run_summary_table,
         sweep_progress_bar,
+        table_block,
+        theta_summary_table,
     )
 
 
@@ -544,6 +550,14 @@ def _(figure_block, figure_placeholder, plot_co_adaptation, results):
 
 
 @app.cell
+def _(results, run_summary_table, table_block):
+    # The steady-state numbers behind the day-series charts for this single run.
+    run_df = None if results is None else run_summary_table(results)
+    table_block("run_summary_table", run_df)
+    return
+
+
+@app.cell
 def _(is_deployed, mo):
     make_gif = mo.ui.checkbox(value=False, label="Render per-day gif")
     make_gif if not is_deployed() else mo.md("")
@@ -714,6 +728,18 @@ def _(figure_block, mo, plot_theta_route_choice, theta_ctrl_results):
             "plot_theta_route_choice", plot_theta_route_choice(theta_ctrl_results)
         )
     fig_theta_pa
+    return
+
+
+@app.cell
+def _(table_block, theta_ctrl_results, theta_summary_table):
+    # The numbers behind the theta-sweep charts: mean/std cost, peak queue and
+    # route share per (controller, theta).
+    theta_df = (
+        None if theta_ctrl_results is None
+        else theta_summary_table(theta_ctrl_results)
+    )
+    table_block("theta_summary_table", theta_df)
     return
 
 

@@ -54,6 +54,7 @@ def _():
         is_deployed,
         outputs_dir,
         sweep_progress_bar,
+        table_block,
     )
     from aif_traffic.parameters import (
         AIFControllerSpec,
@@ -102,6 +103,7 @@ def _():
         replace,
         run_experiment,
         sweep_progress_bar,
+        table_block,
     )
 
 
@@ -293,14 +295,12 @@ def _(figure_block, figure_placeholder, plot_green_split_heatmaps_by_controller,
 
 
 @app.cell
-def _(controller_summary, mo, results_by_ctrl):
-    if results_by_ctrl is None:
-        summary_view = mo.md("*Run to see the summary table.*")
-    else:
-        summary_view = mo.ui.table(
-            controller_summary(results_by_ctrl).round(1), selection=None,
-        )
-    summary_view
+def _(controller_summary, results_by_ctrl, table_block):
+    summary_df = (
+        None if results_by_ctrl is None
+        else controller_summary(results_by_ctrl)
+    )
+    table_block("controller_summary", summary_df)
     return
 
 

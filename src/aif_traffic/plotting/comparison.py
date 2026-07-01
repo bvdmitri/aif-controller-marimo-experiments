@@ -300,16 +300,23 @@ def plot_theta_route_choice(
 
 
 def controller_summary(results_by_ctrl: Mapping[str, object]) -> pd.DataFrame:
-    """One row per controller: mean cost, day-to-day cost stability (std),
-    mean green-split variation, and mean daily peak total queue."""
+    """One row per controller: mean cost + day-to-day cost stability (std), the
+    green-split variation (mean and its day-to-day std -- the 'stable splits'
+    claim), the mean daily peak total queue, and the mean daily peak on the C--D
+    movement ``L_6`` (the queue the SCOOT-style controller mismanages)."""
     rows = []
     for name, res in _ordered(results_by_ctrl):
         cost = _daily_cost(res.step)
+        sig_var = _daily_signal_variation(res.step)
+        peak_l6 = _per_day(
+            res.step.groupby(_keys(res.step))["L6"].max(), res.step)
         rows.append({
             "controller": controller_label(name),
             "mean_SC": float(cost.mean()),
             "std_SC": float(cost.std()),
-            "mean_signal_variation": float(_daily_signal_variation(res.step).mean()),
+            "mean_signal_variation": float(sig_var.mean()),
+            "std_signal_variation": float(sig_var.std()),
             "mean_peak_queue": float(_daily_peak_total_queue(res.step).mean()),
+            "mean_peak_L6": float(peak_l6.mean()),
         })
     return pd.DataFrame(rows)

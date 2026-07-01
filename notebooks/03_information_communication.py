@@ -67,7 +67,11 @@ def _():
 
     from aif_traffic import notebook_controls as nc
     from aif_traffic.explainers import explainer_pointer, notebook_explainer
-    from aif_traffic.notebook_io import figure_block, sweep_progress_bar
+    from aif_traffic.notebook_io import (
+        figure_block,
+        sweep_progress_bar,
+        table_block,
+    )
     from aif_traffic.parameters import (
         AIFControllerSpec,
         BeliefSignal,
@@ -77,6 +81,7 @@ def _():
         SimParams,
     )
     from aif_traffic.plotting import (
+        communication_summary_table,
         figure_placeholder,
         plot_day_overview_grid,
         plot_queue_belief_day,
@@ -95,6 +100,7 @@ def _():
         ObservationSignal,
         Params,
         SimParams,
+        communication_summary_table,
         explainer_pointer,
         figure_block,
         figure_placeholder,
@@ -108,6 +114,7 @@ def _():
         replace,
         run_experiment,
         sweep_progress_bar,
+        table_block,
     )
 
 
@@ -283,6 +290,17 @@ def _(figure_block, figure_placeholder, plot_sweep_metrics, results_by_setting):
         else plot_sweep_metrics(results_by_setting, layout="grid")
     )
     figure_block("plot_sweep_metrics", fig_comm)
+    return
+
+
+@app.cell
+def _(communication_summary_table, results_by_setting, table_block):
+    # The numbers behind the sweep overlay: cost / belief SD / share per setting.
+    comm_df = (
+        None if results_by_setting is None
+        else communication_summary_table(results_by_setting)
+    )
+    table_block("communication_summary_table", comm_df)
     return
 
 

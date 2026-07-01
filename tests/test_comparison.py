@@ -55,7 +55,8 @@ def test_controller_summary_one_row_per_controller():
     summ = controller_summary(results)
     assert list(summ.columns) == [
         "controller", "mean_SC", "std_SC",
-        "mean_signal_variation", "mean_peak_queue",
+        "mean_signal_variation", "std_signal_variation",
+        "mean_peak_queue", "mean_peak_L6",
     ]
     assert len(summ) == 2
     assert np.isfinite(summ["mean_SC"]).all()

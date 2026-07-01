@@ -141,6 +141,31 @@ def smoke_stationary() -> None:
         f"windowed={wd_sig:.3f}")
 
 
+def smoke_tables() -> None:
+    """Build every summary table on a small run and check they are non-empty."""
+    from aif_traffic.plotting import (
+        communication_summary_table,
+        controller_summary,
+        run_summary_table,
+        theta_summary_table,
+    )
+
+    base = _small_params(AIFControllerSpec())
+    res = run_experiment(base)
+    assert not run_summary_table(res, n_last=2).empty
+    assert not controller_summary({"aif": res}).empty
+
+    grid = {"aif": {0.0: res},
+            "fixed_time": {0.0: run_experiment(_small_params(FixedTimeControllerSpec()))}}
+    assert not theta_summary_table(grid, n_last=2).empty
+
+    ct = communication_summary_table({
+        "BL": run_experiment(base.with_extra_observations()),
+        "SN": run_experiment(base.with_extra_observations(ObservationSignal.SIGNAL_CONTROL)),
+    }, n_last=2)
+    assert list(ct["setting"]) == ["BL", "SN"]
+
+
 def smoke_communication() -> None:
     """Run every cost-offset broadcast signal type with a compliant cohort."""
     for st in SignalType:
@@ -313,6 +338,7 @@ def main() -> int:
         "demand": smoke_demand,
         "controllers": smoke_controllers,
         "mechanism": smoke_mechanism,
+        "tables": smoke_tables,
         "stationary": smoke_stationary,
         "communication": smoke_communication,
         "extra_observations": smoke_extra_observations,
