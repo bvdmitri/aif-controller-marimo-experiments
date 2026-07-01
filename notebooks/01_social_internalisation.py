@@ -165,6 +165,7 @@ def _(mo, nc):
     controller_window = nc.controller_window()
     learn_noise = nc.learn_noise()
     stationary = nc.stationary()
+    noise_free = nc.noise_free()
     theta = nc.theta()
     compliance = nc.compliance()
     gamma = nc.gamma()
@@ -178,7 +179,7 @@ def _(mo, nc):
         "days": days, "seed": seed, "control_interval": control_interval,
         "demand_scale": demand_scale, "traveller_window": traveller_window,
         "controller_window": controller_window, "learn_noise": learn_noise,
-        "stationary": stationary,
+        "stationary": stationary, "noise_free": noise_free,
         "theta": theta, "compliance": compliance,
         "gamma": gamma, "omega": omega, "sigma_pref": sigma_pref,
         "phi_grid": phi_grid,
@@ -192,6 +193,7 @@ def _(mo, nc):
         demand_scale,
         gamma,
         learn_noise,
+        noise_free,
         omega,
         phi_grid,
         run_btn,
@@ -217,6 +219,7 @@ def _(
     gamma,
     learn_noise,
     mo,
+    noise_free,
     omega,
     phi_grid,
     replace,
@@ -264,7 +267,9 @@ def _(
             float(theta.value)
         ).with_window_size(int(traveller_window.value)).with_learn_obs_noise(
             bool(learn_noise.value)
-        ).with_stationary(bool(stationary.value))
+        ).with_stationary(bool(stationary.value)).with_noise_free(
+            bool(noise_free.value)
+        )
         # Snapshot every day so the belief-vs-realised charts have the per-agent
         # posterior on the days they overlay.
         results = run_experiment(

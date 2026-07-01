@@ -73,6 +73,13 @@ DESCRIPTIONS: dict[str, str] = {
         "controller **window sliders are ignored while this is on**. Turn off to "
         "recover the rolling-window smoother (the non-stationary / disruption case)."
     ),
+    "noise_free": (
+        "Make the environment fully **deterministic**: travellers fold in the "
+        "*exact* realised travel time / queue / green split (no added measurement "
+        "noise) and choose routes deterministically, and demand is identical every "
+        "day. Off by default (a realistic run has measurement noise and "
+        "finite-population sampling); turn on to see clean, jitter-free convergence."
+    ),
     "comm_mechanism": (
         "Which controller->traveller information channel Experiment 3 sweeps. "
         "**Extra observations** relays the *true realised* queue (CG) / green "
@@ -147,6 +154,10 @@ def stationary():
     return mo.ui.checkbox(value=True, label="assume stationary environment")
 
 
+def noise_free():
+    return mo.ui.checkbox(value=False, label="noise-free environment (deterministic)")
+
+
 def comm_mechanism():
     return mo.ui.dropdown(
         options=["Disable", "Extra observations", "Belief sharing", "Both"],
@@ -192,6 +203,7 @@ _GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Simulation", (
         "days", "seed", "control_interval", "demand_scale",
         "traveller_window", "controller_window", "learn_noise", "stationary",
+        "noise_free",
     )),
     ("Communication / social", ("comm_mechanism", "theta", "compliance")),
     ("AIF controller", ("gamma", "omega", "sigma_pref", "phi_grid", "k_L")),

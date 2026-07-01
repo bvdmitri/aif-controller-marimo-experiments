@@ -42,8 +42,15 @@ DAYS = 90  # the full default experiment (reaches the learned equilibrium)
 
 @pytest.fixture(scope="module")
 def run():
-    """One default-AIF experiment, shared by the behavioural tests."""
-    params = replace(Params(), sim=replace(SimParams(), days=DAYS, seed=SEED))
+    """One default-AIF experiment, shared by the behavioural tests.
+
+    Uses the **noise-free** path (``with_noise_free``) so the characterization is
+    deterministic and reproducible (CLAUDE.md prefers the noise-free path for the
+    behavioural tests); the emergent facts asserted here are structural and hold
+    with or without the small default measurement noise."""
+    params = replace(
+        Params(), sim=replace(SimParams(), days=DAYS, seed=SEED)
+    ).with_noise_free(True)
     last_day = params.sim.days - 1
     res = run_experiment(params, seeds=[SEED], snapshot_days=[last_day])
     return params, res, last_day

@@ -288,6 +288,14 @@ def run_experiment(
         )
         controller = build_controller(params_seed.controller, signal, net, sim)
 
+        # Noise-free environment: withhold the observation RNG so travellers fold
+        # in the *exact* realised TT / queue / green split (every added
+        # measurement noise term in update_beliefs is gated on ``rng is not
+        # None``); demand noise is off via cv=0 (see with_noise_free).
+        noise_free = bool(getattr(params_seed.population.cohorts[0], "noise_free", False))
+        if noise_free:
+            obs_rng = None
+
         cv = params_seed.noise.demand_noise_cv
         burn_in = sim.burn_in
         total_days = burn_in + sim.days

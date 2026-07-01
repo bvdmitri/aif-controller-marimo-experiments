@@ -83,6 +83,13 @@ uncertainty on routes not seen recently -- the right choice when the environment
 *non-stationary* (disruptions), at the cost of some forgetting-driven churn. While
 stationary is on, the traveller/controller **window sliders have no effect**.
 
+By default travellers also observe a *noisy* trip -- a small measurement noise on
+the realised travel time / queue / green split -- and route choice is a finite
+sample, so realised shares jitter day to day. The **"noise-free environment"**
+toggle removes all of this (exact observations, deterministic route choice,
+identical demand each day) for clean, reproducible convergence; it is off by
+default (a realistic run is noisy).
+
 **Controller$\to$traveller communication channels.** The controller has a
 network-wide view and can share it in three distinct ways.
 

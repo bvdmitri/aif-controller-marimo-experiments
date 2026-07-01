@@ -204,9 +204,19 @@ class CohortSpec:
     # EFE preference: p_tilde_r(y) = N(mu_F_r, sigma_pref^2).
     sigma_pref: float = 4.0
     sigma_obs: float = 5.0
-    sigma_L_obs: float = 30.0
-    sigma_phi_obs: float = 0.05
-    """Observation-noise SD on the directly-sensed green split (fraction)."""
+    """Assumed travel-time observation SD (min) -- the smoother likelihood /
+    VB-prior centre. Added TT measurement noise is separate (``obs_noise_sd``,
+    default 0)."""
+    sigma_L_obs: float = 3.0
+    """Queue observation SD (veh) -- both the *added* measurement noise (applied
+    every day in ``population.update_beliefs``) and the assumed likelihood SD.
+    Default ~3 veh ~= 10% of a typical route queue (tens of veh); keep it well
+    below the queue magnitude or it swamps the signal."""
+    sigma_phi_obs: float = 0.03
+    """Green-split observation SD (fraction) -- added measurement noise on the
+    directly-sensed split and the assumed likelihood SD. Default 0.03 ~= a few %
+    of the split, below the candidate-split grid step (~0.1), so the sensor is
+    informative without pretending to be exact."""
     gamma: float = 1.0
 
     # Priors over the per-route latent (F, C, L, phi).
@@ -256,6 +266,20 @@ class CohortSpec:
     then ignored. Set ``False`` to recover the rolling ``window_size``-day
     smoother with forgetting (the IWAI non-stationary / disruption setting)."""
 
+    # -- Noise-free (fully deterministic) environment --------------------------
+    noise_free: bool = False
+    """When ``True`` the environment injects **no** stochastic noise: travellers
+    fold in the *exact* realised travel time / queue / green split (no measurement
+    noise is added -- note that the queue-observation noise ``sigma_L_obs`` is
+    otherwise applied every day regardless of ``NoiseParams.obs_noise_sd``), and
+    each agent's route choice is a **deterministic** function of its beliefs
+    (a frozen per-agent decision threshold instead of a fresh random draw), so
+    finite-population sampling no longer jitters the realised route shares.
+    Combined with zero demand noise this makes the whole run smooth and
+    reproducible. Off by default. Set via ``Params.with_noise_free``. (The fixed
+    ``sigma_obs`` / ``sigma_L_obs`` still parameterise the smoother's *assumed*
+    likelihood; only the *added* measurement noise is removed.)"""
+
     # -- Learn the observation noise (per-agent variational Gamma) -------------
     learn_obs_noise: bool = True
     """When ``True`` (the default), each traveller *learns* its observation-noise
@@ -297,10 +321,23 @@ class EFEParams:
 
 @dataclass(frozen=True)
 class NoiseParams:
-    """Stochasticity knobs. Defaults 0 so the simulator is deterministic."""
+    """Environment stochasticity knobs.
 
-    obs_noise_sd: float = 0.0
+    Travellers observe a *noisy* realisation of their trip; a fully deterministic
+    run is obtained with ``Params.with_noise_free(True)`` (the notebook toggle),
+    which zeros these and removes the queue/green-split measurement noise too.
+    """
+
+    obs_noise_sd: float = 0.5
+    """Travel-time observation-noise SD (min) added to each traveller's realised
+    trip time. Default ~0.5 min ~= 10% of the route free-flow travel time (the
+    default network's routes are ~4-6 min free-flow) -- a realistic probe /
+    perceived-time measurement error, well below the smoother's assumed
+    ``sigma_obs`` so the filter stays stable. Set to 0 (or use
+    ``with_noise_free``) for an exact, noise-free trip time."""
     demand_noise_cv: float = 0.0
+    """Coefficient of variation of the per-day demand multiplier (lognormal).
+    0 = identical demand every day."""
 
 
 # ============================================================================
@@ -616,6 +653,19 @@ class Params:
             out = replace(out, controller=replace(self.controller,
                                                    stationary=bool(flag)))
         return out
+
+    def with_noise_free(self, flag: bool = True) -> "Params":
+        """Toggle a fully deterministic, noise-free environment. When ``True``
+        it zeros the demand and observation noise knobs and marks every cohort
+        ``noise_free`` (no added measurement noise, deterministic route choice),
+        so the run is smooth and reproducible. Off by default; this is the single
+        switch the notebooks flip."""
+        out = self
+        if flag:
+            out = out.with_noise(obs_noise_sd=0.0, demand_noise_cv=0.0)
+        cohorts = tuple(replace(c, noise_free=bool(flag))
+                        for c in out.population.cohorts)
+        return out.with_cohorts(cohorts)
 
     def with_controller(self, spec: object) -> "Params":
         return replace(self, controller=spec)

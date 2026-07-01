@@ -97,6 +97,15 @@ class Population:
             )
         self.stationary: bool = next(iter(stationary_flags))
 
+        # Noise-free (deterministic) mode is likewise a single population switch.
+        noise_free_flags = {bool(getattr(c, "noise_free", False)) for c in cohorts}
+        if len(noise_free_flags) != 1:
+            raise ValueError(
+                "All cohorts must share the same CohortSpec.noise_free; "
+                f"got {noise_free_flags}."
+            )
+        self.noise_free: bool = next(iter(noise_free_flags))
+
         window_sizes = {int(c.window_size) for c in cohorts}
         if len(window_sizes) != 1:
             raise ValueError(
@@ -233,6 +242,16 @@ class Population:
         else:
             p = d_ab / d_ab.sum()
         self.departure_time = rng.choice(K, size=self.N, p=p).astype(int)
+
+        # Noise-free mode uses a FROZEN per-agent decision threshold (drawn once
+        # here) instead of a fresh uniform each day, so route choice becomes a
+        # deterministic function of beliefs and finite-population sampling no
+        # longer jitters the realised shares. Drawn only when noise-free so the
+        # ordinary (sampled) path is bit-identical to before. This is the last
+        # construction draw, so it never shifts the earlier draws.
+        self._frozen_choice_u = (
+            rng.uniform(size=(self.N, 1)) if self.noise_free else None
+        )
 
         self.last_choice = np.full(self.N, -1, dtype=int)  # 0 = alpha, 1 = beta
         self.last_P_alpha = np.full(self.N, 0.5, dtype=float)
@@ -413,7 +432,13 @@ class Population:
         self.last_P = P
         self.last_P_alpha = P[:, 0]
         cdf = np.cumsum(P, axis=-1)
-        u = rng.uniform(size=(self.N, 1))
+        # Noise-free: reuse the FROZEN per-agent threshold so the choice is a
+        # deterministic function of beliefs (no fresh sampling -> no finite-N
+        # jitter in the realised shares). Otherwise draw a fresh uniform.
+        u = (
+            self._frozen_choice_u if self.noise_free and self._frozen_choice_u is not None
+            else rng.uniform(size=(self.N, 1))
+        )
         self.last_choice = (u >= cdf[..., :-1]).sum(axis=-1).astype(int)
 
     def aggregate_route_share(self, smooth_window: int = 13) -> np.ndarray:

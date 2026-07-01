@@ -20,9 +20,7 @@ import numpy as np
 import pytest
 
 from aif_traffic.parameters import (
-    AIFControllerSpec,
     CohortSpec,
-    NoiseParams,
     Params,
     PopulationParams,
     SimParams,
@@ -45,14 +43,56 @@ def test_with_stationary_sets_flag_on_all_layers():
     assert on.controller.stationary is True
 
 
+def test_with_noise_free_sets_flag_and_zeros_noise():
+    """`with_noise_free` marks every cohort and zeros the noise knobs; the
+    default (realistic) run keeps a nonzero measurement noise."""
+    base = Params.default()
+    # Realistic defaults: nonzero measurement noise, cohorts not noise-free.
+    assert base.noise.obs_noise_sd > 0.0
+    assert all(not c.noise_free for c in base.population.cohorts)
+
+    nf = base.with_noise_free(True)
+    assert nf.noise.obs_noise_sd == 0.0
+    assert nf.noise.demand_noise_cv == 0.0
+    assert all(c.noise_free for c in nf.population.cohorts)
+
+    off = nf.with_noise_free(False)
+    assert all(not c.noise_free for c in off.population.cohorts)
+
+
+def test_noise_free_run_is_deterministic_and_smooth():
+    """A noise-free run is reproducible and converges without day-to-day jitter,
+    whereas the default (noisy) run keeps fluctuating."""
+    p = replace(
+        Params.default(),
+        sim=SimParams(days=30, h_min=60, dt_min=1, burn_in=0, seed=9),
+        population=PopulationParams(cohorts=(CohortSpec(n_agents=200),)),
+    )
+    nf = p.with_noise_free(True)
+
+    a = run_experiment(nf, seeds=[9]).step["SC"].to_numpy()
+    b = run_experiment(nf, seeds=[9]).step["SC"].to_numpy()
+    assert np.array_equal(a, b), "noise-free run is not reproducible"
+
+    def late_pa_std(res):
+        pa = res.step.groupby("day")["P_alpha"].mean()
+        return float(pa.iloc[-10:].std())
+
+    nf_jit = late_pa_std(run_experiment(nf, seeds=[9]))
+    noisy_jit = late_pa_std(run_experiment(p, seeds=[9]))
+    assert nf_jit < 1e-9, f"noise-free route share still jitters: {nf_jit}"
+    assert noisy_jit > nf_jit, (noisy_jit, nf_jit)
+
+
 def _cmp_params(stationary: bool, *, days: int, window: int) -> Params:
+    # Noise-free so the stationary-vs-windowed difference is isolated from
+    # finite-population sampling / measurement noise.
     return replace(
         Params.default(),
         sim=SimParams(days=days, h_min=120, dt_min=1, burn_in=0, seed=11),
         population=PopulationParams(
             cohorts=(CohortSpec(n_agents=300, window_size=window),)),
-        noise=NoiseParams(obs_noise_sd=0.0),
-    ).with_stationary(stationary)
+    ).with_stationary(stationary).with_noise_free(True)
 
 
 @pytest.mark.slow
