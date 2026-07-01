@@ -60,3 +60,35 @@ uv run marimo edit notebooks/00_introduction.py
 
 Inference is closed-form and deterministic, so a given configuration and seed
 reproduces exactly.
+
+## Figure styles & paper export
+
+Plotting has two styles, switched centrally via
+`aif_traffic.plotting.apply_style(name)` (the single style seam in
+`plotting/style.py`):
+
+- **`"marimo"`** (default) — the on-screen notebook look (sans fonts, figures
+  widened to the notebook content column).
+- **`"paper"`** — publication style for the manuscript (Elsevier `elsarticle`
+  3p, Times/serif, ~6.72 in text width, vector PDF, colourblind/greyscale-safe
+  palette). The same chart functions render in either style with no per-chart
+  edits (widths come from the active style; colours from a style-aware palette).
+
+Render the publication figures locally:
+
+```bash
+uv run python scripts/export_paper_figures.py            # full paper scale -> paper_figures/
+uv run python scripts/export_paper_figures.py --quick    # fast reduced-scale check
+```
+
+This writes vector PDFs (+ PNG previews) and an `INDEX.md` (file → figure) into
+`paper_figures/`; drop the PDFs straight into the LaTeX `\includegraphics`.
+
+**CI.** Per-push CI (`.github/workflows/ci.yml`) runs the fast tests + notebook
+smoke only. Two heavier workflows run off the critical path:
+
+- **`paper-figures.yml`** (manual `workflow_dispatch` + version tags) renders the
+  paper figures and uploads `paper_figures/` as a **downloadable artifact**.
+- **`heavy-tests.yml`** (manual + nightly) runs the full-scale behavioural
+  characterization + narrative tests (`pytest --runslow`), which are
+  `@pytest.mark.slow` and skipped in the fast suite.
