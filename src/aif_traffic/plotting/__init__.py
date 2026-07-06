@@ -18,11 +18,13 @@ from .animation import (
 from .beliefs import (
     plot_belief_reality_queues,
     plot_within_day_by_setting,
+    plot_within_day_communication,
     plot_within_day_tt_vs_belief,
 )
 from .comparison import (
     controller_summary,
     plot_controller_metrics,
+    plot_controller_queue_comparison,
     plot_controller_theta_grid,
     plot_green_split_heatmaps_by_controller,
     plot_theta_route_choice,
@@ -47,7 +49,11 @@ from .network import (
 )
 from .primitives import TEXT_W, TEXT_W_HALF, figure_placeholder
 from .style import active_style, apply_style
-from .sweep import plot_route_choice_heatmaps, plot_sweep_metrics
+from .sweep import (
+    plot_belief_sd_sweep,
+    plot_route_choice_heatmaps,
+    plot_sweep_metrics,
+)
 from .tables import (
     communication_summary_table,
     run_summary_table,
@@ -86,6 +92,7 @@ __all__ = [
     "animate_route_flows",
     "animate_network_state",
     "plot_controller_metrics",
+    "plot_controller_queue_comparison",
     "plot_green_split_heatmaps_by_controller",
     "plot_controller_theta_grid",
     "plot_theta_summary",
@@ -96,9 +103,11 @@ __all__ = [
     "communication_summary_table",
     "animate_controller_comparison",
     "plot_sweep_metrics",
+    "plot_belief_sd_sweep",
     "plot_route_choice_heatmaps",
     "plot_within_day_tt_vs_belief",
     "plot_within_day_by_setting",
+    "plot_within_day_communication",
     "plot_belief_reality_queues",
     "plot_coupled_within_day",
     "plot_co_adaptation",

@@ -30,7 +30,7 @@ def run_summary_table(res, *, n_last: int = 15) -> pd.DataFrame:
     """Steady-state summary of a **single run** as a tidy metric/mean/std table.
 
     Reports, over the last ``n_last`` recorded days: system cost, peak queue
-    ``L_2+L_6``, intersection share ``P_alpha``, green-split variation
+    ``L_2+L_5+L_6``, intersection share ``P_alpha``, green-split variation
     ``sum|dphi_2|``, the travellers' belief SD on ``TT_alpha``, and (when the
     controller records it) its cost-belief SD. ``mean`` is the level, ``std`` the
     day-to-day variability.
@@ -44,7 +44,7 @@ def run_summary_table(res, *, n_last: int = 15) -> pd.DataFrame:
                      "std": float(t.std())})
 
     add("system cost [veh-min]", _daily_cost(step))
-    add("peak queue L2+L6 [veh]", _daily_peak_total_queue(step))
+    add("peak queue L2+L5+L6 [veh]", _daily_peak_total_queue(step))
     add("intersection share P_alpha", _daily_route_share(step))
     add("green-split variation sum|dphi2|", _daily_signal_variation(step))
     add("traveller belief SD TT_alpha [min]", _daily_belief_uncertainty(cohort))

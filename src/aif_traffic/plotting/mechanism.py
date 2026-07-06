@@ -17,7 +17,7 @@ from .beliefs import _pick_evolution_days, _seed_slice
 from .comparison import _daily_cost
 from .network import _edges
 from .palette import route_colour
-from .primitives import light_borders, text_w
+from .primitives import light_borders, panel_label, text_w
 from .style import active_style
 
 
@@ -26,6 +26,7 @@ def plot_coupled_within_day(
     params=None,
     *,
     n_days: int = 4,
+    days=None,
     seed: int | None = None,
 ):
     """The controller half of the coupled within-day picture, one column per day.
@@ -39,12 +40,17 @@ def plot_coupled_within_day(
       what it applied reacting to the day) vs **planned/believed** (dots, what
       it would apply from its typical-day belief alone), when recorded.
 
+    ``days`` (an explicit iterable of day numbers) overrides the automatic
+    first/last/evenly-spaced pick of ``n_days`` days -- the paper uses a single
+    representative day (``days=[80]``).
+
     Read together with the traveller belief-vs-realised travel-time figure, this
     is the "coupled within-day decision process" of Xue's baseline figure.
     """
     day_step, _ = _seed_slice(step_df, seed)
     all_days = sorted(day_step["day"].unique())
-    picked = _pick_evolution_days(all_days, n_days)
+    picked = ([d for d in days if d in all_days] if days is not None
+              else _pick_evolution_days(all_days, n_days))
     lw = active_style().line_main
     has_plan = "phi2_plan" in day_step.columns and day_step["phi2_plan"].notna().any()
     c_alpha, c_beta = route_colour("alpha"), route_colour("beta")
@@ -92,19 +98,26 @@ def plot_coupled_within_day(
     return fig
 
 
-def plot_co_adaptation(step_df: pd.DataFrame, *, seed: int | None = None):
+def plot_co_adaptation(
+    step_df: pd.DataFrame,
+    controller_df: pd.DataFrame | None = None,
+    *,
+    seed: int | None = None,
+):
     """Day-to-day co-adaptation of route choice, signal control, and cost.
 
-    Three stacked panels sharing the day axis:
+    Five stacked panels sharing the day axis, grouped as the paper's (a)-(c):
 
-    * top -- heatmap of the intersection share ``P_alpha(d, t)`` over
-      (day x time-of-day);
-    * middle -- heatmap of the green split ``phi_2(d, t)``;
-    * bottom -- daily demand-weighted ``P_alpha`` and mean ``phi_2`` on the left
-      axis and total system cost on the right axis.
+    * (a) heatmaps of the intersection share ``P_alpha(d, t)`` (top) and the
+      green split ``phi_2(d, t)`` (bottom) over (day x time-of-day);
+    * (b) the traveller profile -- daily demand-weighted ``P_alpha`` (top) --
+      and the controller profile -- daily mean ``phi_2`` (bottom);
+    * (c) total system cost, with the **controller's cost-belief SD** (red
+      dashed, right axis) overlaid when ``controller_df`` records it, so the
+      controller's shrinking uncertainty can be read against the settling cost.
 
     Shows how decentralised route choice and signal control co-evolve and how
-    that drives system-level performance (Xue's Figure 3).
+    that drives system-level performance (Xue's day-to-day adaptation figure).
     """
     sd, _ = _seed_slice(step_df, seed)
 
@@ -119,8 +132,8 @@ def plot_co_adaptation(step_df: pd.DataFrame, *, seed: int | None = None):
     cost = _daily_cost(sd)
 
     fig, axes = plt.subplots(
-        3, 1, figsize=(text_w(), text_w() * 1.35), sharex=True,
-        gridspec_kw={"height_ratios": [3, 3, 2.2], "hspace": 0.22},
+        5, 1, figsize=(text_w(), text_w() * 1.7), sharex=True,
+        gridspec_kw={"height_ratios": [3, 3, 1.6, 1.6, 2.2], "hspace": 0.28},
     )
     im0 = axes[0].pcolormesh(_edges(days), _edges(taus), pa.values,
                              cmap="magma", vmin=0.0, vmax=1.0, shading="flat")
@@ -132,26 +145,46 @@ def plot_co_adaptation(step_df: pd.DataFrame, *, seed: int | None = None):
     axes[1].set_ylabel("time of day")
     fig.colorbar(im1, ax=axes[1], pad=0.015, fraction=0.046,
                  label=r"$\phi_2$")
+    panel_label(axes[0], "a")
 
-    ax = axes[2]
-    ax2 = ax.twinx()
-    l1, = ax.plot(daily_pa.index.to_numpy(), daily_pa.to_numpy(),
-                  color=route_colour("alpha"), linewidth=1.4, label=r"daily $P_\alpha$")
-    l2, = ax.plot(daily_phi.index.to_numpy(), daily_phi.to_numpy(),
-                  color="grey", linewidth=1.4, label=r"daily $\phi_2$")
-    ax.set_ylim(0, 1)
-    ax.set_ylabel(r"$P_\alpha$, $\phi_2$")
+    axes[2].plot(daily_pa.index.to_numpy(), daily_pa.to_numpy(),
+                 color=route_colour("alpha"), linewidth=1.4)
+    axes[2].set_ylim(0, 1)
+    axes[2].set_ylabel(r"daily $P_\alpha$")
+    axes[2].grid(alpha=0.25)
+    panel_label(axes[2], "b")
+    axes[3].plot(daily_phi.index.to_numpy(), daily_phi.to_numpy(),
+                 color="0.25", linewidth=1.4)
+    axes[3].set_ylim(0, 1)
+    axes[3].set_ylabel(r"daily $\phi_2$")
+    axes[3].grid(alpha=0.25)
+
+    ax = axes[4]
+    handles = []
+    l_cost, = ax.plot(cost.index.to_numpy(), cost.to_numpy(),
+                      color="k", linewidth=1.4, label="system cost")
+    handles.append(l_cost)
+    ax.set_ylabel("system cost\n[veh-min]")
     ax.set_xlabel("day")
     ax.grid(alpha=0.25)
-    l3, = ax2.plot(cost.index.to_numpy(), cost.to_numpy(),
-                   color="tab:red", linewidth=1.4, label="system cost")
-    ax2.set_ylabel("system cost [veh-min]", color="tab:red")
-    ax2.tick_params(axis="y", labelcolor="tab:red")
-    ax.legend(handles=[l1, l2, l3], labels=[h.get_label() for h in (l1, l2, l3)],
-              loc="lower center", bbox_to_anchor=(0.5, 1.0), ncol=3,
-              frameon=False, fontsize=7)
-    # A twin axis is present in the bottom panel, so avoid tight_layout's warning.
-    fig.subplots_adjust(left=0.11, right=0.9, top=0.95, bottom=0.08)
+    panel_label(ax, "c")
+    ctrl = controller_df
+    if ctrl is not None and "SC_belief_sd" in getattr(ctrl, "columns", []) \
+            and ctrl["SC_belief_sd"].notna().any():
+        if "seed" in ctrl.columns:
+            ctrl = ctrl[ctrl["seed"] == ctrl["seed"].min()]
+        ctrl = ctrl.sort_values("day")
+        ax2 = ax.twinx()
+        l_sd, = ax2.plot(ctrl["day"].to_numpy(), ctrl["SC_belief_sd"].to_numpy(),
+                         color="tab:red", linewidth=1.2, linestyle="--",
+                         label="controller cost-belief SD")
+        ax2.set_ylabel("cost-belief SD\n[veh-min]", color="tab:red")
+        ax2.tick_params(axis="y", labelcolor="tab:red")
+        handles.append(l_sd)
+    ax.legend(handles=handles, labels=[h.get_label() for h in handles],
+              loc="upper right", frameon=False, fontsize=7)
+    # A twin axis may be present in the bottom panel, so avoid tight_layout.
+    fig.subplots_adjust(left=0.12, right=0.88, top=0.97, bottom=0.06)
     return fig
 
 
@@ -168,8 +201,8 @@ def plot_learning_uncertainty(
     * top -- **traveller** posterior SD on the route travel time, ``TT_alpha``
       (blue) and ``TT_beta`` (green) [min];
     * bottom -- **controller** uncertainty: its learned queue observation-noise
-      SD per movement (``sigma_obs`` L_2 / L_6) and, when recorded, its belief
-      SD on the daily queue-delay (proxy for system cost) on a right axis.
+      SD per movement (``sigma_obs`` L_2 / L_6). (The controller's cost-belief
+      SD now lives in the system-cost panel of :func:`plot_co_adaptation`.)
 
     Supports the mechanism analysis without overloading the main text.
     """
@@ -190,13 +223,11 @@ def plot_learning_uncertainty(
     axes[0].legend(fontsize=7, frameon=False)
 
     ax = axes[1]
-    used_twin = False
     if controller_df is not None and not controller_df.empty:
         ctrl = controller_df
         if "seed" in ctrl.columns:
             ctrl = ctrl[ctrl["seed"] == ctrl["seed"].min()]
         ctrl = ctrl.sort_values("day")
-        drew = False
         if {"sigma_obs_l2", "sigma_obs_l6"}.issubset(ctrl.columns):
             ax.plot(ctrl["day"].to_numpy(), ctrl["sigma_obs_l2"].to_numpy(),
                     color=route_colour("alpha"), linewidth=lw,
@@ -204,25 +235,11 @@ def plot_learning_uncertainty(
             ax.plot(ctrl["day"].to_numpy(), ctrl["sigma_obs_l6"].to_numpy(),
                     color=route_colour("gamma"), linewidth=lw,
                     label=r"$\sigma_{obs}\,L_6$")
-            drew = True
-        ax.set_ylabel("controller obs-noise SD [veh]")
-        if "SC_belief_sd" in ctrl.columns and ctrl["SC_belief_sd"].notna().any():
-            ax2 = ax.twinx()
-            ax2.plot(ctrl["day"].to_numpy(), ctrl["SC_belief_sd"].to_numpy(),
-                     color="tab:red", linewidth=lw, linestyle="--",
-                     label="cost-belief SD")
-            ax2.set_ylabel("cost-belief SD [veh-min]", color="tab:red")
-            ax2.tick_params(axis="y", labelcolor="tab:red")
-            used_twin = True
-        if drew:
             ax.legend(fontsize=7, frameon=False, loc="upper right")
+        ax.set_ylabel("controller obs-noise SD [veh]")
     ax.set_title("b. Controller uncertainty", fontsize=8)
     ax.set_xlabel("day")
     ax.grid(alpha=0.25)
     light_borders(axes)
-    # tight_layout warns with a twin axis present; fall back to a manual adjust.
-    if used_twin:
-        fig.subplots_adjust(hspace=0.28, left=0.13, right=0.87, top=0.93, bottom=0.12)
-    else:
-        fig.tight_layout()
+    fig.tight_layout()
     return fig

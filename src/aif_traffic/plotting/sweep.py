@@ -48,45 +48,79 @@ def _colours_for_labels(labels: list) -> list:
     return _colours(len(labels))
 
 
+def _daily_green_split(step) -> "object":
+    """Day-indexed mean applied green split ``phi_2`` (over tau and seeds)."""
+    return step.groupby("day")["phi2"].mean()
+
+
+# Named panels `plot_sweep_metrics` can compose (ylabel, series-from-result).
+_SWEEP_PANELS: dict = {
+    "cost": ("system cost [veh-min]", lambda r: _daily_cost(r.step)),
+    "share": (r"intersection share $P_\alpha$",
+              lambda r: _daily_route_share(r.step)),
+    "peak_queue": ("peak queue $L_2+L_5+L_6$ [veh]",
+                   lambda r: _daily_peak_total_queue(r.step)),
+    "belief_sd": ("belief SD on $TT_\\alpha$ [min]",
+                  lambda r: _daily_belief_uncertainty(r.cohort)),
+    "phi2": (r"mean green split $\phi_2$",
+             lambda r: _daily_green_split(r.step)),
+}
+
+
 def plot_sweep_metrics(
     results_by_label: Mapping[str, object], *, layout: str = "stacked",
+    panels: tuple[str, ...] | None = None,
 ):
-    """Four overlay panels (one line per variant): daily system cost, daily
-    mean route share, daily peak total queue, and daily traveller belief
-    uncertainty over the intersection travel time.
+    """Overlay panels (one line per variant) of daily sweep metrics.
+
+    The default four panels: daily system cost, daily mean route share, daily
+    peak total queue, and daily traveller belief uncertainty over the
+    intersection travel time. ``panels`` picks a different composition by name
+    from ``{"cost", "share", "peak_queue", "belief_sd", "phi2"}`` (the paper's
+    communication figure swaps ``belief_sd`` for the ``phi2`` green-split
+    panel, showing how the controller responds to each setting).
 
     ``results_by_label`` is an ordered mapping ``{label: ExperimentResult}``;
     insertion order sets the line order (colour follows the palette: fixed
     per-setting colours for BL/CG/SN/CG+SN, else a viridis ramp).
 
-    ``layout``: ``"stacked"`` (default) is the tall 4x1 column used by the
-    theta / compliance sweeps; ``"grid"`` is the 2x2 arrangement Xue asks for
-    in the information-communication experiment.
+    ``layout``: ``"stacked"`` (default) is the tall Nx1 column used by the
+    theta / compliance sweeps; ``"grid"`` is the two-column arrangement Xue
+    asks for in the information-communication experiment.
     """
     items = list(results_by_label.items())
     colours = _colours_for_labels([lab for lab, _ in items])
     lw = active_style().line_main
 
-    panels = [
-        ("system cost [veh-min]", lambda r: _daily_cost(r.step)),
-        (r"intersection share $P_\alpha$", lambda r: _daily_route_share(r.step)),
-        ("peak queue $L_2+L_6$ [veh]", lambda r: _daily_peak_total_queue(r.step)),
-        ("belief SD on $TT_\\alpha$ [min]", lambda r: _daily_belief_uncertainty(r.cohort)),
-    ]
+    if panels is None:
+        panels = ("cost", "share", "peak_queue", "belief_sd")
+    unknown = [p for p in panels if p not in _SWEEP_PANELS]
+    if unknown:
+        raise ValueError(
+            f"unknown sweep panels {unknown}; known: {sorted(_SWEEP_PANELS)}")
+    chosen = [_SWEEP_PANELS[p] for p in panels]
 
     if layout == "grid":
-        fig, axgrid = plt.subplots(2, 2, figsize=(text_w(), text_w() * 0.85))
+        nrows = int(np.ceil(len(chosen) / 2))
+        fig, axgrid = plt.subplots(
+            nrows, 2, figsize=(text_w(), text_w() * 0.425 * nrows),
+            squeeze=False,
+        )
         axes = axgrid.ravel()
-        xlabel_axes = axes[2:]  # bottom row
+        for ax in axes[len(chosen):]:
+            ax.set_visible(False)
+        xlabel_axes = axes[max(len(chosen) - 2, 0):len(chosen)]  # bottom row
         rect_top = 0.90
     else:
         fig, axes = plt.subplots(
-            len(panels), 1, figsize=(text_w(), text_w() * 1.9), sharex=True,
+            len(chosen), 1, figsize=(text_w(), text_w() * 0.475 * len(chosen)),
+            sharex=True, squeeze=False,
         )
+        axes = axes.ravel()
         xlabel_axes = [axes[-1]]
         rect_top = 0.965
 
-    for ax, (ylabel, fn) in zip(axes, panels):
+    for ax, (ylabel, fn) in zip(axes, chosen):
         for (label, res), colour in zip(items, colours):
             s = fn(res)
             ax.plot(s.index.to_numpy(), s.to_numpy(),
@@ -155,4 +189,47 @@ def plot_route_choice_heatmaps(
         "L2": r"queue $L_2$ [veh]", "L6": r"queue $L_6$ [veh]",
     }.get(value, value)
     fig.colorbar(im, ax=list(axes), pad=0.02, label=label_txt, fraction=0.046)
+    return fig
+
+
+def plot_belief_sd_sweep(results_by_label: Mapping[str, object]):
+    """Traveller belief uncertainty per sweep variant, three stacked panels.
+
+    Daily mean posterior SD on the route travel times ``TT_alpha`` and
+    ``TT_beta`` and on the expected green split ``phi_alpha``, one line per
+    variant (e.g. BL/CG/SN/CG+SN, palette colours). The direct "value of
+    information" readout of the communication experiment: a setting that relays
+    a quantity should visibly shrink the corresponding belief SD relative to
+    the baseline.
+    """
+    items = list(results_by_label.items())
+    colours = _colours_for_labels([lab for lab, _ in items])
+    lw = active_style().line_main
+
+    panels = [
+        (r"belief SD on $TT_\alpha$ [min]", "sigma_alpha_post"),
+        (r"belief SD on $TT_\beta$ [min]", "sigma_beta_post"),
+        (r"belief SD on $\phi_\alpha$", "sigma_phi_alpha_post"),
+    ]
+    fig, axes = plt.subplots(
+        len(panels), 1, figsize=(text_w(), text_w() * 1.05), sharex=True,
+    )
+    for ax, (ylabel, col) in zip(axes, panels):
+        for (label, res), colour in zip(items, colours):
+            cohort = res.cohort
+            if col not in cohort.columns:
+                continue
+            s = cohort.groupby("day")[col].mean()
+            ax.plot(s.index.to_numpy(), s.to_numpy(),
+                    color=colour, linewidth=lw, label=str(label))
+        ax.set_ylabel(ylabel)
+        ax.grid(alpha=0.25)
+    axes[-1].set_xlabel("day")
+    light_borders(axes)
+
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.legend(handles=handles, labels=labels, loc="upper center",
+               ncol=min(len(items), 5), frameon=False,
+               bbox_to_anchor=(0.5, 1.02), fontsize=7.5)
+    fig.tight_layout(rect=(0, 0, 1, 0.955))
     return fig

@@ -1,8 +1,9 @@
 """Render every paper figure in the publication (``"paper"``) style and write
-them as vector PDFs (plus PNG previews) to ``paper_figures/``.
+them as vector PDFs to ``paper_figures/``.
 
 This is the CI-exportable companion to the marimo notebooks: it applies the
-Elsevier-`elsarticle`-3p paper style (Times/serif, ~6.72 in text width, vector
+Elsevier-`elsarticle`-3p paper style (IWAI-figure Arial/sans-serif with STIX
+math, ~6.72 in text width, vector
 PDF, colourblind/greyscale-safe palette) and re-renders the figures the paper
 uses, deterministically (noise off, stationary on, fixed seed), so the author
 can drop the PDFs straight into the LaTeX. It reuses the same chart functions
@@ -78,9 +79,14 @@ def _base(cfg: dict, *, controller=None, theta: float = 0.0,
 
 # --- figure registry --------------------------------------------------------
 # Each entry: (filename_stem, chart_id, render-thunk -> Figure). Grouped by the
-# paper's experiment structure. Built lazily so heavy sweeps run once.
+# paper's experiment structure; the Section-5 figure slots use stems matching
+# the paper's fig labels (within_day_profile_*, controller_comparison, ...).
+# Built lazily so heavy sweeps run once.
 def _build_registry(cfg: dict):
     reg: list[tuple[str, str, callable]] = []
+    # The single representative day the paper's within-day figures inspect
+    # ("e.g. day 80"); clamped so --quick still renders.
+    profile_day = min(80, cfg["days"] - 1)
 
     # -- Experiment 1: single AIF run (medium theta, externality broadcast) ---
     p1 = _base(cfg, theta=MEDIUM_THETA, comm=SignalType.EXTERNALITY)
@@ -89,14 +95,23 @@ def _build_registry(cfg: dict):
     reg += [
         ("exp1_demand_profile", "plot_demand_profile",
          lambda: pl.plot_demand_profile(p1)),
+        # Multi-day learning evolution (first/last + evenly spaced days).
         ("exp1_within_day_tt_vs_belief", "plot_within_day_tt_vs_belief",
          lambda: pl.plot_within_day_tt_vs_belief(r1.step, r1.snapshots, p1)),
         ("exp1_coupled_within_day", "plot_coupled_within_day",
          lambda: pl.plot_coupled_within_day(r1.step, p1)),
-        ("exp1_belief_reality_queues", "plot_belief_reality_queues",
-         lambda: pl.plot_belief_reality_queues(r1.step, r1.snapshots, p1)),
-        ("exp1_co_adaptation", "plot_co_adaptation",
-         lambda: pl.plot_co_adaptation(r1.step)),
+        # fig:within-day-profile -- panels (a)-(c) at the representative day.
+        ("within_day_profile_a", "plot_coupled_within_day",
+         lambda: pl.plot_coupled_within_day(r1.step, p1, days=[profile_day])),
+        ("within_day_profile_b", "plot_within_day_tt_vs_belief",
+         lambda: pl.plot_within_day_tt_vs_belief(
+             r1.step, r1.snapshots, p1, days=[profile_day])),
+        ("within_day_profile_c", "plot_belief_reality_queues",
+         lambda: pl.plot_belief_reality_queues(
+             r1.step, r1.snapshots, p1, day=profile_day)),
+        # fig:across-day-profile -- heatmaps + daily profiles + cost & belief SD.
+        ("across_day_profile", "plot_co_adaptation",
+         lambda: pl.plot_co_adaptation(r1.step, r1.controller)),
         ("exp1_learning_uncertainty", "plot_learning_uncertainty",
          lambda: pl.plot_learning_uncertainty(r1.cohort, r1.controller)),
         ("exp1_signal_day", "plot_signal_day",
@@ -135,7 +150,11 @@ def _build_registry(cfg: dict):
     reg += [
         ("exp2_controller_metrics", "plot_controller_metrics",
          lambda: pl.plot_controller_metrics(by_ctrl)),
-        ("exp2_green_split_heatmaps", "plot_green_split_heatmaps_by_controller",
+        # fig:controller-comparison -- cost + per-link queues (L2/L5/L6).
+        ("controller_comparison", "plot_controller_queue_comparison",
+         lambda: pl.plot_controller_queue_comparison(by_ctrl)),
+        # fig:green-split-controllers.
+        ("green_split_controllers", "plot_green_split_heatmaps_by_controller",
          lambda: pl.plot_green_split_heatmaps_by_controller(by_ctrl)),
         ("exp2_learned_obs_noise", "plot_learned_obs_noise",
          lambda: pl.plot_learned_obs_noise(by_ctrl["aif"].controller)),
@@ -155,12 +174,25 @@ def _build_registry(cfg: dict):
         for name, pp in settings.items()
     }
     reg += [
-        ("exp3_sweep_metrics", "plot_sweep_metrics",
-         lambda: pl.plot_sweep_metrics(by_setting, layout="grid")),
+        # fig:across-day-communication -- system performance incl. green split.
+        ("across_day_communication", "plot_sweep_metrics",
+         lambda: pl.plot_sweep_metrics(
+             by_setting, layout="grid",
+             panels=("cost", "share", "peak_queue", "phi2"))),
+        # Its companion uncertainty figure: belief SD on TT_a / TT_b / phi.
+        ("belief_sd_communication", "plot_belief_sd_sweep",
+         lambda: pl.plot_belief_sd_sweep(by_setting)),
         ("exp3_within_day_by_setting", "plot_within_day_by_setting",
          lambda: pl.plot_within_day_by_setting(by_setting, base3)),
-        ("exp3_route_choice_heatmaps", "plot_route_choice_heatmaps",
+        # fig:within-day-communication -- realised vs belief at the profile day.
+        ("within_day_communication", "plot_within_day_communication",
+         lambda: pl.plot_within_day_communication(
+             by_setting, base3, day=profile_day)),
+        # fig:vary_observation_info -- subfigures (a) P_alpha and (b) queue L2.
+        ("vary_observation_info_a", "plot_route_choice_heatmaps",
          lambda: pl.plot_route_choice_heatmaps(by_setting)),
+        ("vary_observation_info_b", "plot_route_choice_heatmaps",
+         lambda: pl.plot_route_choice_heatmaps(by_setting, value="L2")),
     ]
     return reg
 
@@ -182,7 +214,6 @@ def export_all(out_dir: Path, *, quick: bool = False) -> list[str]:
         fig = render()
         pdf = out_dir / f"{stem}.pdf"
         fig.savefig(pdf, format="pdf")
-        fig.savefig(out_dir / f"{stem}.png", format="png", dpi=150)
         plt.close(fig)
         title = CHART_GUIDE.get(chart_id, {}).get("title", chart_id)
         index_rows.append((f"{stem}.pdf", f"{title}  (`{chart_id}`)"))

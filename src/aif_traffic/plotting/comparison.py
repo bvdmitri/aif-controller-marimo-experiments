@@ -22,7 +22,7 @@ from .palette import (
     controller_label,
     ordered_controllers,
 )
-from .primitives import light_borders, text_w
+from .primitives import light_borders, panel_label, text_w
 from .style import active_style
 
 
@@ -48,7 +48,8 @@ def _daily_cost(step: pd.DataFrame) -> pd.Series:
 
 
 def _daily_peak_total_queue(step: pd.DataFrame) -> pd.Series:
-    tmp = step.assign(_Ltot=step["L2"] + step["L6"])
+    # Total network queue: both signalised movements plus the bypass (L5).
+    tmp = step.assign(_Ltot=step["L2"] + step["L5"] + step["L6"])
     return _per_day(tmp.groupby(_keys(step))["_Ltot"].max(), step)
 
 
@@ -73,7 +74,7 @@ def plot_controller_metrics(results_by_ctrl: Mapping[str, object]):
     items = _ordered(results_by_ctrl)
     panels = [
         ("system cost [veh-min]", _daily_cost),
-        ("peak queue $L_2+L_6$ [veh]", _daily_peak_total_queue),
+        ("peak queue $L_2+L_5+L_6$ [veh]", _daily_peak_total_queue),
         (r"green-split variation $\sum|\Delta\phi_2|$", _daily_signal_variation),
     ]
     fig, axes = plt.subplots(
@@ -98,6 +99,61 @@ def plot_controller_metrics(results_by_ctrl: Mapping[str, object]):
     fig.legend(handles=handles, loc="upper center", ncol=len(handles),
                frameon=False, bbox_to_anchor=(0.5, 1.02), fontsize=7.5)
     fig.tight_layout(rect=(0, 0, 1, 0.96))
+    return fig
+
+
+def plot_controller_queue_comparison(results_by_ctrl: Mapping[str, object]):
+    """One row of four day-series panels, one coloured line per controller:
+    (a) daily system cost, then the daily queue on (b) ``L_2``, (c) ``L_5``,
+    and (d) ``L_6``. The queue panels draw the within-day **mean** queue as a
+    solid line with the within-day min--max range as a shaded band, so both the
+    level and the daily excursion of each queue can be compared per controller.
+    """
+    items = _ordered(results_by_ctrl)
+    st = active_style()
+    lw, band_a = st.line_main, st.band_alpha
+
+    fig, axes = plt.subplots(
+        1, 4, figsize=(text_w(), text_w() * 0.32), sharex=True,
+    )
+    for name, res in items:
+        cost = _daily_cost(res.step)
+        axes[0].plot(cost.index.to_numpy(), cost.to_numpy(),
+                     color=controller_colour(name), linewidth=lw)
+    axes[0].set_ylabel("system cost [veh-min]")
+    panel_label(axes[0], "a")
+
+    for k, (ax, col) in enumerate(zip(axes[1:], ("L2", "L5", "L6"))):
+        for name, res in items:
+            step = res.step
+            g = step.groupby(_keys(step))[col]
+            mean = _per_day(g.mean(), step)
+            lo = _per_day(g.min(), step)
+            hi = _per_day(g.max(), step)
+            days = mean.index.to_numpy()
+            colour = controller_colour(name)
+            ax.plot(days, mean.to_numpy(), color=colour, linewidth=lw)
+            ax.fill_between(days, lo.to_numpy(), hi.to_numpy(),
+                            color=colour, alpha=band_a, linewidth=0)
+        ax.set_ylabel(f"queue $L_{col[1]}$ [veh]")
+        # An (almost) always-empty queue (typical for the high-capacity bypass)
+        # would otherwise get a +/-0.04 autoscale; pin a sane floor instead.
+        if ax.get_ylim()[1] < 1.0:
+            ax.set_ylim(-0.05, 1.0)
+        panel_label(ax, "bcd"[k])
+    for ax in axes:
+        ax.set_xlabel("day")
+        ax.grid(alpha=0.25)
+    light_borders(axes)
+
+    handles = [
+        Line2D([0], [0], color=controller_colour(k),
+               linewidth=lw, label=controller_label(k, abbr=True))
+        for k, _ in items
+    ]
+    fig.legend(handles=handles, loc="upper center", ncol=len(handles),
+               frameon=False, bbox_to_anchor=(0.5, 1.06), fontsize=7.5)
+    fig.tight_layout(rect=(0, 0, 1, 0.93))
     return fig
 
 
@@ -201,7 +257,7 @@ def plot_theta_summary(
     controller (Xue's Experiment-1 theta Figure 1).
 
     Four panels -- mean and SD of the daily system cost, and mean and SD of the
-    daily peak total queue ``L_2+L_6`` -- each over the last ``n_last`` days.
+    daily peak total queue ``L_2+L_5+L_6`` -- each over the last ``n_last`` days.
     x-axis is ``theta``; one line per controller (canonical colour). Reveals
     whether increasing ``theta`` moves performance and whether the adaptive
     controller "absorbs" that effect.

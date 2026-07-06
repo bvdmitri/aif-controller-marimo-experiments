@@ -543,7 +543,7 @@ def _(figure_block, figure_placeholder, plot_co_adaptation, results):
     fig_coadapt = (
         figure_placeholder("Day-to-day co-adaptation")
         if results is None
-        else plot_co_adaptation(results.step)
+        else plot_co_adaptation(results.step, results.controller)
     )
     figure_block("plot_co_adaptation", fig_coadapt)
     return (fig_coadapt,)

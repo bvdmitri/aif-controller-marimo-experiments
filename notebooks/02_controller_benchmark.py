@@ -70,6 +70,7 @@ def _():
         controller_summary,
         figure_placeholder,
         plot_controller_metrics,
+        plot_controller_queue_comparison,
         plot_controller_theta_grid,
         plot_green_split_heatmaps_by_controller,
         plot_learned_obs_noise,
@@ -97,6 +98,7 @@ def _():
         notebook_explainer,
         outputs_dir,
         plot_controller_metrics,
+        plot_controller_queue_comparison,
         plot_controller_theta_grid,
         plot_green_split_heatmaps_by_controller,
         plot_learned_obs_noise,
@@ -265,6 +267,20 @@ def _(figure_block, figure_placeholder, plot_controller_metrics, results_by_ctrl
         else plot_controller_metrics(results_by_ctrl)
     )
     figure_block("plot_controller_metrics", fig_metrics)
+    return
+
+
+@app.cell
+def _(figure_block, figure_placeholder, plot_controller_queue_comparison,
+      results_by_ctrl):
+    # The paper's controller-comparison row: system cost plus the daily queue on
+    # each route-carrying link (L2 / L5 / L6), mean + within-day range.
+    fig_queue_cmp = (
+        figure_placeholder("System cost & per-link queues by controller")
+        if results_by_ctrl is None
+        else plot_controller_queue_comparison(results_by_ctrl)
+    )
+    figure_block("plot_controller_queue_comparison", fig_queue_cmp)
     return
 
 

@@ -432,7 +432,7 @@ CHART_GUIDE: dict[str, dict] = {
         "title": "Controller metrics",
         "slider": None,
         "what": "Three stacked day-series, one line per controller: daily system "
-        "cost, daily peak total queue L_2+L_6, and daily green-split variation "
+        "cost, daily peak total queue L_2+L_5+L_6, and daily green-split variation "
         "sum_t|phi_2(t)-phi_2(t-1)|.",
         "read": "Compare the lines within each panel. Lower cost and lower peak "
         "queue are better, and lower variation means a steadier signal; read the "
@@ -459,12 +459,53 @@ CHART_GUIDE: dict[str, dict] = {
     "plot_sweep_metrics": {
         "title": "Sweep metrics",
         "slider": None,
-        "what": "Four stacked day-series, one line per swept variant: daily system "
-        "cost, mean intersection route share, peak total queue, and traveller belief "
-        "uncertainty over the intersection travel time.",
+        "what": "Stacked day-series panels, one line per swept variant -- by "
+        "default daily system cost, mean intersection route share, peak total "
+        "queue, and traveller belief uncertainty over the intersection travel "
+        "time (some views swap the last panel for the daily mean green split "
+        "phi_2).",
         "read": "Each variant is one line (the colour ramp follows the sweep order). "
         "Compare lines within a panel across days; the belief-uncertainty panel "
         "shows how sure travellers are about the intersection travel time.",
+    },
+    "plot_belief_sd_sweep": {
+        "title": "Belief uncertainty by setting",
+        "slider": None,
+        "what": "Three stacked day-series, one line per swept variant: the "
+        "travellers' daily mean posterior SD on TT_alpha, on TT_beta, and on the "
+        "expected green split phi_alpha.",
+        "read": "Falling curves mean travellers are getting surer of that "
+        "quantity. Compare a variant against the baseline within each panel: a "
+        "setting that relays a quantity should shrink the corresponding belief "
+        "SD, which is the direct value-of-information readout.",
+    },
+    "plot_within_day_communication": {
+        "title": "Within-day realised vs belief by setting",
+        "slider": "day",
+        "what": "A 2x4 grid for one inspected day, one line per communication "
+        "setting. Columns: (a) route-alpha travel time (via L_2) and (b) "
+        "route-beta travel time (via L_5) -- realised (top) vs the travellers' "
+        "mean predictive-TT belief per departure minute (bottom); (c) queue L_2 "
+        "and (d) queue L_6 -- realised (top) vs the controller's queue-belief "
+        "mean (bottom). Each column pair shares its y-scale.",
+        "read": "Read a column top-to-bottom: where a setting's belief curve "
+        "(bottom) matches its realised curve (top), that agent layer holds an "
+        "accurate picture under that setting. Comparing colours within a panel "
+        "shows how the settings shift both what happens and what is believed. "
+        "Travellers hold beliefs per route (alpha/beta), so the traveller "
+        "columns cover the two A--B routes, not the exogenous L_6.",
+    },
+    "plot_controller_queue_comparison": {
+        "title": "Controller day-series: cost & per-link queues",
+        "slider": None,
+        "what": "One row of four day-series panels, one line per controller: (a) "
+        "daily system cost, then the daily queue on (b) L_2, (c) L_5, (d) L_6 -- "
+        "the within-day mean queue as a solid line with the within-day min--max "
+        "range shaded.",
+        "read": "Compare controllers within each panel: lower cost and lower "
+        "queues are better, and a narrower band means the queue varies less "
+        "within the day. The L_5 panel shows how much demand each controller "
+        "pushes onto the bypass.",
     },
     "plot_route_choice_heatmaps": {
         "title": "Route-choice heatmaps",
@@ -540,19 +581,22 @@ CHART_GUIDE: dict[str, dict] = {
     "plot_belief_reality_queues": {
         "title": "Belief vs realised queue",
         "slider": "day",
-        "what": "Per signalised link (L_2 top, L_6 bottom): the realised within-day "
-        "queue (solid) and the controller's queue belief (dashed mean + band). On "
-        "L_2, the traveller route-alpha queue belief is a dotted line + band with "
-        "markers -- each A--B traveller that took the intersection placed at the "
-        "minute it meets the queue (its arrival minute), agents in a minute "
-        "averaged, the band their across-agent spread. L_6 (exogenous C--D) shows "
-        "the controller only.",
+        "what": "Per route-carrying link (L_2 top, L_5 middle, L_6 bottom): the "
+        "realised within-day queue (solid) and, on the signalised L_2/L_6, the "
+        "controller's queue belief (dashed mean + band; it holds no belief over "
+        "the unsignalised bypass L_5). On L_2 and L_5, the queue belief of the "
+        "traveller route that traverses the link (alpha and beta) is a dotted "
+        "line + band with markers -- each A--B traveller that took the route "
+        "placed at the minute it meets the queue (its arrival minute), agents in "
+        "a minute averaged, the band their across-agent spread. L_6 (exogenous "
+        "C--D) shows the controller only.",
         "read": "Where the belief lines/bands sit on the realised curve, that agent "
         "type has a consistent picture of the queue. The traveller line forms a "
         "within-day profile because travellers departing at different minutes meet "
         "and learn different queues; the band width is how much they disagree, and "
-        "the markers show which minutes actually had intersection-takers (sparse at "
-        "the peak). L_6 shows the controller alone. The Y-axis is fixed across days.",
+        "the markers show which minutes actually had takers of that route (sparse "
+        "at the peak on L_2). L_6 shows the controller alone. The Y-axis is fixed "
+        "across days.",
     },
     "plot_coupled_within_day": {
         "title": "Coupled within-day: flow & green split",
@@ -569,21 +613,24 @@ CHART_GUIDE: dict[str, dict] = {
     "plot_co_adaptation": {
         "title": "Day-to-day co-adaptation",
         "slider": None,
-        "what": "Top and middle: heatmaps of the intersection share P_alpha(d,t) "
-        "and the green split phi_2(d,t) over (day x time-of-day). Bottom: daily "
-        "demand-weighted P_alpha and mean phi_2 (left axis) with total system cost "
-        "(right axis).",
+        "what": "Five stacked day-axis panels, grouped (a)-(c). (a) heatmaps of "
+        "the intersection share P_alpha(d,t) and the green split phi_2(d,t) over "
+        "(day x time-of-day); (b) the daily demand-weighted P_alpha (traveller "
+        "profile) and daily mean phi_2 (controller profile) as separate line "
+        "panels; (c) total system cost, with the controller's cost-belief SD as "
+        "a red dashed line on a right axis when recorded.",
         "read": "Scan the heatmaps left-to-right to see the daily patterns settle; "
-        "the bottom panel ties route choice and signal control to whether system "
-        "cost falls. Together they show the two layers co-adapting over days.",
+        "the (b) lines show each layer's day-to-day adaptation, and (c) ties them "
+        "to whether system cost falls while the controller's uncertainty (red "
+        "dashed) shrinks. Together they show the two layers co-adapting over days.",
     },
     "plot_learning_uncertainty": {
         "title": "Learning uncertainty over days",
         "slider": None,
         "what": "Top: traveller posterior SD on the route travel times TT_alpha "
         "(blue) and TT_beta (green). Bottom: the controller's learned queue "
-        "observation-noise SD per movement (L_2, L_6) and, on a right axis, its "
-        "belief SD on the daily queue-delay (a proxy for system cost).",
+        "observation-noise SD per movement (L_2, L_6). (Its cost-belief SD is "
+        "shown in the co-adaptation figure's system-cost panel.)",
         "read": "Falling curves mean the agents are getting surer. The top panel is "
         "traveller uncertainty, the bottom controller uncertainty; compare how fast "
         "each layer's confidence grows over the run.",
@@ -592,7 +639,7 @@ CHART_GUIDE: dict[str, dict] = {
         "title": "theta-sweep performance summary",
         "slider": None,
         "what": "Four panels -- mean and SD of daily system cost, and mean and SD of "
-        "the daily peak queue L_2+L_6 -- against social internalisation theta, one "
+        "the daily peak queue L_2+L_5+L_6 -- against social internalisation theta, one "
         "line per controller (canonical colour), over the last days of each run.",
         "read": "Read each controller's line across theta: a flat line means theta "
         "barely changes that metric for that controller. Comparing controllers "
@@ -651,6 +698,7 @@ NOTEBOOK_CHARTS: dict[str, tuple[str, ...]] = {
     ),
     "controller_benchmark": (
         "plot_controller_metrics",
+        "plot_controller_queue_comparison",
         "plot_learned_obs_noise",
         "plot_green_split_heatmaps_by_controller",
         "animate_controller_comparison",
@@ -658,7 +706,9 @@ NOTEBOOK_CHARTS: dict[str, tuple[str, ...]] = {
     ),
     "information_communication": (
         "plot_sweep_metrics",
+        "plot_belief_sd_sweep",
         "plot_within_day_by_setting",
+        "plot_within_day_communication",
         "plot_day_overview_grid",
         "plot_queue_belief_day",
         "plot_route_choice_heatmaps",
@@ -677,7 +727,7 @@ TABLE_GUIDE: dict[str, dict] = {
         "title": "Run summary",
         "what": "Steady-state values (mean over the last recorded days, with "
         "their day-to-day std) for this single run: system cost, peak queue "
-        "L_2+L_6, intersection share P_alpha, green-split variation, and the "
+        "L_2+L_5+L_6, intersection share P_alpha, green-split variation, and the "
         "traveller / controller belief SDs.",
         "read": "The numbers behind the day-series charts above: `mean` is the "
         "level the run settles at, `std` how much it still wobbles day to day "
@@ -687,7 +737,7 @@ TABLE_GUIDE: dict[str, dict] = {
         "title": "Controller summary",
         "what": "One row per controller: mean and day-to-day std of the daily "
         "system cost, the green-split variation (mean and std -- signal "
-        "stability), the mean daily peak queue L_2+L_6, and the mean daily peak "
+        "stability), the mean daily peak queue L_2+L_5+L_6, and the mean daily peak "
         "on the C--D movement L_6.",
         "read": "Compare controllers row by row: lower `mean_SC` is cheaper, "
         "lower `*_signal_variation` is a steadier signal, lower peak-queue "
@@ -696,7 +746,7 @@ TABLE_GUIDE: dict[str, dict] = {
     "theta_summary_table": {
         "title": "theta x controller summary",
         "what": "One row per (controller, theta): mean/std of daily system cost, "
-        "mean/std of the peak queue L_2+L_6, and mean/std of the intersection "
+        "mean/std of the peak queue L_2+L_5+L_6, and mean/std of the intersection "
         "share P_alpha, over the last recorded days.",
         "read": "Read a controller's rows down theta: if the metrics barely move "
         "with theta, that controller is 'absorbing' the social-internalisation "

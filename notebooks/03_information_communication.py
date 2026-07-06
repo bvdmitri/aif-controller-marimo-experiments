@@ -83,11 +83,13 @@ def _():
     from aif_traffic.plotting import (
         communication_summary_table,
         figure_placeholder,
+        plot_belief_sd_sweep,
         plot_day_overview_grid,
         plot_queue_belief_day,
         plot_route_choice_heatmaps,
         plot_sweep_metrics,
         plot_within_day_by_setting,
+        plot_within_day_communication,
         setup_style,
     )
     from aif_traffic.simulator import run_experiment
@@ -106,11 +108,13 @@ def _():
         figure_placeholder,
         nc,
         notebook_explainer,
+        plot_belief_sd_sweep,
         plot_day_overview_grid,
         plot_queue_belief_day,
         plot_route_choice_heatmaps,
         plot_sweep_metrics,
         plot_within_day_by_setting,
+        plot_within_day_communication,
         replace,
         run_experiment,
         sweep_progress_bar,
@@ -294,6 +298,20 @@ def _(figure_block, figure_placeholder, plot_sweep_metrics, results_by_setting):
 
 
 @app.cell
+def _(figure_block, figure_placeholder, plot_belief_sd_sweep,
+      results_by_setting):
+    # The value-of-information readout: traveller belief SD on TT_alpha /
+    # TT_beta / phi_alpha per setting (Xue's Experiment-3 uncertainty figure).
+    fig_belief_sd = (
+        figure_placeholder("Belief uncertainty by setting")
+        if results_by_setting is None
+        else plot_belief_sd_sweep(results_by_setting)
+    )
+    figure_block("plot_belief_sd_sweep", fig_belief_sd)
+    return
+
+
+@app.cell
 def _(communication_summary_table, results_by_setting, table_block):
     # The numbers behind the sweep overlay: cost / belief SD / share per setting.
     comm_df = (
@@ -314,6 +332,25 @@ def _(figure_block, figure_placeholder, plot_within_day_by_setting,
     )
     figure_block("plot_within_day_by_setting", fig_by_setting)
     return
+
+
+@app.cell
+def _(day_sel, figure_block, figure_placeholder, mo,
+      plot_within_day_communication, results_by_setting, sweep_params):
+    # Xue's within-day communication grid: realised vs believed travel times
+    # (travellers, routes alpha/beta) and queues (controller, L2/L6), one line
+    # per setting, for the inspected day.
+    fig_wd_comm = (
+        figure_placeholder("Within-day realised vs belief by setting")
+        if results_by_setting is None
+        else plot_within_day_communication(
+            results_by_setting, sweep_params, day=int(day_sel.value)
+        )
+    )
+    _out = figure_block("plot_within_day_communication", fig_wd_comm,
+                        extra="Follows the **inspect day** slider below.")
+    mo.vstack([day_sel, _out]) if results_by_setting is not None else _out
+    return (fig_wd_comm,)
 
 
 @app.cell
