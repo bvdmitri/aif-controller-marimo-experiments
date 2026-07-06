@@ -21,7 +21,7 @@ import pandas as pd
 from matplotlib.lines import Line2D
 
 from .palette import COMM_ORDER, comm_colour, route_colour
-from .primitives import light_borders, text_w, panel_label
+from .primitives import light_borders, text_w, text_w_half, panel_label
 from .style import active_style
 
 # Realised link that stands in for each traveller route's queue.
@@ -130,9 +130,12 @@ def plot_within_day_tt_vs_belief(
     ncols = max(len(picked_days), 1)
     # One column per day: scale the width so the columns fill the notebook's
     # content width (~2 in per day) rather than being squeezed into the narrow
-    # paper text width.
+    # paper text width. A single-day render (the paper's profile figure) is
+    # authored at the half width instead, so it can sit beside its companion
+    # panel without shrinking the fonts.
+    fig_w = max(text_w(), 2.1 * ncols) if ncols > 1 else text_w_half()
     fig, axes = plt.subplots(
-        2, ncols, figsize=(max(text_w(), 2.1 * ncols), 3.8), sharex=True,
+        2, ncols, figsize=(fig_w, 3.8), sharex=True,
         sharey="row", squeeze=False,
     )
     for col, d in enumerate(picked_days):
@@ -351,7 +354,7 @@ def plot_belief_reality_queues(
             if prof is not None:
                 trav[route] = prof
 
-    fig, axes = plt.subplots(3, 1, figsize=(text_w(), text_w() * 1.3), sharex=True)
+    fig, axes = plt.subplots(3, 1, figsize=(text_w(), text_w() * 0.95), sharex=True)
     specs = [
         ("L2", r"$L_2$ (A--B int.)", route_colour("alpha"), "L2_belief_mu",
          "L2_belief_sd", "alpha"),

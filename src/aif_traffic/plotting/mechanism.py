@@ -17,7 +17,7 @@ from .beliefs import _pick_evolution_days, _seed_slice
 from .comparison import _daily_cost
 from .network import _edges
 from .palette import route_colour
-from .primitives import light_borders, panel_label, text_w
+from .primitives import light_borders, panel_label, text_w, text_w_half
 from .style import active_style
 
 
@@ -57,9 +57,12 @@ def plot_coupled_within_day(
 
     ncols = max(len(picked), 1)
     # One column per day: scale the width to fill the notebook content width
-    # (~2 in per day) instead of the narrow paper text width.
+    # (~2 in per day) instead of the narrow paper text width. A single-day
+    # render (the paper's profile figure) is authored at the half width so it
+    # can sit beside its companion panel without shrinking the fonts.
+    fig_w = max(text_w(), 2.1 * ncols) if ncols > 1 else text_w_half()
     fig, axes = plt.subplots(
-        2, ncols, figsize=(max(text_w(), 2.1 * ncols), 3.8), sharex=True,
+        2, ncols, figsize=(fig_w, 3.8), sharex=True,
         sharey="row", squeeze=False,
     )
     for col, d in enumerate(picked):
@@ -131,9 +134,10 @@ def plot_co_adaptation(
     daily_phi = sd.groupby("day")["phi2"].mean()
     cost = _daily_cost(sd)
 
+    # Keep the stacked figure within a print float page (~1.15 x width tall).
     fig, axes = plt.subplots(
-        5, 1, figsize=(text_w(), text_w() * 1.7), sharex=True,
-        gridspec_kw={"height_ratios": [3, 3, 1.6, 1.6, 2.2], "hspace": 0.28},
+        5, 1, figsize=(text_w(), text_w() * 1.15), sharex=True,
+        gridspec_kw={"height_ratios": [2.6, 2.6, 1.2, 1.2, 1.9], "hspace": 0.25},
     )
     im0 = axes[0].pcolormesh(_edges(days), _edges(taus), pa.values,
                              cmap="magma", vmin=0.0, vmax=1.0, shading="flat")
