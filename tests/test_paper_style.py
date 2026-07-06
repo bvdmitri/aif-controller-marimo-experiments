@@ -1,7 +1,8 @@
 """The publication (`paper`) figure style and the paper-figure export path.
 
 Fast checks (not the full-scale render): that `apply_style("paper")` flips the
-style seam (serif fonts, paper width, print-safe palette overrides), that charts
+style seam (IWAI-style Arial/sans-serif fonts, paper width, print-safe palette
+overrides), that charts
 render under it, and that the export script's render path runs headless on a
 reduced config. A fixture always restores the marimo style so the process-global
 style can't leak into other tests.
@@ -41,8 +42,9 @@ def test_paper_style_flips_the_seam():
     # Elsevier 3p single-column authoring width, no marimo widening.
     assert st.text_w == pytest.approx(6.72)
     assert st.fig_display_w == st.text_w
-    # Serif print fonts + embedded (editable) PDF text.
-    assert "serif" in mpl.rcParams["font.family"]
+    # IWAI-figure fonts (Arial/sans-serif) + embedded (editable) PDF text.
+    assert "sans-serif" in mpl.rcParams["font.family"]
+    assert "Arial" in mpl.rcParams["font.sans-serif"]
     assert mpl.rcParams["pdf.fonttype"] == 42
     # Print-safe palette overrides are populated and actually consulted.
     assert st.palette_overrides
@@ -52,7 +54,7 @@ def test_paper_style_flips_the_seam():
 
 def test_style_switch_does_not_leak():
     pl.apply_style("paper")
-    assert "serif" in mpl.rcParams["font.family"]
+    assert "sans-serif" in mpl.rcParams["font.family"]
     pl.apply_style("marimo")
     # Back to the marimo look: sans family, marimo colours, marimo width.
     assert mpl.rcParams["font.family"] == ["Arial"]

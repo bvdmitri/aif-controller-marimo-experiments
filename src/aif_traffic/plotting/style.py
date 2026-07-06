@@ -78,7 +78,8 @@ _MARIMO = StyleContext(
 )
 
 # The publication style for the paper (Elsevier ``elsarticle`` 3p, single
-# column, Times; ``\textwidth = 486 pt ~= 6.72 in``). Serif/Times print fonts,
+# column, Times; ``\textwidth = 486 pt ~= 6.72 in``). Figure fonts follow the
+# IWAI companion paper's figures — Arial/sans-serif text with STIX mathtext —
 # vector PDF output, colourblind-/greyscale-safe (Okabe-Ito) palette overrides.
 # ``fig_display_w == text_w`` so nothing is widened on export.
 _PAPER = StyleContext(
@@ -91,9 +92,9 @@ _PAPER = StyleContext(
     band_alpha=0.18,
     band_alpha_light=0.10,
     rc={
-        "font.family": "serif",
-        "font.serif": ["Times New Roman", "Times", "STIX Two Text",
-                       "DejaVu Serif"],
+        "font.family": "sans-serif",
+        "font.sans-serif": ["Arial", "Helvetica", "Liberation Sans",
+                            "DejaVu Sans"],
         "mathtext.fontset": "stix",
         "font.size": 8,
         "axes.titlesize": 8,
@@ -146,7 +147,7 @@ def apply_style(name: str = "marimo") -> StyleContext:
     Called once by the notebook (via :func:`aif_traffic.plotting.setup_style`)
     or by the CI exporter with ``name="paper"`` before saving. rcParams are
     first reset to the matplotlib defaults so styles do not leak keys into one
-    another (e.g. paper's serif family / PDF font type must not persist after
+    another (e.g. paper's font family / PDF font type must not persist after
     switching back to marimo). Returns the resolved :class:`StyleContext`.
     """
     global _ACTIVE
