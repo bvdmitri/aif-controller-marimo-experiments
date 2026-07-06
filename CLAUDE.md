@@ -173,9 +173,9 @@ understanding of how the model behaves. Guidelines:
   `@pytest.mark.slow` (module-level `pytestmark`), together with the externality
   re-roll, multi-run sweeps, and the narrative reports. All `slow` tests are
   **skipped unless** you pass `--runslow` (see `tests/conftest.py`), so the fast
-  `pytest tests/` and the per-push CI stay quick. Run the heavy tier on demand
-  with `uv run --extra dev pytest --runslow` — CI runs it nightly / on dispatch
-  via `.github/workflows/heavy-tests.yml`, not per push.
+  `pytest tests/` and the per-push CI stay quick. Run the heavy tier locally on
+  demand with `uv run --extra dev pytest --runslow` — it is deliberately not
+  run in CI.
 - When the throwaway `/tmp` analysis you wrote to understand a behaviour proves a
   point worth keeping, promote it into `tests/test_behaviour.py`.
 

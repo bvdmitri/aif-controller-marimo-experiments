@@ -85,10 +85,11 @@ This writes vector PDFs (+ PNG previews) and an `INDEX.md` (file → figure) int
 `paper_figures/`; drop the PDFs straight into the LaTeX `\includegraphics`.
 
 **CI.** Per-push CI (`.github/workflows/ci.yml`) runs the fast tests + notebook
-smoke only. Two heavier workflows run off the critical path:
+smoke only. One heavier workflow runs off the critical path:
 
 - **`paper-figures.yml`** (manual `workflow_dispatch` + version tags) renders the
   paper figures and uploads `paper_figures/` as a **downloadable artifact**.
-- **`heavy-tests.yml`** (manual + nightly) runs the full-scale behavioural
-  characterization + narrative tests (`pytest --runslow`), which are
-  `@pytest.mark.slow` and skipped in the fast suite.
+
+The full-scale behavioural characterization + narrative tests
+(`pytest --runslow`, `@pytest.mark.slow`) are not run in CI — run them locally
+on demand with `uv run --extra dev pytest --runslow`.
