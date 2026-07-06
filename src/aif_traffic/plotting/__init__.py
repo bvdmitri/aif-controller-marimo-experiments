@@ -27,6 +27,7 @@ from .comparison import (
     plot_controller_queue_comparison,
     plot_controller_theta_grid,
     plot_green_split_heatmaps_by_controller,
+    plot_msc_vs_theta,
     plot_theta_route_choice,
     plot_theta_summary,
 )
@@ -35,6 +36,7 @@ from .mechanism import (
     plot_co_adaptation,
     plot_coupled_within_day,
     plot_learning_uncertainty,
+    plot_msc_tt_by_route,
 )
 from .network import (
     plot_daily_system_cost,
@@ -112,4 +114,6 @@ __all__ = [
     "plot_coupled_within_day",
     "plot_co_adaptation",
     "plot_learning_uncertainty",
+    "plot_msc_tt_by_route",
+    "plot_msc_vs_theta",
 ]

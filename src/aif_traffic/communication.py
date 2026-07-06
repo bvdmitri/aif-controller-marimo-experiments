@@ -140,6 +140,7 @@ def build_broadcast(
     inflow_by_route: Mapping[str, np.ndarray] | None = None,
     phi2: np.ndarray | None = None,
     phi6: np.ndarray | None = None,
+    out_diagnostics: dict | None = None,
 ) -> Broadcast:
     """Assemble the broadcast for the *next* day from the realised day.
 
@@ -154,6 +155,12 @@ def build_broadcast(
     The EXTERNALITY / MSC signals require the realised route inflows and green
     splits (``inflow_by_route``, ``phi2``, ``phi6``) to re-roll the queue model.
     All advisories are clipped to be non-negative (higher discourages a route).
+
+    ``out_diagnostics``, when given, receives the **raw** (unclipped)
+    finite-difference marginal social cost under ``"msc"``
+    (``{route: length-K array}``) whenever it is computed, so the simulator can
+    record it without re-rolling the day. It is left untouched for the direct
+    (non-MSC) signals.
     """
     st = comm.signal_type
     if st is SignalType.NONE:
@@ -168,6 +175,8 @@ def build_broadcast(
                 "finite-difference marginal social cost."
             )
         msc = _marginal_social_cost(inflow_by_route, phi2, phi6, net, sim)
+        if out_diagnostics is not None:
+            out_diagnostics["msc"] = {r: v.copy() for r, v in msc.items()}
         for r in net.traveller_routes:
             tt = np.asarray(tt_by_route[r], dtype=float)
             if st is SignalType.MSC:

@@ -134,9 +134,14 @@ def simulate_one_day(
         rng=rng_obs, obs_noise_sd=params.noise.obs_noise_sd,
     )
 
+    # When the EXTERNALITY / MSC advisory is on, the broadcast build already
+    # re-rolls the day for the finite-difference marginal social cost; capture
+    # the raw per-route MSC so it can be recorded (None otherwise).
+    comm_diag: dict = {}
     broadcast_next = build_broadcast(
         params.comm, tt_route, queues, net, sim,
         inflow_by_route=inflow_by_route, phi2=phi2, phi6=phi6,
+        out_diagnostics=comm_diag,
     )
     controller.observe({
         "day": day_index, "queues": queues, "tt_route": tt_route,
@@ -193,6 +198,9 @@ def simulate_one_day(
         "belief_trajectory": belief,
         # Planned/believed green split phi_2 over the day (length K), or None.
         "phi2_plan": phi2_plan,
+        # Raw per-route marginal social cost {route: length-K}, or None when
+        # the EXTERNALITY/MSC advisory is off (it is only computed then).
+        "msc": comm_diag.get("msc"),
     }
 
 
@@ -332,6 +340,7 @@ def run_experiment(
 
             belief = out["belief_trajectory"]
             phi2_plan = out["phi2_plan"]
+            msc = out["msc"]
             for k, tau in enumerate(sim.time):
                 rec = {
                     "seed": seed, "day": d, "tau": int(tau),
@@ -361,6 +370,11 @@ def run_experiment(
                 # Controller's planned/believed green split (realised is phi2).
                 if phi2_plan is not None:
                     rec["phi2_plan"] = float(phi2_plan[k])
+                # Raw marginal social cost per traveller route; only present
+                # when the EXTERNALITY/MSC advisory computed it for this day.
+                if msc is not None:
+                    rec["MSC_alpha"] = float(msc["alpha"][k])
+                    rec["MSC_beta"] = float(msc["beta"][k])
                 step_records.append(rec)
             cohort_records.extend(
                 _cohort_record(seed, d, population, out["prior"], signal_name)

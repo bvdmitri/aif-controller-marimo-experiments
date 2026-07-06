@@ -122,6 +122,9 @@ def _build_registry(cfg: dict):
          lambda: pl.plot_daily_system_cost(r1.step)),
         ("exp1_route_share_over_days", "plot_route_share_over_days",
          lambda: pl.plot_route_share_over_days(r1.step)),
+        # Per-route TT / MSC / externality decomposition (UE-vs-SO question).
+        ("exp1_msc_tt_by_route", "plot_msc_tt_by_route",
+         lambda: pl.plot_msc_tt_by_route(r1.step)),
     ]
 
     # -- controller x theta grid (shared by Exp 1 summary + Exp 2 grid) -------
@@ -139,6 +142,8 @@ def _build_registry(cfg: dict):
          lambda: pl.plot_theta_summary(grid)),
         ("exp1_theta_route_choice", "plot_theta_route_choice",
          lambda: pl.plot_theta_route_choice(grid)),
+        ("exp1_msc_vs_theta", "plot_msc_vs_theta",
+         lambda: pl.plot_msc_vs_theta(grid)),
         ("exp2_controller_theta_grid", "plot_controller_theta_grid",
          lambda: pl.plot_controller_theta_grid(grid)),
     ]

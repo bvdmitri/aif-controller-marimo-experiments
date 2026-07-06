@@ -88,6 +88,8 @@ def _():
         plot_green_split_heatmap,
         plot_learned_obs_noise,
         plot_learning_uncertainty,
+        plot_msc_tt_by_route,
+        plot_msc_vs_theta,
         plot_network_state,
         plot_queue_belief_day,
         plot_route_flows,
@@ -133,6 +135,8 @@ def _():
         plot_green_split_heatmap,
         plot_learned_obs_noise,
         plot_learning_uncertainty,
+        plot_msc_tt_by_route,
+        plot_msc_vs_theta,
         plot_network_state,
         plot_queue_belief_day,
         plot_route_flows,
@@ -550,6 +554,20 @@ def _(figure_block, figure_placeholder, plot_co_adaptation, results):
 
 
 @app.cell
+def _(figure_block, figure_placeholder, plot_msc_tt_by_route, results):
+    # Per-route TT / MSC / externality over days (Xue's UE-vs-SO question).
+    # MSC columns exist only while the externality/MSC advisory is broadcast.
+    fig_msc_tt = (
+        plot_msc_tt_by_route(results.step)
+        if results is not None and "MSC_alpha" in results.step.columns
+        else figure_placeholder(
+            "Route cost decomposition (needs the externality broadcast)")
+    )
+    figure_block("plot_msc_tt_by_route", fig_msc_tt)
+    return
+
+
+@app.cell
 def _(results, run_summary_table, table_block):
     # The steady-state numbers behind the day-series charts for this single run.
     run_df = None if results is None else run_summary_table(results)
@@ -713,6 +731,21 @@ def _(figure_block, mo, plot_theta_summary, theta_ctrl_results):
             "plot_theta_summary", plot_theta_summary(theta_ctrl_results)
         )
     fig_theta_sum
+    return
+
+
+@app.cell
+def _(figure_block, mo, plot_msc_vs_theta, theta_ctrl_results):
+    if theta_ctrl_results is None:
+        fig_msc_theta = mo.md(
+            "_Run the controller x theta sweep above to see how theta moves "
+            "the routes' marginal social costs._"
+        )
+    else:
+        fig_msc_theta = figure_block(
+            "plot_msc_vs_theta", plot_msc_vs_theta(theta_ctrl_results)
+        )
+    fig_msc_theta
     return
 
 

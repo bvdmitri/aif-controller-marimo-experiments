@@ -355,6 +355,66 @@ def plot_theta_route_choice(
     return fig
 
 
+def _daily_route_mean(step: pd.DataFrame, col: str) -> pd.Series:
+    """Day-indexed mean of a per-(day, tau) column (mean over tau and seeds)."""
+    return _per_day(step.groupby(_keys(step))[col].mean(), step)
+
+
+def plot_msc_vs_theta(
+    results_by_ctrl_theta: Mapping[str, Mapping[float, object]],
+    n_last: int = 15,
+):
+    """Steady-state per-route marginal social cost and travel time vs ``theta``.
+
+    A 2x2 grid, one line per controller (canonical colour): columns are the
+    traveller routes ``alpha`` (intersection) and ``beta`` (bypass); the top row
+    is the mean daily-mean **MSC** of the route, the bottom row the mean
+    daily-mean **travel time**, each averaged over the last ``n_last`` days.
+    x-axis is ``theta``. Answers, in one chart, whether ``theta`` moves the
+    routes' marginal social costs at all and whether ``MSC_alpha ~ MSC_beta`` /
+    ``TT_alpha ~ TT_beta`` (in which case user equilibrium and system optimum
+    coincide and ``theta`` has nothing to buy).
+
+    Requires the ``MSC_alpha``/``MSC_beta`` step columns, recorded whenever the
+    EXTERNALITY / MSC advisory is broadcast (as in the theta sweeps); runs
+    without them are skipped in the MSC row.
+    """
+    ctrls, thetas = _theta_axis(results_by_ctrl_theta)
+    lw = active_style().line_main
+
+    panels = [
+        (r"mean $MSC_\alpha$ [veh-min]", "MSC_alpha"),
+        (r"mean $MSC_\beta$ [veh-min]", "MSC_beta"),
+        (r"mean $TT_\alpha$ [min]", "TT_alpha"),
+        (r"mean $TT_\beta$ [min]", "TT_beta"),
+    ]
+    fig, axgrid = plt.subplots(2, 2, figsize=(text_w(), text_w() * 0.85))
+    axes = axgrid.ravel()
+    for ax, (ylabel, col) in zip(axes, panels):
+        for c in ctrls:
+            ys = []
+            for t in thetas:
+                res = results_by_ctrl_theta[c].get(t)
+                if res is None or col not in res.step.columns:
+                    ys.append(np.nan)
+                    continue
+                daily = _daily_route_mean(res.step, col)
+                ys.append(float(daily.iloc[-n_last:].mean()))
+            ax.plot(thetas, ys, color=controller_colour(c), linewidth=lw,
+                    marker="o", markersize=3, label=controller_label(c, abbr=True))
+        ax.set_ylabel(ylabel)
+        ax.grid(alpha=0.25)
+    for ax in axes[2:]:
+        ax.set_xlabel(r"social internalisation $\theta$")
+    light_borders(axes)
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.legend(handles=handles, labels=labels, loc="upper center",
+               ncol=len(handles), frameon=False, bbox_to_anchor=(0.5, 1.02),
+               fontsize=7.5)
+    fig.tight_layout(rect=(0, 0, 1, 0.94))
+    return fig
+
+
 def controller_summary(results_by_ctrl: Mapping[str, object]) -> pd.DataFrame:
     """One row per controller: mean cost + day-to-day cost stability (std), the
     green-split variation (mean and its day-to-day std -- the 'stable splits'

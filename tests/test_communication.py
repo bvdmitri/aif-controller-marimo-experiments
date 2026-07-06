@@ -109,6 +109,42 @@ def test_build_broadcast_externality_nonneg_and_ordered():
     assert bc.value["alpha"].mean() > bc.value["beta"].mean()
 
 
+def test_build_broadcast_records_raw_msc_diagnostics():
+    """The out_diagnostics hook captures the raw (unclipped) per-route MSC."""
+    net, sim, inflow, queues, tt_route, phi2, phi6 = _congested_alpha_scenario()
+    diag: dict = {}
+    bc = build_broadcast(
+        CommunicationSpec(signal_type=SignalType.EXTERNALITY),
+        tt_route, queues, net, sim, inflow_by_route=inflow, phi2=phi2, phi6=phi6,
+        out_diagnostics=diag,
+    )
+    assert "msc" in diag and set(diag["msc"]) == set(net.traveller_routes)
+    for r in net.traveller_routes:
+        assert diag["msc"][r].shape == (sim.K,)
+        assert np.all(np.isfinite(diag["msc"][r]))
+    # The advisory is the clipped externality of the recorded raw MSC.
+    assert np.allclose(
+        bc.value["alpha"],
+        np.maximum(diag["msc"]["alpha"] - tt_route["alpha"], 0.0),
+    )
+    # A vehicle's marginal social cost includes at least its own travel time,
+    # so the raw MSC is strictly positive on both routes.
+    assert diag["msc"]["alpha"].min() > 0.0
+    assert diag["msc"]["beta"].min() > 0.0
+
+
+def test_msc_columns_recorded_only_with_msc_signal():
+    """MSC_alpha/MSC_beta step columns exist iff the advisory computes MSC."""
+    res_ext = run_experiment(_params(SignalType.EXTERNALITY, theta=0.5, compliance=1.0))
+    assert {"MSC_alpha", "MSC_beta"} <= set(res_ext.step.columns)
+    assert np.isfinite(res_ext.step["MSC_alpha"]).all()
+    assert np.isfinite(res_ext.step["MSC_beta"]).all()
+
+    res_none = run_experiment(_params(SignalType.NONE, theta=0.5, compliance=1.0))
+    assert "MSC_alpha" not in res_none.step.columns
+    assert "MSC_beta" not in res_none.step.columns
+
+
 def test_none_broadcast_is_zero():
     net = NetworkParams()
     sim = SimParams(h_min=10, dt_min=1)

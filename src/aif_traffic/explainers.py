@@ -658,6 +658,35 @@ CHART_GUIDE: dict[str, dict] = {
         "what they will actually face. Darker (later) days should track the line "
         "more tightly as learning proceeds.",
     },
+    "plot_msc_tt_by_route": {
+        "title": "Route cost decomposition: TT, MSC, externality",
+        "slider": None,
+        "what": "Three stacked day-series, one line per traveller route (alpha "
+        "intersection, beta bypass): daily mean travel time TT_r, daily mean "
+        "marginal social cost MSC_r (finite-difference cost of one extra "
+        "vehicle, recorded while the externality advisory is broadcast), and "
+        "the raw externality E_r = MSC_r - TT_r (unclipped; the broadcast "
+        "clips it at zero).",
+        "read": "Compare the two routes within each panel: where the curves "
+        "coincide, user equilibrium and system optimum coincide and theta has "
+        "no lever; a gap between the routes' MSC or externality is exactly "
+        "what the theta advisory can act on. The zero line in the bottom "
+        "panel separates routes that impose congestion on others (above) from "
+        "ones that do not (below).",
+    },
+    "plot_msc_vs_theta": {
+        "title": "MSC & travel time vs theta",
+        "slider": None,
+        "what": "A 2x2 grid, one line per controller: columns are the traveller "
+        "routes alpha and beta, the top row the steady-state mean daily "
+        "marginal social cost MSC_r, the bottom row the mean daily travel time "
+        "TT_r, each against social internalisation theta.",
+        "read": "Read each controller's line across theta: a flat line means "
+        "theta does not move that route's cost for that controller. Comparing "
+        "the alpha and beta columns shows whether the two routes' costs "
+        "differ at all -- if they are alike, UE and SO coincide and the theta "
+        "channel has nothing to redistribute.",
+    },
     "plot_theta_route_choice": {
         "title": "theta behavioural mechanism",
         "slider": None,
@@ -689,6 +718,8 @@ NOTEBOOK_CHARTS: dict[str, tuple[str, ...]] = {
         "plot_daily_system_cost",
         "plot_route_share_over_days",
         "plot_co_adaptation",
+        "plot_msc_tt_by_route",
+        "plot_msc_vs_theta",
         "animate_days",
         "animate_route_flows",
         "animate_network_state",
