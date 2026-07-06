@@ -404,6 +404,9 @@ def plot_msc_vs_theta(
                     marker="o", markersize=3, label=controller_label(c, abbr=True))
         ax.set_ylabel(ylabel)
         ax.grid(alpha=0.25)
+        # The uncongestable bypass gives near-constant series; plain tick
+        # labels instead of matplotlib's "1e-11 + 5.2" offset notation.
+        ax.ticklabel_format(axis="y", useOffset=False)
     for ax in axes[2:]:
         ax.set_xlabel(r"social internalisation $\theta$")
     light_borders(axes)

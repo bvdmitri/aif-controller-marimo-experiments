@@ -331,3 +331,127 @@ def test_surfaced_beliefs_are_sensible(run):
     assert 0.0 < l_alpha < 300.0, l_alpha
     assert split_gap < 0.15, split_gap
     assert late_sd <= early_sd * 1.05, (early_sd, late_sd)
+
+
+# --------------------------------------------------------------------------
+# Social internalisation (theta) and the marginal social cost
+# --------------------------------------------------------------------------
+@pytest.fixture(scope="module")
+def theta_runs():
+    """fixed-time / AIF runs at theta 0 and 1 with the externality broadcast.
+
+    The EXTERNALITY advisory is what makes theta act at all (zeta_r = TT_r +
+    theta*E_r) and, as a side effect, records the finite-difference marginal
+    social cost MSC_r into the step frame -- the quantity these tests read.
+    """
+    from aif_traffic.parameters import (
+        AIFControllerSpec, FixedTimeControllerSpec, SignalType,
+    )
+
+    out = {}
+    for ctrl_name, spec in (("fixed_time", FixedTimeControllerSpec()),
+                            ("aif", AIFControllerSpec())):
+        for th in (0.0, 1.0):
+            p = (
+                replace(Params(), sim=replace(SimParams(), days=DAYS, seed=SEED),
+                        controller=spec)
+                .with_noise_free(True)
+                .with_comm(SignalType.EXTERNALITY)
+                .with_compliance(1.0)
+                .with_theta(th)
+            )
+            out[(ctrl_name, th)] = run_experiment(p, seeds=[SEED])
+    return out
+
+
+def _steady_daily_means(step, cols, n_last=15):
+    daily = step.groupby("day")[cols].mean()
+    return daily.iloc[-n_last:].mean()
+
+
+def test_ue_holds_but_externality_wedge_is_on_the_intersection(theta_runs):
+    """At theta=0 the routes' TRAVEL TIMES equalise (user equilibrium) while
+    their MARGINAL SOCIAL COSTS do not: the intersection route alpha carries a
+    positive externality and the uncongestable bypass beta carries none.
+
+    This is the precise sense in which UE differs from SO here -- the wedge
+    theta can act on lives entirely on alpha. (The bypass never congests:
+    peak A--B demand 2400 veh/h < its 4000 veh/h capacity, so MSC_beta is just
+    a vehicle's own travel time and E_beta ~ 0.)
+    """
+    res = theta_runs[("aif", 0.0)]
+    m = _steady_daily_means(
+        res.step, ["TT_alpha", "TT_beta", "MSC_alpha", "MSC_beta"])
+    tt_gap = float(m["TT_alpha"] - m["TT_beta"])
+    msc_gap = float(m["MSC_alpha"] - m["MSC_beta"])
+    e_beta = float(m["MSC_beta"] - m["TT_beta"])
+
+    _narrate(
+        "BEHAVIOUR: UE holds in travel times; the externality wedge is alpha-only",
+        [
+            f"steady-state (last 15 days, AIF controller, theta=0):",
+            f"   TT_alpha - TT_beta   ~ {tt_gap:+.2f} min   (small -> user equilibrium)",
+            f"   MSC_alpha - MSC_beta ~ {msc_gap:+.2f} veh-min (positive -> alpha "
+            "imposes congestion on others)",
+            f"   E_beta = MSC_beta - TT_beta ~ {e_beta:+.3f}  (~0: the bypass is "
+            "uncongestable, an extra car there costs only its own time)",
+            "",
+            "VERDICT: travellers equalise what they FEEL (TT) but not what they "
+            "IMPOSE (MSC); UE != SO and the whole theta lever lives on alpha.",
+        ],
+    )
+    assert abs(tt_gap) < 1.0, tt_gap          # UE: perceived costs equalised
+    assert msc_gap > 0.5, msc_gap             # ...but alpha's social cost is higher
+    assert abs(e_beta) < 0.2, e_beta          # bypass carries no externality
+
+
+def test_theta_gain_requires_the_adaptive_controller(theta_runs):
+    """theta barely moves behaviour on its own; its system benefit appears only
+    WITH an adaptive controller. Under FIXED-TIME control, going theta 0 -> 1
+    shifts the route share by ~1 pp and leaves system cost essentially
+    unchanged; under the AIF controller the same theta change cuts steady-state
+    system cost by an order of magnitude more, because the small route shift is
+    amplified by the controller re-allocating green time.
+
+    This is the OPPOSITE of the earlier hypothesis that the adaptive controller
+    'absorbs' (masks) theta: the controller is the very mechanism through which
+    theta pays off.
+    """
+    def steady_sc(res):
+        return float(res.step.groupby("day")["SC"].first().iloc[-15:].mean())
+
+    def steady_pa(res):
+        return float(_steady_daily_means(res.step, ["P_alpha"]).iloc[0])
+
+    d_sc_fixed = steady_sc(theta_runs[("fixed_time", 1.0)]) - \
+        steady_sc(theta_runs[("fixed_time", 0.0)])
+    d_sc_aif = steady_sc(theta_runs[("aif", 1.0)]) - \
+        steady_sc(theta_runs[("aif", 0.0)])
+    d_pa_fixed = steady_pa(theta_runs[("fixed_time", 1.0)]) - \
+        steady_pa(theta_runs[("fixed_time", 0.0)])
+    d_pa_aif = steady_pa(theta_runs[("aif", 1.0)]) - \
+        steady_pa(theta_runs[("aif", 0.0)])
+
+    _narrate(
+        "BEHAVIOUR: theta's benefit requires the adaptive controller",
+        [
+            "steady-state effect of theta 0 -> 1 (last 15 days):",
+            f"   fixed-time:  dP_alpha ~ {d_pa_fixed:+.4f}   dSC ~ {d_sc_fixed:+.1f} veh-min",
+            f"   AIF:         dP_alpha ~ {d_pa_aif:+.4f}   dSC ~ {d_sc_aif:+.1f} veh-min",
+            "",
+            "Under fixed-time the behavioural response to theta exists but is "
+            "tiny (a ~1-2 pp route shift) and the system cost barely moves -- "
+            "the signal cannot exploit the shift. Under the AIF controller the "
+            "same shift lets the controller re-allocate green time, and the "
+            "cost falls by an order of magnitude more.",
+            "",
+            "VERDICT: the adaptive controller does not MASK theta, it is the "
+            "mechanism through which theta pays off.",
+        ],
+    )
+    # theta improves the AIF system markedly...
+    assert d_sc_aif < -500.0, d_sc_aif
+    # ...while under fixed-time it is essentially inert (generous margin)...
+    assert abs(d_sc_fixed) < 500.0, d_sc_fixed
+    # ...and the AIF improvement dominates the fixed-time movement.
+    assert abs(d_sc_aif) > 2.0 * abs(d_sc_fixed), (d_sc_aif, d_sc_fixed)
