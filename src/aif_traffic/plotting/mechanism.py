@@ -109,15 +109,16 @@ def plot_co_adaptation(
 ):
     """Day-to-day co-adaptation of route choice, signal control, and cost.
 
-    Five stacked panels sharing the day axis, grouped as the paper's (a)-(c):
+    A compact grid grouped as the paper's (a)-(c):
 
-    * (a) heatmaps of the intersection share ``P_alpha(d, t)`` (top) and the
-      green split ``phi_2(d, t)`` (bottom) over (day x time-of-day);
-    * (b) the traveller profile -- daily demand-weighted ``P_alpha`` (top) --
-      and the controller profile -- daily mean ``phi_2`` (bottom);
-    * (c) total system cost, with the **controller's cost-belief SD** (red
-      dashed, right axis) overlaid when ``controller_df`` records it, so the
-      controller's shrinking uncertainty can be read against the settling cost.
+    * (a) side-by-side heatmaps of the intersection share ``P_alpha(d, t)`` and
+      the green split ``phi_2(d, t)`` over (day x time-of-day);
+    * (b) the daily profiles side by side -- demand-weighted daily ``P_alpha``
+      and the controller's daily mean ``phi_2``;
+    * (c) total system cost (full width), with the **controller's cost-belief
+      SD** (red dashed, right axis) overlaid when ``controller_df`` records it, so
+      the controller's shrinking uncertainty can be read against the settling
+      cost.
 
     Shows how decentralised route choice and signal control co-evolve and how
     that drives system-level performance (Xue's day-to-day adaptation figure).
@@ -134,36 +135,48 @@ def plot_co_adaptation(
     daily_phi = sd.groupby("day")["phi2"].mean()
     cost = _daily_cost(sd)
 
-    # Keep the stacked figure within a print float page (~1.15 x width tall).
-    fig, axes = plt.subplots(
-        5, 1, figsize=(text_w(), text_w() * 1.15), sharex=True,
-        gridspec_kw={"height_ratios": [2.6, 2.6, 1.2, 1.2, 1.9], "hspace": 0.25},
-    )
-    im0 = axes[0].pcolormesh(_edges(days), _edges(taus), pa.values,
-                             cmap="magma", vmin=0.0, vmax=1.0, shading="flat")
-    axes[0].set_ylabel("time of day")
-    fig.colorbar(im0, ax=axes[0], pad=0.015, fraction=0.046,
-                 label=r"$P_\alpha$")
-    im1 = axes[1].pcolormesh(_edges(days), _edges(taus), ph.values,
-                             cmap="viridis", vmin=0.0, vmax=1.0, shading="flat")
-    axes[1].set_ylabel("time of day")
-    fig.colorbar(im1, ax=axes[1], pad=0.015, fraction=0.046,
-                 label=r"$\phi_2$")
-    panel_label(axes[0], "a")
+    # Heatmaps (colourbars on top) in row 1, daily profiles in row 2, cost
+    # full-width in row 3. Axes are shared so labels/scales are not repeated:
+    # both heatmaps share "time of day", both daily panels share the 0-1 scale,
+    # and the day axis is shared down each column (drawn once, on the daily row).
+    fig = plt.figure(figsize=(text_w(), text_w() * 0.72), constrained_layout=True)
+    gs = fig.add_gridspec(3, 2, height_ratios=[2.1, 1.05, 1.35])
+    ax_pa = fig.add_subplot(gs[0, 0])
+    ax_ph = fig.add_subplot(gs[0, 1], sharex=ax_pa, sharey=ax_pa)
+    ax_dpa = fig.add_subplot(gs[1, 0], sharex=ax_pa)
+    ax_dph = fig.add_subplot(gs[1, 1], sharex=ax_pa, sharey=ax_dpa)
+    ax_cost = fig.add_subplot(gs[2, :], sharex=ax_pa)
 
-    axes[2].plot(daily_pa.index.to_numpy(), daily_pa.to_numpy(),
-                 color=route_colour("alpha"), linewidth=1.4)
-    axes[2].set_ylim(0, 1)
-    axes[2].set_ylabel(r"daily $P_\alpha$")
-    axes[2].grid(alpha=0.25)
-    panel_label(axes[2], "b")
-    axes[3].plot(daily_phi.index.to_numpy(), daily_phi.to_numpy(),
-                 color="0.25", linewidth=1.4)
-    axes[3].set_ylim(0, 1)
-    axes[3].set_ylabel(r"daily $\phi_2$")
-    axes[3].grid(alpha=0.25)
+    im0 = ax_pa.pcolormesh(_edges(days), _edges(taus), pa.values,
+                           cmap="magma", vmin=0.0, vmax=1.0, shading="flat")
+    ax_pa.set_ylabel("time of day")
+    fig.colorbar(im0, ax=ax_pa, orientation="horizontal", location="top",
+                 fraction=0.06, pad=0.04, label=r"$P_\alpha$")
+    im1 = ax_ph.pcolormesh(_edges(days), _edges(taus), ph.values,
+                           cmap="viridis", vmin=0.0, vmax=1.0, shading="flat")
+    fig.colorbar(im1, ax=ax_ph, orientation="horizontal", location="top",
+                 fraction=0.06, pad=0.04, label=r"$\phi_2$")
+    # Day axis is shared with the daily row below -- draw it there only.
+    ax_pa.tick_params(labelbottom=False)
+    ax_ph.tick_params(labelbottom=False, labelleft=False)
+    panel_label(ax_pa, "a")
 
-    ax = axes[4]
+    ax_dpa.plot(daily_pa.index.to_numpy(), daily_pa.to_numpy(),
+                color=route_colour("alpha"), linewidth=1.4)
+    ax_dpa.set_ylim(0, 1)
+    ax_dpa.set_ylabel("daily mean")
+    ax_dpa.set_xlabel("day")
+    ax_dpa.grid(alpha=0.25)
+    ax_dpa.text(0.04, 0.86, r"$P_\alpha$", transform=ax_dpa.transAxes, fontsize=9)
+    panel_label(ax_dpa, "b")
+    ax_dph.plot(daily_phi.index.to_numpy(), daily_phi.to_numpy(),
+                color="0.25", linewidth=1.4)
+    ax_dph.set_xlabel("day")
+    ax_dph.grid(alpha=0.25)
+    ax_dph.tick_params(labelleft=False)
+    ax_dph.text(0.04, 0.86, r"$\phi_2$", transform=ax_dph.transAxes, fontsize=9)
+
+    ax = ax_cost
     handles = []
     l_cost, = ax.plot(cost.index.to_numpy(), cost.to_numpy(),
                       color="k", linewidth=1.4, label="system cost")
@@ -187,8 +200,6 @@ def plot_co_adaptation(
         handles.append(l_sd)
     ax.legend(handles=handles, labels=[h.get_label() for h in handles],
               loc="upper right", frameon=False, fontsize=7)
-    # A twin axis may be present in the bottom panel, so avoid tight_layout.
-    fig.subplots_adjust(left=0.12, right=0.88, top=0.97, bottom=0.06)
     return fig
 
 

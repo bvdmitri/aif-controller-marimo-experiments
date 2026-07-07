@@ -20,7 +20,7 @@ import numpy as np
 import pandas as pd
 from matplotlib.lines import Line2D
 
-from .palette import COMM_ORDER, comm_colour, route_colour
+from .palette import COMM_ORDER, comm_colour, comm_label, route_colour
 from .primitives import light_borders, text_w, text_w_half, panel_label
 from .style import active_style
 
@@ -309,52 +309,44 @@ def plot_belief_reality_queues(
     params,
     *,
     day: int | None = None,
+    days: list[int] | None = None,
     seed: int | None = None,
 ):
-    """Belief--reality consistency for the three route-carrying queues.
+    """Belief--reality consistency for the three route-carrying queues, one
+    column per inspected day so the day-to-day learning evolution is visible.
 
-    Three panels, ``L_2`` (A--B intersection), ``L_5`` (A--B bypass), and
-    ``L_6`` (C--D). Each shows the realised within-day queue (solid); the
-    signalised movements ``L_2``/``L_6`` also show the **controller's** queue
-    belief (dashed mean + -/+1 sigma band, from its smoother posterior over the
-    trajectory) -- the controller holds no belief over the unsignalised bypass.
+    Rows are the queues ``L_2`` (A--B intersection), ``L_5`` (A--B bypass), and
+    ``L_6`` (C--D); columns are the days in ``days`` (default: the first, middle,
+    and last recorded day). Each panel shows the realised within-day queue
+    (solid); the signalised movements ``L_2``/``L_6`` also show the
+    **controller's** queue belief (dashed mean +/-1 sigma band) -- the controller
+    holds no belief over the unsignalised bypass. On ``L_2``/``L_5`` the
+    **traveller queue belief** of the route traversing the link is drawn as a
+    per-departure-minute profile (dots + across-agent spread band), so early- vs
+    peak-departers holding different beliefs stays visible. Rows share a y-axis
+    (days directly comparable) and the x-axis is shared throughout.
 
-    On ``L_2`` and ``L_5`` the **traveller queue belief** of the route that
-    traverses the link (alpha and beta respectively) is drawn as a
-    *per-departure-minute profile* (dots): each A--B traveller that took the
-    route holds one scalar queue belief, placed at the minute it meets the
-    queue (its arrival minute), with agents in each minute bucket averaged; the
-    faint band is the across-agent spread, so early- vs peak-departers holding
-    different beliefs is visible rather than averaged into one number. ``L_6``
-    (exogenous C--D) is not a learning cohort, so it shows the controller only.
-
-    Answers Xue's "do both agent types learn a consistent representation of the
-    network state?" for the single inspected ``day`` (defaults to the last).
-    Requires per-agent ``snapshots`` on that day (pass ``snapshot_days`` to
-    :func:`run_experiment`).
+    Answers "do both agent types learn a consistent representation of the network
+    state, and how does it sharpen over days?". Requires per-agent ``snapshots``
+    on each inspected day (pass ``snapshot_days`` to :func:`run_experiment`).
+    ``day=`` (singular) renders a single column, for the notebooks' interactive
+    day selector.
     """
     day_step, sample_seed = _seed_slice(step_df, seed)
-    if day is None:
-        day = int(day_step["day"].max())
-    d = day_step[day_step["day"] == day].sort_values("tau")
-    tau = d["tau"].to_numpy(dtype=float)
+    all_days = sorted(int(x) for x in day_step["day"].unique())
+    if days is None:
+        if day is not None:
+            days = [int(day)]
+        elif len(all_days) >= 3:
+            days = [all_days[0], all_days[len(all_days) // 2], all_days[-1]]
+        else:
+            days = all_days
+    days = [int(d) for d in days]
+    ncol = max(len(days), 1)
+    dt_min = int(params.sim.dt_min)
     tau_max = float(day_step["tau"].max())
+    lw = active_style().line_main
 
-    has_ctrl_belief = "L2_belief_mu" in d.columns and d["L2_belief_mu"].notna().any()
-
-    # Traveller queue-belief profiles (dots) for the L_2 / L_5 panels.
-    trav: dict[str, tuple] = {}
-    snap = (snapshots or {}).get((sample_seed, int(day)))
-    if snap is not None:
-        dt_min = int(params.sim.dt_min)
-        for route in ("alpha", "beta"):
-            prof = _route_queue_belief_profile(
-                snap, route, dt_min, _route_link_delay_min(params, route), tau_max,
-            )
-            if prof is not None:
-                trav[route] = prof
-
-    fig, axes = plt.subplots(3, 1, figsize=(text_w(), text_w() * 0.95), sharex=True)
     specs = [
         ("L2", r"$L_2$ (A--B int.)", route_colour("alpha"), "L2_belief_mu",
          "L2_belief_sd", "alpha"),
@@ -362,49 +354,67 @@ def plot_belief_reality_queues(
         ("L6", r"$L_6$ (C--D)", route_colour("gamma"), "L6_belief_mu",
          "L6_belief_sd", None),
     ]
-    for ax, (col, label, colour, bmu, bsd, route) in zip(axes, specs):
-        ax.plot(tau, d[col].to_numpy(), color=colour, linewidth=active_style().line_main,
-                label="realised", zorder=4)
-        if has_ctrl_belief and bmu is not None and bmu in d.columns:
-            mu = d[bmu].to_numpy()
-            sd = d[bsd].to_numpy()
-            ax.plot(tau, mu, color="k", linestyle="--", linewidth=1.0,
-                    label="controller belief", zorder=3)
-            ax.fill_between(tau, mu - sd, mu + sd, color="k", alpha=0.12,
-                            linewidth=0, zorder=1)
-        if route is not None and route in trav:
-            mu_prof, sd_prof = trav[route]
-            x = mu_prof.index.to_numpy(dtype=float)
-            # A line + -/+1 sigma band (like the controller belief), with markers
-            # kept so the sampled departure minutes -- and their sparsity at the
-            # peak, where few travellers take the intersection -- stay visible.
-            ax.plot(x, mu_prof.to_numpy(), color=colour, linestyle=":",
-                    marker="o", markersize=2.6, linewidth=1.2,
-                    label="traveller belief (by departure)", zorder=5)
-            # Clip the band's lower edge at 0 -- a queue length is non-negative.
-            lower = np.maximum((mu_prof - sd_prof).to_numpy(), 0.0)
-            ax.fill_between(x, lower, (mu_prof + sd_prof).to_numpy(),
-                            color=colour, alpha=0.15, linewidth=0, zorder=0)
-        ax.set_ylabel(f"queue {label} [veh]")
-        ax.grid(alpha=0.25)
-        # An (almost) empty queue -- typical for the high-capacity bypass --
-        # would otherwise get a 1e-9 offset scale; pin a sane floor instead.
-        if ax.get_ylim()[1] < 1.0:
-            ax.set_ylim(-0.05, 1.0)
-    axes[0].set_title(f"Belief vs realised queue (day {day})")
-    axes[-1].set_xlabel("within-day time [min]")
+
+    height = text_w() * (0.95 if ncol == 1 else 0.8)
+    fig, axgrid = plt.subplots(3, ncol, figsize=(text_w(), height),
+                               sharex=True, sharey="row", squeeze=False)
+    for ci, dsel in enumerate(days):
+        d = day_step[day_step["day"] == dsel].sort_values("tau")
+        tau = d["tau"].to_numpy(dtype=float)
+        has_ctrl_belief = "L2_belief_mu" in d.columns and d["L2_belief_mu"].notna().any()
+        trav: dict[str, tuple] = {}
+        snap = (snapshots or {}).get((sample_seed, int(dsel)))
+        if snap is not None:
+            for route in ("alpha", "beta"):
+                prof = _route_queue_belief_profile(
+                    snap, route, dt_min, _route_link_delay_min(params, route), tau_max,
+                )
+                if prof is not None:
+                    trav[route] = prof
+        for ri, (col, label, colour, bmu, bsd, route) in enumerate(specs):
+            ax = axgrid[ri][ci]
+            ax.plot(tau, d[col].to_numpy(), color=colour, linewidth=lw,
+                    label="realised", zorder=4)
+            if has_ctrl_belief and bmu is not None and bmu in d.columns:
+                mu = d[bmu].to_numpy()
+                sdv = d[bsd].to_numpy()
+                ax.plot(tau, mu, color="k", linestyle="--", linewidth=1.0,
+                        label="controller belief", zorder=3)
+                ax.fill_between(tau, mu - sdv, mu + sdv, color="k", alpha=0.12,
+                                linewidth=0, zorder=1)
+            if route is not None and route in trav:
+                mu_prof, sd_prof = trav[route]
+                x = mu_prof.index.to_numpy(dtype=float)
+                ax.plot(x, mu_prof.to_numpy(), color=colour, linestyle=":",
+                        marker="o", markersize=2.6, linewidth=1.2,
+                        label="traveller belief (by departure)", zorder=5)
+                lower = np.maximum((mu_prof - sd_prof).to_numpy(), 0.0)
+                ax.fill_between(x, lower, (mu_prof + sd_prof).to_numpy(),
+                                color=colour, alpha=0.15, linewidth=0, zorder=0)
+            ax.grid(alpha=0.25)
+            if ri == 0:
+                ax.set_title(f"day {dsel}")
+            if ci == 0:
+                ax.set_ylabel(f"queue {label} [veh]")
+    # An (almost) empty row (typical for the high-capacity bypass) would get a
+    # 1e-9 offset scale; pin a sane floor (shared across the row via sharey).
+    for ri in range(3):
+        if axgrid[ri][0].get_ylim()[1] < 1.0:
+            axgrid[ri][0].set_ylim(-0.05, 1.0)
+    for ax in axgrid[-1]:
+        ax.set_xlabel("within-day time [min]")
 
     # Legend labels repeat across panels; keep one handle per unique label.
     by_label: dict[str, object] = {}
-    for ax in axes:
+    for ax in axgrid.ravel():
         hs, ls = ax.get_legend_handles_labels()
         for h, lab in zip(hs, ls):
             by_label.setdefault(lab, h)
     fig.legend(handles=list(by_label.values()), labels=list(by_label.keys()),
                loc="upper center", ncol=len(by_label), frameon=False,
                bbox_to_anchor=(0.5, 1.02), fontsize=7.5)
-    light_borders(axes)
-    fig.tight_layout(rect=(0, 0, 1, 0.96))
+    light_borders(axgrid)
+    fig.tight_layout(rect=(0, 0, 1, 0.95))
     return fig
 
 
@@ -418,21 +428,17 @@ def plot_within_day_communication(
     """Within-day realised-vs-belief profiles overlaid across the communication
     settings, for one inspected ``day`` (defaults to the last).
 
-    A 2x4 grid, one line per setting (BL/CG/SN/CG+SN palette colours). Columns:
-
-    * (a) route-``alpha`` travel time (via ``L_2``) and (b) route-``beta``
-      travel time (via ``L_5``): the realised ``TT(tau)`` (top) vs the
-      **travellers'** mean predictive-TT belief per departure minute (bottom);
-    * (c) queue ``L_2`` and (d) queue ``L_6``: the realised queue (top) vs the
-      **controller's** queue-belief mean (bottom).
-
-    Travellers hold beliefs over the two A--B *routes* (alpha -> ``L_2``,
-    beta -> ``L_5``); no traveller chooses the exogenous C--D movement, so there
-    is no traveller belief for ``L_6`` -- the controller panels (c)/(d) cover the
-    signalised movements instead. Each column pair shares its y-limits so the
-    belief row can be read directly against the realised row. Requires
-    per-agent ``snapshots`` on the inspected day (pass ``snapshot_days`` to
-    :func:`run_experiment`).
+    A 4x2 grid, one line per setting (BL/CG/SN/CG+SN palette colours). The two
+    columns are **realised** (left) and **belief** (right); the four rows are the
+    quantities: route-``alpha`` travel time (via ``L_2``), route-``beta`` travel
+    time (via ``L_5``), and the signalised queues ``L_2`` and ``L_6``. The travel-
+    time belief is the travellers' mean predictive-TT per departure minute; the
+    queue belief is the controller's queue-belief mean (travellers hold no belief
+    over the exogenous C--D movement). Each row shares its y-axis between the
+    realised and belief columns (and the x-axis is shared throughout), so the
+    axes are not repeated between panels and the panels themselves are larger.
+    Requires per-agent ``snapshots`` on the inspected day (pass ``snapshot_days``
+    to :func:`run_experiment`).
     """
     items = list(results_by_label.items())
     labels = [str(lab) for lab, _ in items]
@@ -448,12 +454,16 @@ def plot_within_day_communication(
     first_step, _ = _seed_slice(items[0][1].step, seed)
     d_use = int(first_step["day"].max()) if day is None else int(day)
 
+    # Rows: (realised column, belief accessor, is-TT-belief-a-per-minute-profile,
+    # y-label). Columns: 0 = realised, 1 = belief.
     fig, axes = plt.subplots(
-        2, 4, figsize=(text_w(), text_w() * 0.55), sharex=True,
+        4, 2, figsize=(text_w(), text_w() * 1.02), sharex=True, sharey="row",
     )
-    col_titles = [
-        r"(a) $TT_\alpha$ (via $L_2$)", r"(b) $TT_\beta$ (via $L_5$)",
-        r"(c) queue $L_2$", r"(d) queue $L_6$",
+    row_specs = [
+        ("TT_alpha", "mu_alpha", True, r"$TT_\alpha$ [min]"),
+        ("TT_beta", "mu_beta", True, r"$TT_\beta$ [min]"),
+        ("L2", "L2_belief_mu", False, r"queue $L_2$ [veh]"),
+        ("L6", "L6_belief_mu", False, r"queue $L_6$ [veh]"),
     ]
     for lab, res in items:
         day_step, sample_seed = _seed_slice(res.step, seed)
@@ -464,42 +474,31 @@ def plot_within_day_communication(
         c = colours[str(lab)]
         snap = (res.snapshots or {}).get((sample_seed, d_use))
         prof = _belief_profile_by_minute(snap, dt_min) if snap is not None else None
-        # (a)/(b): realised route TT (top) vs traveller predictive-TT belief.
-        for col, route in enumerate(("alpha", "beta")):
-            axes[0][col].plot(tau, dd[_ROUTE_TT[route]].to_numpy(),
-                              color=c, linewidth=lw, label=str(lab))
-            if prof is not None:
-                axes[1][col].plot(prof.index.to_numpy(),
-                                  prof[_ROUTE_MU[route]].to_numpy(),
-                                  color=c, linewidth=lw)
-        # (c)/(d): realised queue (top) vs controller queue-belief mean.
-        for col, link in zip((2, 3), ("L2", "L6")):
-            axes[0][col].plot(tau, dd[link].to_numpy(), color=c, linewidth=lw)
-            bmu = f"{link}_belief_mu"
-            if bmu in dd.columns and dd[bmu].notna().any():
-                axes[1][col].plot(tau, dd[bmu].to_numpy(), color=c, linewidth=lw)
+        for r, (real_col, bel_col, from_prof, _ylab) in enumerate(row_specs):
+            axes[r][0].plot(tau, dd[real_col].to_numpy(), color=c,
+                            linewidth=lw, label=comm_label(str(lab)))
+            if from_prof:
+                if prof is not None:
+                    axes[r][1].plot(prof.index.to_numpy(),
+                                    prof[bel_col].to_numpy(), color=c, linewidth=lw)
+            elif bel_col in dd.columns and dd[bel_col].notna().any():
+                axes[r][1].plot(tau, dd[bel_col].to_numpy(), color=c, linewidth=lw)
 
-    for col, title in enumerate(col_titles):
-        axes[0][col].set_title(title, fontsize=8)
-        # Realised and belief rows of one column share the same scale.
-        lims = axes[0][col].get_ylim() + axes[1][col].get_ylim()
-        lo, hi = min(lims), max(lims)
-        axes[0][col].set_ylim(lo, hi)
-        axes[1][col].set_ylim(lo, hi)
-        axes[1][col].set_xlabel("time [min]")
+    axes[0][0].set_title("realised", fontsize=8)
+    axes[0][1].set_title("belief", fontsize=8)
+    for r, (_, _, _, ylab) in enumerate(row_specs):
+        axes[r][0].set_ylabel(ylab)
+    for ax in axes[-1]:
+        ax.set_xlabel("time [min]")
     for ax in axes.ravel():
         ax.grid(alpha=0.25)
-    axes[0][0].set_ylabel("realised [min]")
-    axes[1][0].set_ylabel("belief [min]")
-    axes[0][2].set_ylabel("realised [veh]")
-    axes[1][2].set_ylabel("belief [veh]")
     fig.align_ylabels(axes[:, 0])
 
     handles, leg_labels = axes[0][0].get_legend_handles_labels()
     fig.legend(handles=handles, labels=leg_labels, loc="upper center",
-               ncol=min(len(items), 5), frameon=False,
-               bbox_to_anchor=(0.5, 1.03), fontsize=7.5)
-    fig.suptitle(f"day {d_use}", fontsize=8, y=0.94)
+               ncol=min(len(items), 2), frameon=False,
+               bbox_to_anchor=(0.5, 1.02), fontsize=7.5)
+    fig.suptitle(f"day {d_use}", fontsize=8, y=0.955)
     light_borders(axes)
-    fig.tight_layout(rect=(0, 0, 1, 0.90))
+    fig.tight_layout(rect=(0, 0, 1, 0.92))
     return fig

@@ -122,9 +122,10 @@ def _build_registry(cfg: dict):
         ("within_day_profile_b", "plot_within_day_tt_vs_belief",
          lambda: pl.plot_within_day_tt_vs_belief(
              r1.step, r1.snapshots, p1, days=[profile_day])),
+        # fig:within-day-profile (c) -- belief vs realised queues across the
+        # first / middle / last day (learning evolution as columns).
         ("within_day_profile_c", "plot_belief_reality_queues",
-         lambda: pl.plot_belief_reality_queues(
-             r1.step, r1.snapshots, p1, day=profile_day)),
+         lambda: pl.plot_belief_reality_queues(r1.step, r1.snapshots, p1)),
         # fig:across-day-profile -- heatmaps + daily profiles + cost & belief SD.
         ("across_day_profile", "plot_co_adaptation",
          lambda: pl.plot_co_adaptation(r1.step, r1.controller)),

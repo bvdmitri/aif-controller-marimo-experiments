@@ -482,26 +482,27 @@ CHART_GUIDE: dict[str, dict] = {
     "plot_within_day_communication": {
         "title": "Within-day realised vs belief by setting",
         "slider": "day",
-        "what": "A 2x4 grid for one inspected day, one line per communication "
-        "setting. Columns: (a) route-alpha travel time (via L_2) and (b) "
-        "route-beta travel time (via L_5) -- realised (top) vs the travellers' "
-        "mean predictive-TT belief per departure minute (bottom); (c) queue L_2 "
-        "and (d) queue L_6 -- realised (top) vs the controller's queue-belief "
-        "mean (bottom). Each column pair shares its y-scale.",
-        "read": "Read a column top-to-bottom: where a setting's belief curve "
-        "(bottom) matches its realised curve (top), that agent layer holds an "
-        "accurate picture under that setting. Comparing colours within a panel "
-        "shows how the settings shift both what happens and what is believed. "
-        "Travellers hold beliefs per route (alpha/beta), so the traveller "
-        "columns cover the two A--B routes, not the exogenous L_6.",
+        "what": "A 4x2 grid for one inspected day, one line per communication "
+        "setting (full names in the legend). Columns are realised (left) and "
+        "belief (right); rows are route-alpha travel time (via L_2), route-beta "
+        "travel time (via L_5), and the signalised queues L_2 and L_6. The "
+        "travel-time belief is the travellers' mean predictive-TT per departure "
+        "minute; the queue belief is the controller's mean. Each row shares its "
+        "y-scale between the realised and belief columns.",
+        "read": "Read a row left-to-right: where a setting's belief (right) matches "
+        "its realised (left), that agent layer holds an accurate picture under that "
+        "setting. Comparing colours within a panel shows how the settings shift "
+        "both what happens and what is believed. Travellers hold beliefs per route "
+        "(alpha/beta), so the two travel-time rows cover the A--B routes, not the "
+        "exogenous L_6.",
     },
     "plot_controller_queue_comparison": {
         "title": "Controller day-series: cost & per-link queues",
         "slider": None,
-        "what": "One row of four day-series panels, one line per controller: (a) "
-        "daily system cost, then the daily queue on (b) L_2, (c) L_5, (d) L_6 -- "
-        "the within-day mean queue as a solid line with the within-day min--max "
-        "range shaded.",
+        "what": "A 2x2 grid of day-series panels, one line per controller (full "
+        "names in the legend): (a) daily system cost, and the daily queue on "
+        "(b) L_2, (c) L_5, (d) L_6 -- the within-day mean queue as a solid line "
+        "with the within-day min--max range shaded.",
         "read": "Compare controllers within each panel: lower cost and lower "
         "queues are better, and a narrower band means the queue varies less "
         "within the day. The L_5 panel shows how much demand each controller "
@@ -581,7 +582,10 @@ CHART_GUIDE: dict[str, dict] = {
     "plot_belief_reality_queues": {
         "title": "Belief vs realised queue",
         "slider": "day",
-        "what": "Per route-carrying link (L_2 top, L_5 middle, L_6 bottom): the "
+        "what": "Rows are the route-carrying links (L_2, L_5, L_6); columns are the "
+        "inspected day(s) -- the paper figure shows the first, middle, and last "
+        "recorded day so the beliefs sharpening over days is visible, while the "
+        "notebook's day slider re-points a single-day view. Each panel: the "
         "realised within-day queue (solid) and, on the signalised L_2/L_6, the "
         "controller's queue belief (dashed mean + band; it holds no belief over "
         "the unsignalised bypass L_5). On L_2 and L_5, the queue belief of the "
@@ -591,12 +595,13 @@ CHART_GUIDE: dict[str, dict] = {
         "a minute averaged, the band their across-agent spread. L_6 (exogenous "
         "C--D) shows the controller only.",
         "read": "Where the belief lines/bands sit on the realised curve, that agent "
-        "type has a consistent picture of the queue. The traveller line forms a "
-        "within-day profile because travellers departing at different minutes meet "
-        "and learn different queues; the band width is how much they disagree, and "
-        "the markers show which minutes actually had takers of that route (sparse "
-        "at the peak on L_2). L_6 shows the controller alone. The Y-axis is fixed "
-        "across days.",
+        "type has a consistent picture of the queue. Across columns (days) the "
+        "belief closes onto the realised queue as it is learned. The traveller line "
+        "forms a within-day profile because travellers departing at different "
+        "minutes meet and learn different queues; the band width is how much they "
+        "disagree, and the markers show which minutes had takers of that route "
+        "(sparse at the peak on L_2). L_6 shows the controller alone. Rows share a "
+        "y-axis so the days are directly comparable.",
     },
     "plot_coupled_within_day": {
         "title": "Coupled within-day: flow & green split",
@@ -613,12 +618,12 @@ CHART_GUIDE: dict[str, dict] = {
     "plot_co_adaptation": {
         "title": "Day-to-day co-adaptation",
         "slider": None,
-        "what": "Five stacked day-axis panels, grouped (a)-(c). (a) heatmaps of "
-        "the intersection share P_alpha(d,t) and the green split phi_2(d,t) over "
-        "(day x time-of-day); (b) the daily demand-weighted P_alpha (traveller "
-        "profile) and daily mean phi_2 (controller profile) as separate line "
-        "panels; (c) total system cost, with the controller's cost-belief SD as "
-        "a red dashed line on a right axis when recorded.",
+        "what": "A compact grid grouped (a)-(c). (a) side-by-side heatmaps of the "
+        "intersection share P_alpha(d,t) and the green split phi_2(d,t) over "
+        "(day x time-of-day), with their colourbars on top; (b) their daily means "
+        "-- demand-weighted P_alpha and mean phi_2 -- side by side on a shared "
+        "0-1 scale; (c) total system cost (full width), with the controller's "
+        "cost-belief SD as a red dashed line on a right axis when recorded.",
         "read": "Scan the heatmaps left-to-right to see the daily patterns settle; "
         "the (b) lines show each layer's day-to-day adaptation, and (c) ties them "
         "to whether system cost falls while the controller's uncertainty (red "
