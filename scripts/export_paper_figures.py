@@ -5,9 +5,10 @@ This is the CI-exportable companion to the marimo notebooks: it applies the
 Elsevier-`elsarticle`-3p paper style (IWAI-figure Arial/sans-serif with STIX
 math, ~6.72 in text width, vector
 PDF, colourblind/greyscale-safe palette) and re-renders the figures the paper
-uses, deterministically (noise off, stationary on, fixed seed), so the author
-can drop the PDFs straight into the LaTeX. It reuses the same chart functions
-and experiment builders as ``scripts/smoke_notebooks.py``.
+uses at the **notebook gold defaults** (medium measurement noise, stationary
+continuous filtering), reproducible via the fixed seed, so the author can drop
+the PDFs straight into the LaTeX. It reuses the same chart functions and
+experiment builders as ``scripts/smoke_notebooks.py``.
 
 Run::
 
@@ -64,14 +65,18 @@ def _cfg(quick: bool) -> dict:
 
 def _base(cfg: dict, *, controller=None, theta: float = 0.0,
           comm: SignalType = SignalType.NONE) -> Params:
-    """A deterministic (noise-free, stationary) experiment at the given scale."""
+    """An experiment at the notebook gold defaults (medium measurement noise,
+    stationary continuous filtering) at the given scale; reproducible via the
+    fixed seed. The noise regime and toggles are inherited from ``Params.default``
+    (which already encodes the notebook ``"medium"`` regime), so the exported
+    figures match what the notebooks render with their defaults."""
     p = replace(
         Params.default(),
         sim=SimParams(days=cfg["days"], burn_in=0, seed=SEED),
         population=PopulationParams(
             cohorts=(CohortSpec(n_agents=cfg["n_agents"]),)),
         controller=controller if controller is not None else AIFControllerSpec(),
-    ).with_noise_regime("off").with_stationary(True)
+    ).with_stationary(True)
     if comm is not SignalType.NONE:
         p = p.with_comm(comm).with_compliance(1.0)
     return p.with_theta(theta)
@@ -227,7 +232,9 @@ def export_all(out_dir: Path, *, quick: bool = False) -> list[str]:
 
     index = out_dir / "INDEX.md"
     lines = ["# Paper figures", "",
-             f"Rendered in the `paper` style (config: {cfg}, seed {SEED}).", "",
+             f"Rendered in the `paper` style at the notebook gold defaults "
+             f"(medium measurement noise, stationary continuous filtering; "
+             f"config: {cfg}, seed {SEED}).", "",
              "| file | figure |", "| --- | --- |"]
     lines += [f"| `{f}` | {d} |" for f, d in index_rows]
     index.write_text("\n".join(lines) + "\n")
