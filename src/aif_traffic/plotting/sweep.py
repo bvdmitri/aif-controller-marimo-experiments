@@ -15,7 +15,7 @@ import numpy as np
 
 from .comparison import _daily_cost, _daily_peak_total_queue
 from .network import _edges
-from .palette import COMM_ORDER, comm_colour
+from .palette import COMM_ORDER, comm_colour, comm_label
 from .primitives import light_borders, text_w
 from .style import active_style
 
@@ -46,6 +46,23 @@ def _colours_for_labels(labels: list) -> list:
     if keys and all(k in COMM_ORDER for k in keys):
         return [comm_colour(k) for k in keys]
     return _colours(len(labels))
+
+
+def _is_comm_sweep(items) -> bool:
+    """True when every sweep key is a communication setting (BL/CG/SN/CG+SN)."""
+    return bool(items) and all(str(lab) in COMM_ORDER for lab, _ in items)
+
+
+def _sweep_label(label) -> str:
+    """Display label for a sweep line: full communication name (with the
+    abbreviation in parentheses) for BL/CG/SN/CG+SN, else the label as-is."""
+    return comm_label(str(label))
+
+
+def _legend_ncol(items) -> int:
+    """Legend columns: 2 for the long full communication names (so they do not
+    overflow the figure width), else up to 5 across."""
+    return 2 if _is_comm_sweep(items) else min(len(items), 5)
 
 
 def _daily_green_split(step) -> "object":
@@ -124,7 +141,7 @@ def plot_sweep_metrics(
         for (label, res), colour in zip(items, colours):
             s = fn(res)
             ax.plot(s.index.to_numpy(), s.to_numpy(),
-                    color=colour, linewidth=lw, label=str(label))
+                    color=colour, linewidth=lw, label=_sweep_label(label))
         ax.set_ylabel(ylabel)
         ax.grid(alpha=0.25)
     for ax in xlabel_axes:
@@ -133,7 +150,7 @@ def plot_sweep_metrics(
 
     handles, labels = axes[0].get_legend_handles_labels()
     fig.legend(handles=handles, labels=labels, loc="upper center",
-               ncol=min(len(items), 5), frameon=False,
+               ncol=_legend_ncol(items), frameon=False,
                bbox_to_anchor=(0.5, 1.01), fontsize=7.5)
     fig.tight_layout(rect=(0, 0, 1, rect_top))
     return fig
@@ -181,7 +198,7 @@ def plot_route_choice_heatmaps(
         days = hm.columns.to_numpy(dtype=float)
         im = ax.pcolormesh(_edges(days), _edges(taus), hm.values,
                            cmap="magma", vmin=vmin, vmax=vmax, shading="flat")
-        ax.set_title(str(label), fontsize=7.5)
+        ax.set_title(comm_label(str(label)), fontsize=7.5)
         ax.set_xlabel("day")
     axes[0].set_ylabel("time of day [min]")
     label_txt = {
@@ -221,7 +238,7 @@ def plot_belief_sd_sweep(results_by_label: Mapping[str, object]):
                 continue
             s = cohort.groupby("day")[col].mean()
             ax.plot(s.index.to_numpy(), s.to_numpy(),
-                    color=colour, linewidth=lw, label=str(label))
+                    color=colour, linewidth=lw, label=_sweep_label(label))
         ax.set_ylabel(ylabel)
         ax.grid(alpha=0.25)
     axes[-1].set_xlabel("day")
@@ -229,7 +246,7 @@ def plot_belief_sd_sweep(results_by_label: Mapping[str, object]):
 
     handles, labels = axes[0].get_legend_handles_labels()
     fig.legend(handles=handles, labels=labels, loc="upper center",
-               ncol=min(len(items), 5), frameon=False,
+               ncol=_legend_ncol(items), frameon=False,
                bbox_to_anchor=(0.5, 1.02), fontsize=7.5)
     fig.tight_layout(rect=(0, 0, 1, 0.955))
     return fig

@@ -132,16 +132,17 @@ def plot_within_day_tt_vs_belief(
             ax = axes[row][col]
             rz = realised[r]
             tau = rz.columns.to_numpy(dtype=float)
-            # Raw realised drawn thin + faint (it is dense and noisy) so the
-            # belief dots read against it without a hairball.
+            # Raw realised at moderate weight: visible as a line, but light
+            # enough that the belief dots still read against it (at the coarser
+            # default time step there are far fewer points, so it is not busy).
             ax.plot(tau, rz.loc[d].to_numpy(), color=colours[r],
-                    linewidth=0.6, alpha=0.55, zorder=4)
+                    linewidth=0.95, alpha=0.8, zorder=4)
             if prof is not None:
-                # ~300 per-departure belief points: draw them small and faint so
-                # they read as a light cloud settling onto the realised line.
+                # Per-departure belief points: small dots reading as a cloud
+                # settling onto the realised line.
                 ax.plot(prof.index.to_numpy(), prof[_ROUTE_MU[r]].to_numpy(),
-                        linestyle="none", marker="o", markersize=1.3,
-                        color=colours[r], alpha=0.5, zorder=2)
+                        linestyle="none", marker="o", markersize=1.6,
+                        color=colours[r], alpha=0.6, zorder=2)
             ax.grid(alpha=0.25)
             if row == 0:
                 ax.set_title(f"day {int(d)}", fontsize=8)
@@ -205,10 +206,10 @@ def plot_within_day_by_setting(
         tau = pivot.columns.to_numpy(dtype=float)
         snapshots = res.snapshots or {}
         for k, d in enumerate(picked):
-            # Raw realised (not averaged over days), thin so overlaid days do not
-            # form a hairball.
+            # Raw realised (not averaged over days), at moderate weight so the
+            # overlaid days stay legible without forming a hairball.
             ax.plot(tau, pivot.loc[d].to_numpy(), color=cmap(shade[k]),
-                    linewidth=0.7, alpha=0.7, zorder=4)
+                    linewidth=1.0, alpha=0.85, zorder=4)
             snap = snapshots.get((sample_seed, int(d)))
             if snap is not None:
                 prof = _belief_profile_by_minute(snap, dt_min)
@@ -362,10 +363,10 @@ def plot_belief_reality_queues(
                     trav[route] = prof
         for ri, (col, label, colour, bmu, bsd, route) in enumerate(specs):
             ax = axgrid[ri][ci]
-            # The raw per-minute realised queue (~300 points) is drawn thin and
-            # faint so it reads as a light noise cloud under the smoother beliefs.
-            ax.plot(tau, d[col].to_numpy(), color=colour, linewidth=0.6,
-                    alpha=0.55, label="realised", zorder=4)
+            # The raw per-interval realised queue at moderate weight: a visible
+            # line that still sits under the smoother beliefs.
+            ax.plot(tau, d[col].to_numpy(), color=colour, linewidth=0.95,
+                    alpha=0.8, label="realised", zorder=4)
             if has_ctrl_belief and bmu is not None and bmu in d.columns:
                 mu = d[bmu].to_numpy()
                 sdv = d[bsd].to_numpy()
@@ -377,7 +378,7 @@ def plot_belief_reality_queues(
                 mu_prof, sd_prof = trav[route]
                 x = mu_prof.index.to_numpy(dtype=float)
                 ax.plot(x, mu_prof.to_numpy(), color=colour, linestyle=":",
-                        linewidth=1.2,
+                        linewidth=1.2, marker="o", markersize=2.0,
                         label="traveller belief (by departure)", zorder=5)
                 lower = np.maximum((mu_prof - sd_prof).to_numpy(), 0.0)
                 ax.fill_between(x, lower, (mu_prof + sd_prof).to_numpy(),
@@ -453,7 +454,7 @@ def plot_within_day_communication(
     # The raw per-minute realised series (~300 points) is dense and noisy, so
     # draw it thin and semi-transparent; it reads as a light noise cloud while
     # the smoother belief stays legible on top.
-    raw_lw, raw_alpha = 0.6, 0.55
+    raw_lw, raw_alpha = 0.9, 0.8
     row_specs = [
         ("TT_alpha", "mu_alpha", True, r"$TT_\alpha$ [min]"),
         ("TT_beta", "mu_beta", True, r"$TT_\beta$ [min]"),

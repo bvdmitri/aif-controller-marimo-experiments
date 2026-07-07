@@ -49,7 +49,7 @@ class SimParams:
     0 by default: the whole run is recorded, so the cold-start convergence is
     visible."""
     h_min: int = 300
-    dt_min: int = 1
+    dt_min: int = 5
     selected_days: tuple[int, ...] = (0, 1, 3, 7, 14, 21, 29)
 
     @property
@@ -396,7 +396,7 @@ class AnticipatoryControllerSpec:
     minimises predicted system cost over a rollout horizon (rolling horizon)."""
 
     horizon_min: int = 20
-    phi_grid_size: int = 9
+    phi_grid_size: int = 20
     control_interval_min: int = 10
 
 
@@ -416,7 +416,7 @@ class AIFControllerSpec:
     control_interval_min: int = 10
     horizon_min: int = 10
     """Prediction horizon for scoring a candidate split (defaults to one interval)."""
-    phi_grid_size: int = 9
+    phi_grid_size: int = 20
     """Number of candidate green splits evaluated each control epoch."""
 
     # Preference N(0, Sigma_pref) over the queues (the only designed object).

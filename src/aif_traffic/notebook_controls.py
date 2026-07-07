@@ -49,9 +49,9 @@ DESCRIPTIONS: dict[str, str] = {
     "seed": "Master seed; redraws all stochastic elements.",
     "time_step": (
         r"Within-day discretisation interval $\Delta t$ (minutes): the simulation "
-        r"time step. $1$ min is the finest; larger steps are coarser and faster "
-        r"but blur the within-day dynamics, and also set the free-flow propagation "
-        r"delays $\lfloor F_\ell/\Delta t\rfloor$."
+        r"time step. Default $5$ min; $1$ min is the finest but busier, larger "
+        r"steps are coarser and faster but blur the within-day dynamics. Also sets "
+        r"the free-flow propagation delays $\lfloor F_\ell/\Delta t\rfloor$."
     ),
     "control_interval": (
         "Minutes between green-split decisions, and the controller's prediction "
@@ -153,7 +153,7 @@ def seed():
 
 
 def time_step():
-    return mo.ui.slider(1, 10, value=1, label="time step [min]")
+    return mo.ui.slider(1, 10, value=5, label="time step [min]")
 
 
 def control_interval():
@@ -224,7 +224,7 @@ def sigma_pref():
 
 
 def phi_grid():
-    return mo.ui.slider(3, 21, value=9, label="candidate splits K")
+    return mo.ui.slider(3, 40, value=20, label="candidate splits K")
 
 
 def k_L():

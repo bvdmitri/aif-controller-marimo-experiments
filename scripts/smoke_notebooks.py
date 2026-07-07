@@ -77,7 +77,7 @@ def _save_figure(fig, name: str) -> None:
 def _small_params(controller_spec, signal_type=SignalType.NONE) -> Params:
     return replace(
         Params.default(),
-        sim=SimParams(days=6, burn_in=1, h_min=60, dt_min=1, seed=42,
+        sim=SimParams(days=6, burn_in=1, h_min=60, dt_min=5, seed=42,
                       selected_days=(0, 2, 5)),
         population=PopulationParams(cohorts=(CohortSpec(n_agents=200, window_size=3),)),
         noise=NoiseParams(obs_noise_sd=1.0),

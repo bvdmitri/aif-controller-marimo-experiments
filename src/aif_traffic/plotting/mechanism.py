@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib.lines import Line2D
+from matplotlib.ticker import MaxNLocator
 
 from .beliefs import _pick_evolution_days, _seed_slice
 from .comparison import _daily_cost
@@ -139,7 +140,7 @@ def plot_co_adaptation(
     # full-width in row 3. Axes are shared so labels/scales are not repeated:
     # both heatmaps share "time of day", both daily panels share the 0-1 scale,
     # and the day axis is shared down each column (drawn once, on the daily row).
-    fig = plt.figure(figsize=(text_w(), text_w() * 0.72), constrained_layout=True)
+    fig = plt.figure(figsize=(text_w(), text_w() * 0.95), constrained_layout=True)
     gs = fig.add_gridspec(3, 2, height_ratios=[2.1, 1.05, 1.35])
     ax_pa = fig.add_subplot(gs[0, 0])
     ax_ph = fig.add_subplot(gs[0, 1], sharex=ax_pa, sharey=ax_pa)
@@ -150,12 +151,20 @@ def plot_co_adaptation(
     im0 = ax_pa.pcolormesh(_edges(days), _edges(taus), pa.values,
                            cmap="magma", vmin=0.0, vmax=1.0, shading="flat")
     ax_pa.set_ylabel("time of day")
-    fig.colorbar(im0, ax=ax_pa, orientation="horizontal", location="top",
-                 fraction=0.06, pad=0.04, label=r"$P_\alpha$")
     im1 = ax_ph.pcolormesh(_edges(days), _edges(taus), ph.values,
                            cmap="viridis", vmin=0.0, vmax=1.0, shading="flat")
-    fig.colorbar(im1, ax=ax_ph, orientation="horizontal", location="top",
-                 fraction=0.06, pad=0.04, label=r"$\phi_2$")
+    # Colourbars sit on top of each heatmap and span its full width: an inset
+    # axis pinned to the axes x-extent (axes-fraction coords) makes the bar
+    # exactly the chart width, unlike fig.colorbar's auto-stolen strip.
+    for ax_hm, im, lab in ((ax_pa, im0, r"$P_\alpha$"), (ax_ph, im1, r"$\phi_2$")):
+        cax = ax_hm.inset_axes([0.0, 1.03, 1.0, 0.05])
+        cb = fig.colorbar(im, cax=cax, orientation="horizontal")
+        cax.xaxis.set_ticks_position("top")
+        cax.xaxis.set_label_position("top")
+        cb.set_label(lab)
+    # More y-ticks so the "time of day" axis is readable (drives ax_ph via
+    # shared y); default gave essentially one tick.
+    ax_pa.yaxis.set_major_locator(MaxNLocator(nbins=6))
     # Day axis is shared with the daily row below. Draw it there only.
     ax_pa.tick_params(labelbottom=False)
     ax_ph.tick_params(labelbottom=False, labelleft=False)
@@ -166,6 +175,8 @@ def plot_co_adaptation(
     ax_dpa.set_ylim(0, 1)
     ax_dpa.set_ylabel("daily mean")
     ax_dpa.set_xlabel("day")
+    # More y-ticks on the daily row (drives ax_dph via shared y).
+    ax_dpa.yaxis.set_major_locator(MaxNLocator(nbins=5))
     ax_dpa.grid(alpha=0.25)
     ax_dpa.text(0.04, 0.86, r"$P_\alpha$", transform=ax_dpa.transAxes, fontsize=9)
     panel_label(ax_dpa, "b")

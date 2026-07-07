@@ -20,10 +20,10 @@ from .style import active_style
 # Keys match each controller's ``snapshot()["name"]`` (and the notebook keys).
 CTRL_ORDER: tuple[str, ...] = ("fixed_time", "reactive", "anticipatory", "aif")
 CTRL_LABELS: dict[str, str] = {
-    "fixed_time": "Fixed-time",
-    "reactive": "Reactive (SCOOT-like)",
-    "anticipatory": "Anticipatory (predictive)",
-    "aif": "AIF (proposed)",
+    "fixed_time": "Fixed-time (FT)",
+    "reactive": "Reactive feedback (RF)",
+    "anticipatory": "Anticipatory control (AC)",
+    "aif": "Active Inference (AIF)",
 }
 # Short abbreviations for heatmap titles / compact legends (Xue, paper Table 3).
 CTRL_ABBR: dict[str, str] = {
@@ -52,10 +52,10 @@ _ROUTE_COLOURS_MARIMO: dict[str, str] = {
 # --- information-communication settings (Experiment 3) ----------------------
 COMM_ORDER: tuple[str, ...] = ("BL", "CG", "SN", "CG+SN")
 COMM_LABELS: dict[str, str] = {
-    "BL": "Baseline (first-hand only)",
+    "BL": "Baseline (BL)",
     "CG": "Route congestion (CG)",
     "SN": "Signal control (SN)",
-    "CG+SN": "Congestion + signal (CG+SN)",
+    "CG+SN": "Route congestion + signal control (CG+SN)",
 }
 _COMM_COLOURS_MARIMO: dict[str, str] = {
     "BL": "#9e9e9e",     # grey, the reference

@@ -289,7 +289,7 @@ def plot_theta_summary(
                 tail = _tail(fn(res.step))
                 ys.append(float(tail.mean() if stat == "mean" else tail.std()))
             ax.plot(thetas, ys, color=controller_colour(c), linewidth=lw,
-                    marker="o", markersize=3, label=controller_label(c, abbr=True))
+                    marker="o", markersize=3, label=controller_label(c))
         ax.set_ylabel(ylabel)
         ax.grid(alpha=0.25)
     for ax in axes[2:]:
@@ -347,7 +347,7 @@ def plot_theta_route_choice(
     ax.grid(alpha=0.25, axis="y")
     handles = [
         Line2D([0], [0], color=controller_colour(c), linewidth=6, alpha=0.55,
-               label=controller_label(c, abbr=True))
+               label=controller_label(c))
         for c in ctrls
     ]
     ax.legend(handles=handles, ncol=len(handles), frameon=False, fontsize=7,
@@ -403,7 +403,7 @@ def plot_msc_vs_theta(
                 daily = _daily_route_mean(res.step, col)
                 ys.append(float(daily.iloc[-n_last:].mean()))
             ax.plot(thetas, ys, color=controller_colour(c), linewidth=lw,
-                    marker="o", markersize=3, label=controller_label(c, abbr=True))
+                    marker="o", markersize=3, label=controller_label(c))
         ax.set_ylabel(ylabel)
         ax.grid(alpha=0.25)
         # The uncongestable bypass gives near-constant series; plain tick
