@@ -185,13 +185,22 @@ def run_within_day(
     net: NetworkParams,
     sim: SimParams,
     signal: SignalParams,
+    queue_noise: Mapping[int, np.ndarray] | None = None,
 ) -> tuple[dict[int, np.ndarray], dict[str, np.ndarray], np.ndarray, np.ndarray]:
     """Integrate the day while the controller sets the green split online.
 
     Every ``control_interval`` minutes ``green_split_fn(queue_obs, k)`` is
     called with the *current* link queues and returns ``(phi2, phi6)``, held
-    until the next control epoch. Returns
-    ``(queues_by_link, tt_by_route, phi2_arr, phi6_arr)``.
+    until the next control epoch.
+
+    The queue **dynamics** are deterministic (store-and-forward). When
+    ``queue_noise`` (a per-link length-``K`` array of exogenous per-interval
+    noise, drawn once upstream) is supplied, the controller observes a *noisy*
+    detector reading ``L + queue_noise`` at each control epoch, and the returned
+    ``queues_by_link`` are the **observed** (noisy, floored at 0) queues that all
+    downstream consumers see -- the underlying evolution and the route travel
+    times are still computed from the true (noise-free) queues. Returns
+    ``(observed_queues_by_link, tt_by_route, phi2_arr, phi6_arr)``.
     """
     K = sim.K
     dt_h = sim.dt_h
@@ -208,7 +217,14 @@ def run_within_day(
     # each control epoch, hold it, then integrate one step forward.
     for k in range(K):
         if k % control_interval == 0:
-            queue_obs = {lid: float(queues[lid][k]) for lid in net.link_ids}
+            # The controller observes a noisy detector reading when noise is on.
+            if queue_noise is None:
+                queue_obs = {lid: float(queues[lid][k]) for lid in net.link_ids}
+            else:
+                queue_obs = {
+                    lid: float(max(queues[lid][k] + queue_noise[lid][k], 0.0))
+                    for lid in net.link_ids
+                }
             phi2_cur, phi6_cur = green_split_fn(queue_obs, k)
         phi2_arr[k] = phi2_cur
         phi6_arr[k] = phi6_cur
@@ -228,4 +244,9 @@ def run_within_day(
 
     caps = effective_capacities(phi2_arr, phi6_arr, net)
     _, tt_route = link_and_route_travel_times(queues, caps, net, sim)
+    if queue_noise is not None:
+        queues = {
+            lid: np.maximum(queues[lid] + queue_noise[lid], 0.0)
+            for lid in net.link_ids
+        }
     return queues, tt_route, phi2_arr, phi6_arr

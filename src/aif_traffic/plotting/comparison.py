@@ -103,19 +103,20 @@ def plot_controller_metrics(results_by_ctrl: Mapping[str, object]):
 
 
 def plot_controller_queue_comparison(results_by_ctrl: Mapping[str, object]):
-    """One row of four day-series panels, one coloured line per controller:
-    (a) daily system cost, then the daily queue on (b) ``L_2``, (c) ``L_5``,
-    and (d) ``L_6``. The queue panels draw the within-day **mean** queue as a
-    solid line with the within-day min--max range as a shaded band, so both the
-    level and the daily excursion of each queue can be compared per controller.
+    """A 2x2 grid of day-series panels, one coloured line per controller:
+    (a) daily system cost, and the daily queue on (b) ``L_2``, (c) ``L_5``, and
+    (d) ``L_6``. The queue panels draw the within-day **mean** queue as a solid
+    line with the within-day min--max range as a shaded band, so both the level
+    and the daily excursion of each queue can be compared per controller.
     """
     items = _ordered(results_by_ctrl)
     st = active_style()
     lw, band_a = st.line_main, st.band_alpha
 
-    fig, axes = plt.subplots(
-        1, 4, figsize=(text_w(), text_w() * 0.32), sharex=True,
+    fig, axgrid = plt.subplots(
+        2, 2, figsize=(text_w(), text_w() * 0.62), sharex=True,
     )
+    axes = axgrid.ravel()  # [cost, L2, L5, L6]
     for name, res in items:
         cost = _daily_cost(res.step)
         axes[0].plot(cost.index.to_numpy(), cost.to_numpy(),
@@ -141,19 +142,20 @@ def plot_controller_queue_comparison(results_by_ctrl: Mapping[str, object]):
         if ax.get_ylim()[1] < 1.0:
             ax.set_ylim(-0.05, 1.0)
         panel_label(ax, "bcd"[k])
-    for ax in axes:
+    for ax in axgrid[-1]:
         ax.set_xlabel("day")
+    for ax in axes:
         ax.grid(alpha=0.25)
-    light_borders(axes)
+    light_borders(axgrid)
 
     handles = [
         Line2D([0], [0], color=controller_colour(k),
-               linewidth=lw, label=controller_label(k, abbr=True))
+               linewidth=lw, label=controller_label(k))
         for k, _ in items
     ]
     fig.legend(handles=handles, loc="upper center", ncol=len(handles),
-               frameon=False, bbox_to_anchor=(0.5, 1.06), fontsize=7.5)
-    fig.tight_layout(rect=(0, 0, 1, 0.93))
+               frameon=False, bbox_to_anchor=(0.5, 1.02), fontsize=7.5)
+    fig.tight_layout(rect=(0, 0, 1, 0.95))
     return fig
 
 

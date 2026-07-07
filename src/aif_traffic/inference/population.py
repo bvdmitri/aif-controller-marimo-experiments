@@ -12,7 +12,7 @@ channels**:
   ``cost_offset = theta * compliance * E_r`` per (agent, route). This affects
   *action selection only* -- the smoother (``filter.py``) is untouched by it.
 * **Extra observations** (Experiment 3 default, CG/SN):
-  ``update_beliefs(..., obs_broadcast=...)`` folds the **true realised** route queue
+  ``update_beliefs(..., obs_broadcast=...)`` folds the **realised** route queue
   (CG) and/or green split (SN) into the smoother as observations of routes the
   agent did *not* take that day. This DOES enter the belief update -- a deliberate,
   documented departure from the IWAI "belief update sees only first-hand,
@@ -464,17 +464,21 @@ class Population:
         L_obs_beta: np.ndarray,
         green_obs_alpha: np.ndarray | None = None,
         obs_broadcast=None,
-        rng: np.random.Generator | None = None,
-        obs_noise_sd: float = 0.0,
     ) -> None:
         """Append today's TT + queue (+ green-split) observations and re-fit.
 
         First-hand: each agent updates from the realised travel time and queue on
         the route it actually took (and, on the signalised route, the green
-        split). ``green_obs_alpha`` is the realised intersection green split,
-        aligned to the traveller's arrival, per departure minute (length ``K``);
-        only agents who chose the intersection observe it first-hand (the smoother
-        gates it to the signalised route).
+        split). The realised TT / queue / green-split arrays passed in are the
+        **realised** values -- already carrying the environment's shared
+        measurement noise when a noise regime is active (see
+        :func:`simulator.simulate_one_day`); every agent departing at the same
+        interval on the same route therefore observes exactly the same realised
+        value (no additional per-agent noise is added here). ``green_obs_alpha``
+        is the realised intersection green split, aligned to the traveller's
+        arrival, per departure minute (length ``K``); only agents who chose the
+        intersection observe it first-hand (the smoother gates it to the
+        signalised route).
 
         ``obs_broadcast`` is the controller's **extra-observation** relay (paper
         Exp 3: CG/SN; :class:`communication.ObservationBroadcast`). When present,
@@ -486,26 +490,19 @@ class Population:
         is fused transiently at decision time in :meth:`begin_day`.
         """
         t_i = self.departure_time
+        # Every agent observes exactly the (shared) realised value on its chosen
+        # route; the environment noise is already baked into the arrays passed in.
         realised_tt_alpha = TT_alpha[t_i]
         realised_tt_beta = TT_beta[t_i]
 
-        if rng is not None and obs_noise_sd > 0.0:
-            realised_tt_alpha = realised_tt_alpha + rng.normal(0.0, obs_noise_sd, size=self.N)
-            realised_tt_beta = realised_tt_beta + rng.normal(0.0, obs_noise_sd, size=self.N)
-
         y_tt_today = np.where(self.last_choice == 0, realised_tt_alpha, realised_tt_beta)
         y_L_today = np.where(self.last_choice == 0, L_obs_alpha[t_i], L_obs_beta[t_i])
-
-        if rng is not None:
-            y_L_today = y_L_today + rng.normal(0.0, self.sigma_L_obs, size=self.N)
 
         # Green-split observation (intersection route only; gated downstream).
         if green_obs_alpha is None:
             y_phi_today = np.full(self.N, 0.5, dtype=float)
         else:
             y_phi_today = np.asarray(green_obs_alpha, dtype=float)[t_i]
-            if rng is not None and self.sigma_phi_obs.max() > 0.0:
-                y_phi_today = y_phi_today + rng.normal(0.0, self.sigma_phi_obs, size=self.N)
 
         self._obs_buffer_route[:, :-1] = self._obs_buffer_route[:, 1:]
         self._obs_buffer_route[:, -1] = self.last_choice.astype(np.int32)

@@ -47,7 +47,11 @@ from aif_traffic.simulator import run_experiment  # noqa: E402
 # --- experiment configuration ----------------------------------------------
 SEED = 42
 THETAS = (0.0, 0.25, 0.5, 0.75, 1.0)
-MEDIUM_THETA = 0.5
+# The theta the single-run (Exp 1) and benchmark (Exp 2) figures render at. It
+# matches the notebook theta-slider default (``nc.theta()``), so the exported
+# figures reproduce what the notebooks show by default. (Exp 1's *sweep* over
+# THETAS is unaffected.)
+SINGLE_THETA = 0.0
 CONTROLLERS = {
     "fixed_time": FixedTimeControllerSpec(),
     "reactive": ReactiveControllerSpec(),
@@ -61,6 +65,12 @@ def _cfg(quick: bool) -> dict:
     if quick:
         return {"days": 10, "n_agents": 80, "thetas": (0.0, 1.0)}
     return {"days": 90, "n_agents": 2000, "thetas": THETAS}
+
+
+def _profile_day(cfg: dict) -> int:
+    """The single day the paper's within-day figures inspect: the last recorded
+    day, matching the notebooks' ``day_sel`` default (``max(days-1, 0)``)."""
+    return max(cfg["days"] - 1, 0)
 
 
 def _base(cfg: dict, *, controller=None, theta: float = 0.0,
@@ -89,12 +99,12 @@ def _base(cfg: dict, *, controller=None, theta: float = 0.0,
 # Built lazily so heavy sweeps run once.
 def _build_registry(cfg: dict):
     reg: list[tuple[str, str, callable]] = []
-    # The single representative day the paper's within-day figures inspect
-    # ("e.g. day 80"); clamped so --quick still renders.
-    profile_day = min(80, cfg["days"] - 1)
+    # The single day the within-day figures inspect: the last recorded day, to
+    # match the notebooks' day_sel default.
+    profile_day = _profile_day(cfg)
 
-    # -- Experiment 1: single AIF run (medium theta, externality broadcast) ---
-    p1 = _base(cfg, theta=MEDIUM_THETA, comm=SignalType.EXTERNALITY)
+    # -- Experiment 1: single AIF run (theta = notebook default; externality on)
+    p1 = _base(cfg, theta=SINGLE_THETA, comm=SignalType.EXTERNALITY)
     r1 = run_experiment(p1, seeds=[SEED], snapshot_days=range(cfg["days"]))
 
     reg += [
@@ -112,9 +122,10 @@ def _build_registry(cfg: dict):
         ("within_day_profile_b", "plot_within_day_tt_vs_belief",
          lambda: pl.plot_within_day_tt_vs_belief(
              r1.step, r1.snapshots, p1, days=[profile_day])),
+        # fig:within-day-profile (c) -- belief vs realised queues across the
+        # first / middle / last day (learning evolution as columns).
         ("within_day_profile_c", "plot_belief_reality_queues",
-         lambda: pl.plot_belief_reality_queues(
-             r1.step, r1.snapshots, p1, day=profile_day)),
+         lambda: pl.plot_belief_reality_queues(r1.step, r1.snapshots, p1)),
         # fig:across-day-profile -- heatmaps + daily profiles + cost & belief SD.
         ("across_day_profile", "plot_co_adaptation",
          lambda: pl.plot_co_adaptation(r1.step, r1.controller)),
@@ -154,9 +165,9 @@ def _build_registry(cfg: dict):
          lambda: pl.plot_controller_theta_grid(grid)),
     ]
 
-    # -- Experiment 2: controller benchmark (medium theta slice) --------------
-    slice_theta = (MEDIUM_THETA if MEDIUM_THETA in cfg["thetas"]
-                   else cfg["thetas"][len(cfg["thetas"]) // 2])
+    # -- Experiment 2: controller benchmark (theta = notebook default slice) ---
+    slice_theta = (SINGLE_THETA if SINGLE_THETA in cfg["thetas"]
+                   else cfg["thetas"][0])
     by_ctrl = {name: grid[name][slice_theta] for name in CONTROLLERS}
     reg += [
         ("exp2_controller_metrics", "plot_controller_metrics",
