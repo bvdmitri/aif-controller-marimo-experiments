@@ -55,3 +55,16 @@ def test_export_base_matches_notebook_gold_defaults():
     assert p.sim.burn_in == int(nc.warmup().value)
     assert p.sim.days == int(nc.days().value)
     assert all(c.n_agents == CohortSpec().n_agents for c in cohorts)
+
+
+def test_export_figure_theta_and_day_match_notebook_defaults():
+    """The per-figure choices in the registry -- the theta the single-run (Exp 1)
+    and benchmark (Exp 2) figures render at, and the day the within-day figures
+    inspect -- must equal the notebook slider defaults, so the exported figures
+    reproduce what the notebooks show by default. (Guards the theta / inspected-day
+    discrepancy that the ``_base`` config check above cannot see.)"""
+    # Single-run / benchmark theta == the notebook theta-slider default.
+    assert exp.SINGLE_THETA == pytest.approx(nc.theta().value)
+    # Within-day inspected day == the notebooks' day_sel default (max(days-1, 0)).
+    cfg = exp._cfg(quick=False)
+    assert exp._profile_day(cfg) == max(int(nc.days().value) - 1, 0)
