@@ -85,6 +85,25 @@ def empty_broadcast(net: NetworkParams, sim: SimParams) -> Broadcast:
     )
 
 
+def average_broadcasts(broadcasts: "list[Broadcast]") -> Broadcast:
+    """Elementwise mean of a trailing window of cost-offset advisories.
+
+    Used to smooth the advisory over the last few days (damping the one-day
+    cobweb): a traveller reads the mean of ``value[r]`` over the window rather
+    than only yesterday's. ``signal_type`` is taken from the most recent
+    broadcast. A single-element window returns that broadcast's values
+    unchanged (a no-op, so smoothing over one day is bit-identical)."""
+    latest = broadcasts[-1]
+    if len(broadcasts) == 1:
+        return latest
+    routes = latest.value.keys()
+    value = {
+        r: np.mean([np.asarray(b.value[r], dtype=float) for b in broadcasts], axis=0)
+        for r in routes
+    }
+    return Broadcast(signal_type=latest.signal_type, value=value)
+
+
 def _marginal_social_cost(
     inflow_by_route: Mapping[str, np.ndarray],
     phi2: np.ndarray,

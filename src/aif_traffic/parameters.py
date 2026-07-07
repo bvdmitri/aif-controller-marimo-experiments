@@ -595,6 +595,14 @@ class CommunicationSpec:
     signal_type: SignalType = SignalType.NONE
     obs_signals: frozenset[ObservationSignal] = frozenset()
     belief_signals: frozenset[BeliefSignal] = frozenset()
+    advisory_smoothing_days: int = 1
+    """Trailing window (days) over which the cost-offset advisory (``signal_type``)
+    is averaged before travellers act on it. The advisory is built from a day's
+    realised state and acted on the next day, a one-day-stale feedback that can
+    drive a day-to-day cobweb oscillation in route choice; averaging the last
+    ``W`` days damps it. ``1`` (default) means act on yesterday's value only, the
+    original un-smoothed behaviour (bit-identical). Only the ``signal_type``
+    advisory is smoothed, not the extra-observation or belief channels."""
 
 
 # ============================================================================
@@ -745,6 +753,13 @@ class Params:
 
     def with_comm(self, signal_type: SignalType) -> "Params":
         return replace(self, comm=replace(self.comm, signal_type=signal_type))
+
+    def with_advisory_smoothing(self, days: int) -> "Params":
+        """Average the cost-offset advisory over the last ``days`` days before
+        travellers act on it, to damp the one-day-stale cobweb oscillation.
+        ``1`` recovers the original un-smoothed advisory."""
+        return replace(self, comm=replace(self.comm,
+                                          advisory_smoothing_days=max(1, int(days))))
 
     def with_belief_signals(self, *signals: BeliefSignal) -> "Params":
         """Set which parts of the controller's belief are shared for

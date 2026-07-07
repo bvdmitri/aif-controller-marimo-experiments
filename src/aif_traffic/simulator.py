@@ -26,6 +26,7 @@ import numpy as np
 import pandas as pd
 
 from .communication import (
+    average_broadcasts,
     build_belief_broadcast,
     build_broadcast,
     build_observation_broadcast,
@@ -350,6 +351,11 @@ def run_experiment(
         broadcast_prev = empty_broadcast(net, sim)
         belief_broadcast_prev = empty_belief_broadcast()
         signal_name = params_seed.comm.signal_type.value
+        # Trailing window over which the cost-offset advisory is averaged before
+        # travellers act on it (damps the one-day-stale cobweb). W=1 is the
+        # original behaviour (act on yesterday only).
+        smooth_w = max(1, int(getattr(params_seed.comm, "advisory_smoothing_days", 1)))
+        advisory_history: list = []
 
         all_iter = range(total_days)
         if callable(progress):
@@ -365,7 +371,13 @@ def run_experiment(
                 belief_broadcast_prev=belief_broadcast_prev,
                 demand_factor=factor,
             )
-            broadcast_prev = out["broadcast_next"]
+            # Feed the (optionally smoothed) advisory to the next day: average the
+            # last ``smooth_w`` raw daily advisories. W=1 -> yesterday's raw value.
+            advisory_history.append(out["broadcast_next"])
+            if smooth_w > 1:
+                broadcast_prev = average_broadcasts(advisory_history[-smooth_w:])
+            else:
+                broadcast_prev = out["broadcast_next"]
             belief_broadcast_prev = out["belief_broadcast_next"]
 
             if on_step is not None:
