@@ -49,13 +49,6 @@ def _pick_evolution_days(all_days: list, n_days: int) -> list:
     return [all_days[k] for k in sel]
 
 
-def _cohort_window(params) -> int:
-    try:
-        return int(params.population.cohorts[0].window_size)
-    except (AttributeError, IndexError, TypeError):
-        return 1
-
-
 def _belief_profile_by_minute(snap: dict, dt_min: int) -> pd.DataFrame:
     """Cross-agent mean predictive-TT profile vs within-day departure minute.
 
@@ -84,18 +77,17 @@ def plot_within_day_tt_vs_belief(
     n_days: int = 4,
     days=None,
     seed: int | None = None,
-    truth_smooth_window: int | None = None,
 ):
     """Realised within-day travel time vs the travellers' mean predictive-TT
     belief, both on the within-day departure-minute axis.
 
     A grid with **one column per representative day** and two rows (route alpha
     top, route beta bottom), so each day is read on its own axes rather than
-    overlaid. In each panel the realised ``TT(tau)`` is a line (a centered
-    ``W``-day rolling mean, the windowed quantity the posterior estimates) and
-    the belief is **dots** -- the cross-agent mean posterior-predictive TT at
-    each departure minute. Reading a row left-to-right shows the belief dots
-    settling onto the realised line as the agents learn.
+    overlaid. In each panel the realised ``TT(tau)`` is drawn as-is -- the raw,
+    genuinely-stochastic within-day series, not averaged -- and the belief is
+    **dots** -- the cross-agent mean posterior-predictive TT at each departure
+    minute. Reading a row left-to-right shows the belief dots settling onto the
+    realised as the agents learn.
 
     ``days`` (an explicit iterable of day numbers) overrides the automatic
     first/last/evenly-spaced pick of ``n_days`` days -- the paper uses a single
@@ -110,22 +102,17 @@ def plot_within_day_tt_vs_belief(
     picked_days = ([d for d in days if d in all_days] if days is not None
                    else _pick_evolution_days(all_days, n_days))
     dt_min = int(params.sim.dt_min)
-    w_smooth = (
-        int(truth_smooth_window) if truth_smooth_window is not None
-        else _cohort_window(params)
-    )
 
     routes = ("alpha", "beta")
     colours = {r: route_colour(r) for r in routes}
-    lw = active_style().line_main
 
-    # Per route: (day x tau) realised TT smoothed with a centered W-day window.
-    smoothed = {}
+    # Per route: the raw realised TT per (day, tau) -- shown as-is, NOT averaged
+    # (the realised series is genuinely stochastic).
+    realised = {}
     for r in routes:
-        pivot = day_step.pivot_table(
+        realised[r] = day_step.pivot_table(
             index="day", columns="tau", values=_ROUTE_TT[r], aggfunc="mean",
         ).sort_index()
-        smoothed[r] = pivot.rolling(w_smooth, center=True, min_periods=1).mean()
 
     ncols = max(len(picked_days), 1)
     # One column per day: scale the width so the columns fill the notebook's
@@ -143,14 +130,18 @@ def plot_within_day_tt_vs_belief(
         prof = _belief_profile_by_minute(snap, dt_min) if snap is not None else None
         for row, r in enumerate(routes):
             ax = axes[row][col]
-            sm = smoothed[r]
-            tau = sm.columns.to_numpy(dtype=float)
-            ax.plot(tau, sm.loc[d].to_numpy(), color=colours[r], linewidth=lw,
-                    zorder=4)
+            rz = realised[r]
+            tau = rz.columns.to_numpy(dtype=float)
+            # Raw realised drawn thin + faint (it is dense and noisy) so the
+            # belief dots read against it without a hairball.
+            ax.plot(tau, rz.loc[d].to_numpy(), color=colours[r],
+                    linewidth=0.6, alpha=0.55, zorder=4)
             if prof is not None:
+                # ~300 per-departure belief points: draw them small and faint so
+                # they read as a light cloud settling onto the realised line.
                 ax.plot(prof.index.to_numpy(), prof[_ROUTE_MU[r]].to_numpy(),
-                        linestyle="none", marker="o", markersize=2.0,
-                        color=colours[r], alpha=0.65, zorder=2)
+                        linestyle="none", marker="o", markersize=1.3,
+                        color=colours[r], alpha=0.5, zorder=2)
             ax.grid(alpha=0.25)
             if row == 0:
                 ax.set_title(f"day {int(d)}", fontsize=8)
@@ -179,7 +170,6 @@ def plot_within_day_by_setting(
     route: str = "alpha",
     n_days: int = 3,
     seed: int | None = None,
-    truth_smooth_window: int | None = None,
 ):
     """Within-day realised travel time vs belief, faceted by sweep setting.
 
@@ -210,16 +200,15 @@ def plot_within_day_by_setting(
         picked = _pick_evolution_days(all_days, n_days)
         picked_ref = picked
         shade = np.linspace(0.40, 1.0, len(picked))
-        w = (int(truth_smooth_window) if truth_smooth_window is not None
-             else _cohort_window(params))
         pivot = day_step.pivot_table(index="day", columns="tau", values=tt_col,
                                      aggfunc="mean").sort_index()
-        sm = pivot.rolling(w, center=True, min_periods=1).mean()
-        tau = sm.columns.to_numpy(dtype=float)
+        tau = pivot.columns.to_numpy(dtype=float)
         snapshots = res.snapshots or {}
         for k, d in enumerate(picked):
-            ax.plot(tau, sm.loc[d].to_numpy(), color=cmap(shade[k]),
-                    linewidth=1.2, zorder=4)
+            # Raw realised (not averaged over days), thin so overlaid days do not
+            # form a hairball.
+            ax.plot(tau, pivot.loc[d].to_numpy(), color=cmap(shade[k]),
+                    linewidth=0.7, alpha=0.7, zorder=4)
             snap = snapshots.get((sample_seed, int(d)))
             if snap is not None:
                 prof = _belief_profile_by_minute(snap, dt_min)
@@ -373,8 +362,10 @@ def plot_belief_reality_queues(
                     trav[route] = prof
         for ri, (col, label, colour, bmu, bsd, route) in enumerate(specs):
             ax = axgrid[ri][ci]
-            ax.plot(tau, d[col].to_numpy(), color=colour, linewidth=lw,
-                    label="realised", zorder=4)
+            # The raw per-minute realised queue (~300 points) is drawn thin and
+            # faint so it reads as a light noise cloud under the smoother beliefs.
+            ax.plot(tau, d[col].to_numpy(), color=colour, linewidth=0.6,
+                    alpha=0.55, label="realised", zorder=4)
             if has_ctrl_belief and bmu is not None and bmu in d.columns:
                 mu = d[bmu].to_numpy()
                 sdv = d[bsd].to_numpy()
@@ -386,7 +377,7 @@ def plot_belief_reality_queues(
                 mu_prof, sd_prof = trav[route]
                 x = mu_prof.index.to_numpy(dtype=float)
                 ax.plot(x, mu_prof.to_numpy(), color=colour, linestyle=":",
-                        marker="o", markersize=2.6, linewidth=1.2,
+                        linewidth=1.2,
                         label="traveller belief (by departure)", zorder=5)
                 lower = np.maximum((mu_prof - sd_prof).to_numpy(), 0.0)
                 ax.fill_between(x, lower, (mu_prof + sd_prof).to_numpy(),
@@ -457,8 +448,12 @@ def plot_within_day_communication(
     # Rows: (realised column, belief accessor, is-TT-belief-a-per-minute-profile,
     # y-label). Columns: 0 = realised, 1 = belief.
     fig, axes = plt.subplots(
-        4, 2, figsize=(text_w(), text_w() * 1.02), sharex=True, sharey="row",
+        4, 2, figsize=(text_w(), text_w() * 0.9), sharex=True, sharey="row",
     )
+    # The raw per-minute realised series (~300 points) is dense and noisy, so
+    # draw it thin and semi-transparent -- it reads as a light noise cloud while
+    # the smoother belief stays legible on top.
+    raw_lw, raw_alpha = 0.6, 0.55
     row_specs = [
         ("TT_alpha", "mu_alpha", True, r"$TT_\alpha$ [min]"),
         ("TT_beta", "mu_beta", True, r"$TT_\beta$ [min]"),
@@ -476,13 +471,16 @@ def plot_within_day_communication(
         prof = _belief_profile_by_minute(snap, dt_min) if snap is not None else None
         for r, (real_col, bel_col, from_prof, _ylab) in enumerate(row_specs):
             axes[r][0].plot(tau, dd[real_col].to_numpy(), color=c,
-                            linewidth=lw, label=comm_label(str(lab)))
+                            linewidth=raw_lw, alpha=raw_alpha,
+                            label=comm_label(str(lab)))
             if from_prof:
                 if prof is not None:
                     axes[r][1].plot(prof.index.to_numpy(),
-                                    prof[bel_col].to_numpy(), color=c, linewidth=lw)
+                                    prof[bel_col].to_numpy(), color=c,
+                                    linewidth=raw_lw, alpha=raw_alpha)
             elif bel_col in dd.columns and dd[bel_col].notna().any():
-                axes[r][1].plot(tau, dd[bel_col].to_numpy(), color=c, linewidth=lw)
+                axes[r][1].plot(tau, dd[bel_col].to_numpy(), color=c,
+                                linewidth=raw_lw, alpha=raw_alpha)
 
     axes[0][0].set_title("realised", fontsize=8)
     axes[0][1].set_title("belief", fontsize=8)
@@ -494,8 +492,11 @@ def plot_within_day_communication(
         ax.grid(alpha=0.25)
     fig.align_ylabels(axes[:, 0])
 
-    handles, leg_labels = axes[0][0].get_legend_handles_labels()
-    fig.legend(handles=handles, labels=leg_labels, loc="upper center",
+    # Full-weight legend swatches (the plotted realised lines are deliberately
+    # faint, which would otherwise make the legend hard to read).
+    handles = [Line2D([0], [0], color=colours[str(lab)], linewidth=1.8,
+                      label=comm_label(str(lab))) for lab, _ in items]
+    fig.legend(handles=handles, loc="upper center",
                ncol=min(len(items), 2), frameon=False,
                bbox_to_anchor=(0.5, 1.02), fontsize=7.5)
     fig.suptitle(f"day {d_use}", fontsize=8, y=0.955)

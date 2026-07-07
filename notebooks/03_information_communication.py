@@ -145,9 +145,12 @@ def _(mo, nc):
     noise_regime = nc.noise_regime()
     stationary = nc.stationary()
     compliance = nc.compliance()
+    time_step = nc.time_step()
+    bypass_capacity_scale = nc.bypass_capacity_scale()
 
     run_btn = mo.ui.run_button(label="Run all communication settings")
     return (
+        bypass_capacity_scale,
         comm_mechanism,
         compliance,
         control_interval,
@@ -158,13 +161,15 @@ def _(mo, nc):
         run_btn,
         seed,
         stationary,
+        time_step,
         warmup,
     )
 
 
 @app.cell
-def _(comm_mechanism, compliance, control_interval, days, demand_scale,
-      learn_noise, nc, noise_regime, run_btn, seed, stationary, warmup):
+def _(bypass_capacity_scale, comm_mechanism, compliance, control_interval, days,
+      demand_scale, learn_noise, nc, noise_regime, run_btn, seed, stationary,
+      time_step, warmup):
     # Window sliders under (and disabled by) the stationary toggle -- see the
     # note in Experiment 1's control panel.
     traveller_window = nc.traveller_window(disabled=stationary.value)
@@ -173,7 +178,9 @@ def _(comm_mechanism, compliance, control_interval, days, demand_scale,
     controls = nc.standard_panel({
         "comm_mechanism": comm_mechanism,
         "days": days, "warmup": warmup, "seed": seed,
-        "control_interval": control_interval, "demand_scale": demand_scale,
+        "time_step": time_step, "control_interval": control_interval,
+        "demand_scale": demand_scale,
+        "bypass_capacity_scale": bypass_capacity_scale,
         "learn_noise": learn_noise, "noise_regime": noise_regime,
         "stationary": stationary, "traveller_window": traveller_window,
         "controller_window": controller_window,
@@ -191,6 +198,7 @@ def _(
     ObservationSignal,
     Params,
     SimParams,
+    bypass_capacity_scale,
     comm_mechanism,
     compliance,
     control_interval,
@@ -205,6 +213,7 @@ def _(
     seed,
     stationary,
     sweep_progress_bar,
+    time_step,
     traveller_window,
     warmup,
 ):
@@ -225,7 +234,7 @@ def _(
         _base = replace(
             Params(),
             sim=replace(SimParams(), days=int(days.value), seed=int(seed.value),
-                        burn_in=int(warmup.value)),
+                        burn_in=int(warmup.value), dt_min=int(time_step.value)),
             controller=AIFControllerSpec(
                 control_interval_min=int(control_interval.value),
                 horizon_min=int(control_interval.value),
@@ -237,7 +246,7 @@ def _(
             bool(learn_noise.value)
         ).with_stationary(bool(stationary.value)).with_noise_regime(
             noise_regime.value
-        )
+        ).with_bypass_capacity_scale(float(bypass_capacity_scale.value))
 
         _CG = ObservationSignal.ROUTE_CONGESTION
         _SN = ObservationSignal.SIGNAL_CONTROL

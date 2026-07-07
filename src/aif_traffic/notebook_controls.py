@@ -47,6 +47,12 @@ DESCRIPTIONS: dict[str, str] = {
         "recorded)."
     ),
     "seed": "Master seed; redraws all stochastic elements.",
+    "time_step": (
+        r"Within-day discretisation interval $\Delta t$ (minutes): the simulation "
+        r"time step. $1$ min is the finest; larger steps are coarser and faster "
+        r"but blur the within-day dynamics, and also set the free-flow propagation "
+        r"delays $\lfloor F_\ell/\Delta t\rfloor$."
+    ),
     "control_interval": (
         "Minutes between green-split decisions, and the controller's prediction "
         "horizon for scoring each split."
@@ -54,6 +60,12 @@ DESCRIPTIONS: dict[str, str] = {
     "demand_scale": (
         r"Scales peak A--B and C--D demand. $>1$ pushes the junction toward "
         r"saturation and makes the control problem harder."
+    ),
+    "bypass_capacity_scale": (
+        r"Scales the nominal capacity of the bypass link (link 5). $<1$ throttles "
+        r"the bypass so it can congest and become a bottleneck (making the "
+        r"intersection route relatively more attractive); $1.0$ = the default "
+        r"network."
     ),
     "traveller_window": (
         "Days each traveller's rolling-window smoother remembers when forming "
@@ -140,12 +152,21 @@ def seed():
     return mo.ui.slider(0, 100, value=42, label="seed")
 
 
+def time_step():
+    return mo.ui.slider(1, 10, value=1, label="time step [min]")
+
+
 def control_interval():
     return mo.ui.slider(1, 30, value=10, label="control interval [min]")
 
 
 def demand_scale():
     return mo.ui.slider(0.5, 2.5, step=0.1, value=1.0, label="demand scale")
+
+
+def bypass_capacity_scale():
+    return mo.ui.slider(0.1, 1.5, step=0.05, value=1.0,
+                        label="bypass capacity scale")
 
 
 def traveller_window(disabled: bool = False):
@@ -217,7 +238,8 @@ def k_L():
 # ---------------------------------------------------------------------------
 _GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Simulation", (
-        "days", "warmup", "seed", "control_interval", "demand_scale",
+        "days", "warmup", "seed", "time_step", "control_interval", "demand_scale",
+        "bypass_capacity_scale",
         "learn_noise", "noise_regime",
         # The window sliders sit under (and are disabled by) the stationary
         # toggle -- they only bite in the rolling-window (non-stationary) mode.

@@ -136,9 +136,12 @@ def _(mo, nc):
     sigma_pref = nc.sigma_pref()
     phi_grid = nc.phi_grid()
     k_L = nc.k_L()
+    time_step = nc.time_step()
+    bypass_capacity_scale = nc.bypass_capacity_scale()
 
     run_btn = mo.ui.run_button(label="Run experiment")
     return (
+        bypass_capacity_scale,
         compliance,
         control_interval,
         days,
@@ -154,21 +157,24 @@ def _(mo, nc):
         sigma_pref,
         stationary,
         theta,
+        time_step,
         warmup,
     )
 
 
 @app.cell
-def _(compliance, control_interval, days, demand_scale, gamma, k_L,
-      learn_noise, nc, noise_regime, omega, phi_grid, run_btn, seed,
-      sigma_pref, stationary, theta, warmup):
+def _(bypass_capacity_scale, compliance, control_interval, days, demand_scale,
+      gamma, k_L, learn_noise, nc, noise_regime, omega, phi_grid, run_btn, seed,
+      sigma_pref, stationary, theta, time_step, warmup):
     # Window sliders under (and disabled by) the stationary toggle.
     traveller_window = nc.traveller_window(disabled=stationary.value)
     controller_window = nc.controller_window(disabled=stationary.value)
 
     controls = nc.standard_panel({
         "days": days, "warmup": warmup, "seed": seed,
-        "control_interval": control_interval, "demand_scale": demand_scale,
+        "time_step": time_step, "control_interval": control_interval,
+        "demand_scale": demand_scale,
+        "bypass_capacity_scale": bypass_capacity_scale,
         "learn_noise": learn_noise, "noise_regime": noise_regime,
         "stationary": stationary, "traveller_window": traveller_window,
         "controller_window": controller_window,
@@ -189,6 +195,7 @@ def _(
     ReactiveControllerSpec,
     SignalType,
     SimParams,
+    bypass_capacity_scale,
     compliance,
     control_interval,
     controller_window,
@@ -209,6 +216,7 @@ def _(
     sigma_pref,
     sweep_progress_bar,
     theta,
+    time_step,
     traveller_window,
 ):
     if not run_btn.value:
@@ -236,7 +244,7 @@ def _(
         )
         results_by_ctrl = {}
         _sim = replace(SimParams(), days=int(days.value), seed=int(seed.value),
-                       burn_in=int(warmup.value))
+                       burn_in=int(warmup.value), dt_min=int(time_step.value))
         with sweep_progress_bar(len(specs), _sim, title="controllers") as _bar:
             for _name, _spec in specs.items():
                 # Broadcast the externality advisory at the chosen theta/compliance
@@ -252,7 +260,9 @@ def _(
                 ).with_theta(float(theta.value)).with_window_size(
                     int(traveller_window.value)
                 ).with_learn_obs_noise(bool(learn_noise.value)).with_stationary(
-                    bool(stationary.value)).with_noise_regime(noise_regime.value)
+                    bool(stationary.value)).with_noise_regime(
+                    noise_regime.value
+                ).with_bypass_capacity_scale(float(bypass_capacity_scale.value))
                 results_by_ctrl[_name] = run_experiment(
                     _p, seeds=[int(seed.value)], on_step=_bar.update,
                 )
@@ -383,6 +393,7 @@ def _(
     ReactiveControllerSpec,
     SignalType,
     SimParams,
+    bypass_capacity_scale,
     compliance,
     control_interval,
     controller_window,
@@ -401,6 +412,7 @@ def _(
     seed,
     sigma_pref,
     sweep_progress_bar,
+    time_step,
     traveller_window,
 ):
     if not grid_btn.value:
@@ -429,7 +441,7 @@ def _(
         _cells = [(n, s, t) for n, s in _specs.items() for t in _thetas]
         results_by_ctrl_theta = {n: {} for n in _specs}
         _sim = replace(SimParams(), days=int(days.value), seed=int(seed.value),
-                       burn_in=int(warmup.value))
+                       burn_in=int(warmup.value), dt_min=int(time_step.value))
         with sweep_progress_bar(
             len(_cells), _sim, title="theta x controller",
         ) as _bar:
@@ -444,7 +456,9 @@ def _(
                 ).with_theta(_theta).with_window_size(
                     int(traveller_window.value)
                 ).with_learn_obs_noise(bool(learn_noise.value)).with_stationary(
-                    bool(stationary.value)).with_noise_regime(noise_regime.value)
+                    bool(stationary.value)).with_noise_regime(
+                    noise_regime.value
+                ).with_bypass_capacity_scale(float(bypass_capacity_scale.value))
                 results_by_ctrl_theta[_name][_theta] = run_experiment(
                     _p, seeds=[int(seed.value)], on_step=_bar.update,
                 )

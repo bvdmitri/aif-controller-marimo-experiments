@@ -181,9 +181,12 @@ def _(mo, nc):
     omega = nc.omega()
     sigma_pref = nc.sigma_pref()
     phi_grid = nc.phi_grid()
+    time_step = nc.time_step()
+    bypass_capacity_scale = nc.bypass_capacity_scale()
 
     run_btn = mo.ui.run_button(label="Run experiment")
     return (
+        bypass_capacity_scale,
         compliance,
         control_interval,
         days,
@@ -198,14 +201,15 @@ def _(mo, nc):
         sigma_pref,
         stationary,
         theta,
+        time_step,
         warmup,
     )
 
 
 @app.cell
-def _(compliance, control_interval, days, demand_scale, gamma, learn_noise,
-      nc, noise_regime, omega, phi_grid, run_btn, seed, sigma_pref, stationary,
-      theta, warmup):
+def _(bypass_capacity_scale, compliance, control_interval, days, demand_scale,
+      gamma, learn_noise, nc, noise_regime, omega, phi_grid, run_btn, seed,
+      sigma_pref, stationary, theta, time_step, warmup):
     # The rolling-window sliders live under (and are disabled by) the stationary
     # toggle: they only bite in the non-stationary mode. Defined here, downstream
     # of `stationary`, so toggling it re-renders them (updating `disabled`)
@@ -215,7 +219,9 @@ def _(compliance, control_interval, days, demand_scale, gamma, learn_noise,
 
     controls = nc.standard_panel({
         "days": days, "warmup": warmup, "seed": seed,
-        "control_interval": control_interval, "demand_scale": demand_scale,
+        "time_step": time_step, "control_interval": control_interval,
+        "demand_scale": demand_scale,
+        "bypass_capacity_scale": bypass_capacity_scale,
         "learn_noise": learn_noise, "noise_regime": noise_regime,
         "stationary": stationary, "traveller_window": traveller_window,
         "controller_window": controller_window,
@@ -233,6 +239,7 @@ def _(
     DemandParams,
     Params,
     SimParams,
+    bypass_capacity_scale,
     compliance,
     control_interval,
     controller_window,
@@ -252,6 +259,7 @@ def _(
     SignalType,
     stationary,
     theta,
+    time_step,
     traveller_window,
     warmup,
 ):
@@ -282,7 +290,7 @@ def _(
         params = replace(
             Params(),
             sim=replace(SimParams(), days=int(days.value), seed=int(seed.value),
-                        burn_in=int(warmup.value)),
+                        burn_in=int(warmup.value), dt_min=int(time_step.value)),
             controller=spec,
             demand=demand,
         ).with_comm(SignalType.EXTERNALITY).with_compliance(
@@ -293,7 +301,7 @@ def _(
             bool(learn_noise.value)
         ).with_stationary(bool(stationary.value)).with_noise_regime(
             noise_regime.value
-        )
+        ).with_bypass_capacity_scale(float(bypass_capacity_scale.value))
         # Snapshot every day so the belief-vs-realised charts have the per-agent
         # posterior on the days they overlay.
         results = run_experiment(

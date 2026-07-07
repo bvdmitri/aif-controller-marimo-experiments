@@ -720,6 +720,19 @@ class Params:
     def with_controller(self, spec: object) -> "Params":
         return replace(self, controller=spec)
 
+    def with_bypass_capacity_scale(self, scale: float, *, link_id: int = 5) -> "Params":
+        """Scale the nominal capacity ``cbar`` of the bypass link (link 5 by
+        default). ``scale < 1`` throttles the otherwise high-capacity bypass so it
+        can congest into a bottleneck; ``scale = 1.0`` leaves the network
+        unchanged. Only the named link's saturation flow is scaled (free-flow time
+        and the signalised movements are untouched)."""
+        net = self.network
+        links = tuple(
+            replace(ls, cbar=ls.cbar * float(scale)) if ls.link_id == link_id else ls
+            for ls in net.links
+        )
+        return replace(self, network=replace(net, links=links))
+
     def with_comm(self, signal_type: SignalType) -> "Params":
         return replace(self, comm=replace(self.comm, signal_type=signal_type))
 
