@@ -29,7 +29,7 @@ NOTEBOOK_IDS: tuple[str, ...] = (
     "social_internalisation",
     "controller_benchmark",
     "information_communication",
-    "compliance_robustness",
+    "capacity_sensitivity",
 )
 
 
@@ -273,32 +273,38 @@ anticipation can still help by reducing over-/under-reaction; read the
 value-of-information question as empirical, not assumed.
 """
 
-_COMPLIANCE = r"""
-### Sweeping traveller compliance
+_CAPACITY = r"""
+### Does internalisation help when the bypass is a bottleneck?
 
-This experiment fixes the AIF controller and shares the controller's full belief
-(**QB+SP**: queue belief and planned split) before travellers choose, then
-sweeps the **compliance fraction**: the share of travellers that actually fuse
-the controller's belief into their decision. The rest ignore it and decide on
-their own posterior alone.
+Sweeping social internalisation $\theta$ barely moves system cost at the default
+network, because the bypass route $\beta$ is high-capacity spare: diverting off
+the intersection is nearly free, so the congestion externality that $\theta$ acts
+on lives almost entirely on the intersection and there is little to redistribute.
+This experiment fixes the AIF controller (externality advisory on, full
+compliance) and sweeps $\theta \in \{0,0.25,0.5,0.75,1.0\}$ across several
+**bypass-capacity scales** (link 5 saturation flow $\times\,1.0, 0.5, 0.25$),
+throttling the bypass into a real bottleneck so that diverting onto it carries a
+genuine social cost.
 
-At compliance $0$ nobody fuses, so the broadcast is an exact no-op and the
-setting is **bit-identical** to the baseline; at compliance $1$ every traveller
-anticipates the day using the controller's shared belief. This isolates *who
-listens* (the complement of Experiment 3, which fixes full compliance and varies
-*what* is shared).
+The twist is the **advisory smoothing window $W$**. The cost-offset advisory is
+built from a day's realised state and acted on the *next* day, a one-day-stale
+feedback. Once the bypass is congestible this stale signal drives a violent
+day-to-day **cobweb**: travellers swing en masse between the two routes every
+day, and the alternating overloads send system cost far *above* the $\theta=0$
+baseline, so $\theta$ appears to backfire. Averaging the advisory over the last
+$W$ days damps the cobweb; past a threshold (around $W\approx25$ days here) the
+oscillation collapses and $\theta$ helps again even with the bypass throttled.
+Use the **advisory smoothing $W$** slider (default $25$) to move between the raw
+($W=1$) and stabilised regimes and watch the cobweb appear and vanish.
 
-A per-chart "how to read" guide is appended automatically below. The question
-this experiment asks is whether the coordination effect of shared anticipation
-degrades **gracefully** with compliance, fading smoothly rather than collapsing
-at a cliff.
+A per-chart "how to read" guide is appended automatically below.
 """
 
 _ADDENDA: dict[str, str] = {
     "social_internalisation": _CONTROLLER + "\n" + _SOCIAL,
     "controller_benchmark": _COMPARISON,
     "information_communication": _CONTROLLER + "\n" + _COMMUNICATION,
-    "compliance_robustness": _CONTROLLER + "\n" + _COMPLIANCE,
+    "capacity_sensitivity": _CONTROLLER + "\n" + _CAPACITY,
 }
 
 
@@ -455,6 +461,19 @@ CHART_GUIDE: dict[str, dict] = {
         "read": "Rows are the social-internalisation theta, columns the controllers, "
         "on a shared colour scale (lighter = cheaper). Read down a column for one "
         "controller across theta, along a row to compare controllers at one theta.",
+    },
+    "plot_cost_vs_theta_by_capacity": {
+        "title": "Cost vs theta, by bypass capacity",
+        "slider": None,
+        "what": "Steady-state total system cost against social internalisation "
+        "theta, one line per bypass-capacity scale (link 5 saturation flow "
+        "x1.0/0.5/0.25). Left panel: absolute cost; right panel: cost relative to "
+        "that scale's theta=0, so every line starts at 1.0.",
+        "read": "On the right panel a line bending BELOW 1.0 means theta lowers "
+        "system cost at that capacity; bending ABOVE 1.0 means it backfires (the "
+        "advisory cobweb). At full capacity the line is nearly flat (theta "
+        "near-inert); throttling with a raw advisory bends it up, a smoothed "
+        "advisory (larger W) bends it back down.",
     },
     "plot_sweep_metrics": {
         "title": "Sweep metrics",
@@ -749,7 +768,8 @@ NOTEBOOK_CHARTS: dict[str, tuple[str, ...]] = {
         "plot_queue_belief_day",
         "plot_route_choice_heatmaps",
     ),
-    "compliance_robustness": (
+    "capacity_sensitivity": (
+        "plot_cost_vs_theta_by_capacity",
         "plot_sweep_metrics",
     ),
 }
@@ -798,6 +818,16 @@ TABLE_GUIDE: dict[str, dict] = {
         "`belief_SD_*` means sharper beliefs. Read against the sweep chart to see "
         "which channel helps cost vs which sharpens beliefs.",
     },
+    "capacity_theta_summary": {
+        "title": "Capacity x theta summary",
+        "what": "One row per bypass-capacity scale: system cost at theta=0 and "
+        "theta=1 and the change (%), the best theta in the sweep and its cost, and "
+        "the day-to-day route-share oscillation (P_alpha std) at theta=1.",
+        "read": "A large positive `dSC_pct` alongside a large `Palpha_std_theta1` "
+        "is the advisory cobweb (theta backfiring); smoothing the advisory shrinks "
+        "both and can turn `dSC_pct` negative (theta helps). `best_theta` is where "
+        "cost is lowest for that capacity.",
+    },
 }
 
 # Which tables each notebook renders, in display order (drives the table test
@@ -806,7 +836,7 @@ NOTEBOOK_TABLES: dict[str, tuple[str, ...]] = {
     "social_internalisation": ("run_summary_table", "theta_summary_table"),
     "controller_benchmark": ("controller_summary",),
     "information_communication": ("communication_summary_table",),
-    "compliance_robustness": (),
+    "capacity_sensitivity": ("capacity_theta_summary",),
 }
 
 _SLIDER_NOTE: dict[str, str] = {

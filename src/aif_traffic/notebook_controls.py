@@ -118,6 +118,14 @@ DESCRIPTIONS: dict[str, str] = {
         "externality advisory and/or the shared belief). At $0$ the broadcast is "
         "ignored and the setting collapses onto the baseline."
     ),
+    "advisory_smoothing": (
+        r"Advisory smoothing window $W$ (days): the cost-offset advisory is "
+        r"built from a day's realised state and acted on the next day, a "
+        r"one-day-stale feedback that can drive a day-to-day route-choice "
+        r"**cobweb** oscillation. Travellers instead act on the mean advisory "
+        r"over the last $W$ days; larger $W$ damps the cobweb. $W=1$ is the raw "
+        r"act-on-yesterday advisory."
+    ),
     "gamma": (
         r"AIF action precision $\gamma^c$. Higher $\to$ a sharper preference for "
         r"the lowest-EFE split (more decisive control)."
@@ -211,6 +219,10 @@ def compliance():
     return mo.ui.slider(0.0, 1.0, step=0.05, value=1.0, label="compliance")
 
 
+def advisory_smoothing():
+    return mo.ui.slider(1, 40, value=25, label="advisory smoothing W [days]")
+
+
 def gamma():
     return mo.ui.slider(0.5, 20.0, step=0.5, value=4.0, label="AIF gamma")
 
@@ -245,7 +257,8 @@ _GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
         # toggle; they only bite in the rolling-window (non-stationary) mode.
         "stationary", "traveller_window", "controller_window",
     )),
-    ("Communication / social", ("comm_mechanism", "theta", "compliance")),
+    ("Communication / social",
+     ("comm_mechanism", "theta", "compliance", "advisory_smoothing")),
     ("AIF controller", ("gamma", "omega", "sigma_pref", "phi_grid", "k_L")),
 )
 

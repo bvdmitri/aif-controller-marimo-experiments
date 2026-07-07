@@ -128,10 +128,12 @@ def _(mo):
            observations** channel); optionally instead share the AIF controller's
            own forecast belief (BL / QB / SP / QB+SP, fused at decision time).
            Measure the value of information.
-        4. **`04_compliance_robustness`** — fix the AIF controller and share its
-           full belief (QB+SP), then sweep the **compliance fraction**: how the
-           coordination effect changes as fewer travellers fuse the controller's
-           belief. Tests whether it degrades *gracefully*.
+        4. **`04_capacity_sensitivity`** — fix the AIF controller (externality
+           advisory on) and sweep $\theta$ across **bypass-capacity scales**,
+           throttling the bypass into a bottleneck so internalisation has
+           something to redistribute. Surfaces the advisory **cobweb** (a stale
+           one-day advisory makes $\theta$ backfire) and the **advisory-smoothing
+           $W$** knob that damps it so $\theta$ helps again.
         """
     )
     return

@@ -91,6 +91,41 @@ def theta_summary_table(
     return pd.DataFrame(rows)
 
 
+def capacity_theta_summary(
+    results_by_scale_theta: Mapping[str, Mapping[float, object]],
+    *, n_last: int = 15,
+) -> pd.DataFrame:
+    """Steady-state summary per bypass-capacity scale over the theta sweep.
+
+    One row per capacity scale: the ``theta=0`` and ``theta=1`` mean system cost
+    and their change (%), the best ``theta`` in the sweep and its cost, and the
+    day-to-day route-share oscillation (``P_alpha`` std) at ``theta=1``. A large
+    ``dSC_pct`` with a large oscillation flags the advisory cobweb; smoothing the
+    advisory (raising the window) shrinks both. Reads off whether internalisation
+    helps at a given capacity and advisory-smoothing window.
+    """
+    rows: list[dict] = []
+    for label, by_theta in results_by_scale_theta.items():
+        thetas = sorted(t for t in by_theta if by_theta.get(t) is not None)
+        if not thetas:
+            continue
+        costs = {t: float(_tail(_daily_cost(by_theta[t].step), n_last).mean())
+                 for t in thetas}
+        t0, t1 = thetas[0], thetas[-1]
+        best_t = min(costs, key=costs.get)
+        osc = float(_tail(_daily_route_share(by_theta[t1].step), n_last).std())
+        rows.append({
+            "bypass_scale": str(label),
+            "SC_theta0": costs[t0],
+            "SC_theta1": costs[t1],
+            "dSC_pct": 100.0 * (costs[t1] - costs[t0]) / costs[t0],
+            "best_theta": float(best_t),
+            "best_SC": costs[best_t],
+            "Palpha_std_theta1": osc,
+        })
+    return pd.DataFrame(rows)
+
+
 def communication_summary_table(
     results_by_label: Mapping[str, object], *, n_last: int = 15,
 ) -> pd.DataFrame:

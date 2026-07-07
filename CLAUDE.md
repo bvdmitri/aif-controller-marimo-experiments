@@ -233,10 +233,20 @@ The three experiment notebooks mirror the paper's Experiment section one-to-one
   non-chosen routes), overlaying outcomes and belief uncertainty
   (`plot_sweep_metrics`) plus per-day route-choice heatmaps
   (`plot_route_choice_heatmaps`). The dropdown can also run the parked
-  belief-sharing channel (QB/SP) for exploration. A fourth notebook
-  `04_compliance_robustness.py` sweeps the compliance fraction that gates the
-  belief-sharing fusion: **exploratory, parked for a future heterogeneity paper,
-  not part of the current paper's experiment set.**
+  belief-sharing channel (QB/SP) for exploration.
+- `04_capacity_sensitivity.py` — **Experiment 4**: fix the AIF controller
+  (externality advisory on, full compliance) and sweep `theta` across bypass
+  (link 5) capacity scales `{1.0, 0.5, 0.25}`, throttling the bypass into a
+  bottleneck so internalisation has a real externality to redistribute. Renders
+  `plot_cost_vs_theta_by_capacity` (cost vs theta, one line per scale) + the
+  `capacity_theta_summary` table, plus a raw-vs-smoothed advisory overlay
+  (`plot_sweep_metrics`). Surfaces the advisory **cobweb**: with the bypass
+  throttled a one-day-stale advisory makes `theta` backfire, and the
+  **advisory-smoothing window** `W` (`with_advisory_smoothing`,
+  `CommParams.advisory_smoothing_days`, notebook slider default 25) damps it so
+  `theta` helps again. (Replaced the parked `04_compliance_robustness.py`
+  belief-sharing/compliance notebook, which is deferred to a future
+  heterogeneity paper.)
 
 Heavy per-experiment analysis charts (e.g. Experiment 2's theta×controller grid,
 Experiment 3's route-choice heatmaps) are scaffolded but not all built yet.

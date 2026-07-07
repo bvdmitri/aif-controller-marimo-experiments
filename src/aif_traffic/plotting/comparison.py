@@ -303,6 +303,55 @@ def plot_theta_summary(
     return fig
 
 
+def plot_cost_vs_theta_by_capacity(
+    results_by_scale_theta: Mapping[str, Mapping[float, object]],
+    n_last: int = 15,
+):
+    """Steady-state total system cost vs social internalisation ``theta``, one
+    line per bypass-capacity scale.
+
+    Two panels: (a) absolute mean daily system cost over the last ``n_last``
+    days; (b) the same relative to each scale's own ``theta=0`` cost, so every
+    curve starts at 1.0 and a downward bend means ``theta`` *helps* at that
+    capacity while an upward bend means it backfires. Lines follow the mapping's
+    insertion order (viridis ramp). The experiment's headline chart: whether
+    internalisation pays off depends on the bypass capacity (and, via the
+    advisory-smoothing window, on whether the advisory is stable)."""
+    labels = list(results_by_scale_theta.keys())
+    thetas = sorted({t for s in labels for t in results_by_scale_theta[s]})
+    lw = active_style().line_main
+    cmap = plt.get_cmap("viridis")
+    colours = [cmap(x) for x in np.linspace(0.1, 0.9, max(len(labels), 1))]
+
+    def _mean_cost(res):
+        return float(_daily_cost(res.step).iloc[-n_last:].mean())
+
+    fig, (ax_abs, ax_rel) = plt.subplots(1, 2, figsize=(text_w(), text_w() * 0.42))
+    for lab, colour in zip(labels, colours):
+        by_theta = results_by_scale_theta[lab]
+        ys = [(_mean_cost(by_theta[t]) if by_theta.get(t) is not None else np.nan)
+              for t in thetas]
+        base = ys[0] if ys and ys[0] and ys[0] == ys[0] else np.nan
+        rel = [(y / base if base and base == base else np.nan) for y in ys]
+        ax_abs.plot(thetas, ys, color=colour, linewidth=lw, marker="o",
+                    markersize=3, label=str(lab))
+        ax_rel.plot(thetas, rel, color=colour, linewidth=lw, marker="o",
+                    markersize=3, label=str(lab))
+    ax_abs.set_ylabel("system cost [veh-min]")
+    ax_rel.set_ylabel(r"cost relative to $\theta=0$")
+    ax_rel.axhline(1.0, color="0.5", linewidth=0.8, linestyle=":")
+    for ax in (ax_abs, ax_rel):
+        ax.set_xlabel(r"social internalisation $\theta$")
+        ax.grid(alpha=0.25)
+    light_borders([ax_abs, ax_rel])
+    handles, lbls = ax_abs.get_legend_handles_labels()
+    fig.legend(handles=handles, labels=lbls, loc="upper center",
+               ncol=max(len(handles), 1), frameon=False,
+               bbox_to_anchor=(0.5, 1.03), fontsize=7.5)
+    fig.tight_layout(rect=(0, 0, 1, 0.92))
+    return fig
+
+
 def plot_theta_route_choice(
     results_by_ctrl_theta: Mapping[str, Mapping[float, object]],
     n_last: int = 30,

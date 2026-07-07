@@ -37,9 +37,11 @@ from aif_traffic.parameters import (
     SimParams,
 )
 from aif_traffic.plotting import (
+    capacity_theta_summary,
     plot_belief_reality_queues,
     plot_co_adaptation,
     plot_controller_theta_grid,
+    plot_cost_vs_theta_by_capacity,
     plot_coupled_within_day,
     plot_demand_profile,
     plot_learned_obs_noise,
@@ -241,28 +243,38 @@ def smoke_belief_communication() -> None:
     _save_figure(plot_route_choice_heatmaps(results), "belief_route_choice.png")
 
 
-def smoke_compliance() -> None:
-    """Experiment 4: the controller's shared belief (QB+SP) swept over compliance
-    fractions. Renders the sweep overlay and checks that zero compliance is
-    bit-identical to the baseline (nobody fuses the broadcast)."""
-    import numpy as np
+def smoke_capacity_sensitivity() -> None:
+    """Experiment 4: theta swept across bypass-capacity scales (externality
+    advisory on, full compliance), plus the raw-vs-smoothed advisory overlay.
+    Exercises the new cost-vs-theta-by-capacity chart, the capacity summary
+    table, and the advisory-smoothing knob end-to-end."""
+    base = _small_params(
+        AIFControllerSpec(), SignalType.EXTERNALITY).with_compliance(1.0)
 
-    base = _small_params(AIFControllerSpec()).with_belief_signals(
-        BeliefSignal.QUEUE_BELIEF, BeliefSignal.SPLIT_PLAN
-    )
-    results = {
-        f"{int(round(f * 100))}%": run_experiment(base.with_compliance(f))
-        for f in (0.0, 0.5, 1.0)
+    grid = {}
+    for s in (1.0, 0.25):
+        row = {}
+        for t in (0.0, 1.0):
+            row[t] = run_experiment(
+                base.with_bypass_capacity_scale(s).with_theta(t)
+                .with_advisory_smoothing(25))
+        grid[f"bypass x{s:g}"] = row
+    for label, by_theta in grid.items():
+        for t, res in by_theta.items():
+            assert not res.step.empty, f"{label} theta {t}: empty step frame"
+    _save_figure(plot_cost_vs_theta_by_capacity(grid), "capacity_theta_cost.png")
+    assert not capacity_theta_summary(grid).empty, "capacity summary empty"
+
+    # Raw (W=1) vs smoothed (W=25) advisory at the throttled scale.
+    variants = {
+        "stale (W=1)": run_experiment(
+            base.with_bypass_capacity_scale(0.25).with_theta(1.0)
+            .with_advisory_smoothing(1)),
+        "smoothed (W=25)": run_experiment(
+            base.with_bypass_capacity_scale(0.25).with_theta(1.0)
+            .with_advisory_smoothing(25)),
     }
-    for name, res in results.items():
-        assert not res.step.empty, f"compliance {name}: empty step frame"
-    _save_figure(plot_sweep_metrics(results), "compliance_sweep.png")
-
-    # Zero compliance must collapse onto the no-broadcast baseline.
-    none = run_experiment(_small_params(AIFControllerSpec()).with_compliance(0.0))
-    assert np.array_equal(
-        results["0%"].step["P_alpha"].values, none.step["P_alpha"].values
-    ), "zero-compliance belief broadcast is not bit-identical to baseline"
+    _save_figure(plot_sweep_metrics(variants), "capacity_advisory.png")
 
 
 def smoke_theta_grid() -> None:
@@ -315,9 +327,10 @@ def smoke_controls() -> None:
         "exp3": ["days", "warmup", "seed", "control_interval", "demand_scale",
                  "traveller_window", "controller_window", "learn_noise",
                  "stationary", "noise_regime", "compliance"],
-        "exp4": ["days", "warmup", "seed", "control_interval", "demand_scale",
-                 "traveller_window", "controller_window", "learn_noise",
-                 "stationary", "noise_regime"],
+        "exp4": ["days", "warmup", "seed", "time_step", "control_interval",
+                 "demand_scale", "bypass_capacity_scale", "traveller_window",
+                 "controller_window", "learn_noise", "stationary",
+                 "noise_regime", "advisory_smoothing"],
     }
     import marimo as mo
 
@@ -343,7 +356,7 @@ def main() -> int:
         "communication": smoke_communication,
         "extra_observations": smoke_extra_observations,
         "belief_communication": smoke_belief_communication,
-        "compliance": smoke_compliance,
+        "capacity_sensitivity": smoke_capacity_sensitivity,
         "theta_grid": smoke_theta_grid,
         "learn_obs_noise": smoke_learn_obs_noise,
         "controls": smoke_controls,
