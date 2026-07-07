@@ -98,7 +98,8 @@ def _build_registry(cfg: dict):
     r1 = run_experiment(p1, seeds=[SEED], snapshot_days=range(cfg["days"]))
 
     reg += [
-        ("exp1_demand_profile", "plot_demand_profile",
+        # fig:dynamic_demand -- the paper's demand-profile figure.
+        ("shifted_sine_demand_profiles", "plot_demand_profile",
          lambda: pl.plot_demand_profile(p1)),
         # Multi-day learning evolution (first/last + evenly spaced days).
         ("exp1_within_day_tt_vs_belief", "plot_within_day_tt_vs_belief",
