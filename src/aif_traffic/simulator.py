@@ -101,9 +101,43 @@ def simulate_one_day(
     })
 
     control_interval = int(getattr(params.controller, "control_interval_min", 10))
+
+    # --- Environment realised-observation noise --------------------------------
+    # A single noisy realisation per channel per interval, scaled by the noise
+    # regime, drawn from ``rng_obs`` (which is ``None`` under noise_free, so the
+    # run stays deterministic). Every consumer -- travellers, the controller, the
+    # relay, and the recorded columns -- observes exactly the same noisy realised
+    # value ("observed == realised"). The queue dynamics stay deterministic; the
+    # noise is on the observed realised state, not fed back into the evolution.
+    K = sim.K
+    if rng_obs is not None:
+        cohort0 = params.population.cohorts[0]
+        tt_sd = float(params.noise.obs_noise_sd)
+        L_sd = float(cohort0.sigma_L_obs)
+        phi_sd = float(cohort0.sigma_phi_obs)
+        queue_noise = ({lid: rng_obs.normal(0.0, L_sd, size=K) for lid in net.link_ids}
+                       if L_sd > 0.0 else None)
+        tt_noise = ({r: rng_obs.normal(0.0, tt_sd, size=K) for r in net.routes}
+                    if tt_sd > 0.0 else None)
+        phi_noise = rng_obs.normal(0.0, phi_sd, size=K) if phi_sd > 0.0 else None
+    else:
+        queue_noise = tt_noise = phi_noise = None
+
     queues, tt_route, phi2, phi6 = run_within_day(
         inflow_by_route, controller.decide, control_interval, net, sim, signal,
+        queue_noise=queue_noise,
     )
+    # ``queues`` are already the observed (noisy) queues. Apply the travel-time
+    # and green-split observation noise to form the realised values everyone else
+    # consumes. The controller's own applied split phi2/phi6 (its action) stays
+    # exact; only the *observed* split (travellers/relay) is noised.
+    if tt_noise is not None:
+        tt_route = {r: np.maximum(tt_route[r] + tt_noise[r], 0.0) for r in tt_route}
+    if phi_noise is not None:
+        phi2_obs = np.clip(phi2 + phi_noise, 0.0, signal.phi_sat)
+        phi6_obs = signal.phi_sat - phi2_obs
+    else:
+        phi2_obs, phi6_obs = phi2, phi6
 
     SC = daily_system_cost(inflow_by_route, tt_route, sim.dt_h)
 
@@ -114,15 +148,15 @@ def simulate_one_day(
     sig_ab, _sig_cd = net.signalised_links
     N_ab = net.n_delay(sim.dt_min)[sig_ab]
     k_arr = np.minimum(np.arange(sim.K) + N_ab, sim.K - 1)
-    green_obs_alpha = np.asarray(phi2, dtype=float)[k_arr]
+    green_obs_alpha = np.asarray(phi2_obs, dtype=float)[k_arr]
     # Extra-observation relay (Experiment 3 default, CG/SN): the controller
-    # relays the *true realised* route queues / green split of THIS day so every
-    # traveller can fold the non-chosen route into its end-of-day belief update.
-    # Empty obs_signals returns an empty broadcast (a no-op in the smoother). The
-    # belief-sharing (QB/SP) broadcast is separate and is fused at decision time
-    # in begin_day, never here.
+    # relays the *realised* (noisy) route queues / green split of THIS day so
+    # every traveller can fold the non-chosen route into its end-of-day belief
+    # update. Empty obs_signals returns an empty broadcast (a no-op in the
+    # smoother). The belief-sharing (QB/SP) broadcast is separate and is fused at
+    # decision time in begin_day, never here.
     obs_broadcast = (
-        build_observation_broadcast(params.comm, queues, phi2, phi6, net, sim)
+        build_observation_broadcast(params.comm, queues, phi2_obs, phi6_obs, net, sim)
         if params.comm.obs_signals
         else empty_observation_broadcast()
     )
@@ -131,7 +165,6 @@ def simulate_one_day(
         route_q["alpha"], route_q["beta"],
         green_obs_alpha=green_obs_alpha,
         obs_broadcast=obs_broadcast,
-        rng=rng_obs, obs_noise_sd=params.noise.obs_noise_sd,
     )
 
     # When the EXTERNALITY / MSC advisory is on, the broadcast build already
@@ -296,10 +329,11 @@ def run_experiment(
         )
         controller = build_controller(params_seed.controller, signal, net, sim)
 
-        # Noise-free environment: withhold the observation RNG so travellers fold
-        # in the *exact* realised TT / queue / green split (every added
-        # measurement noise term in update_beliefs is gated on ``rng is not
-        # None``); demand noise is off via cv=0 (see with_noise_free).
+        # Noise-free environment: withhold the environment-noise RNG so the
+        # realised TT / queue / green split are exact (the shared measurement
+        # noise drawn in simulate_one_day is gated on ``rng_obs is not None``),
+        # making the run deterministic; demand noise is off via cv=0 (see
+        # with_noise_free).
         noise_free = bool(getattr(params_seed.population.cohorts[0], "noise_free", False))
         if noise_free:
             obs_rng = None

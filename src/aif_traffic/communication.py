@@ -25,7 +25,7 @@ to the cost-offset advisory above (which only shifts the *perceived cost*):
 
 * **Extra observations** (:class:`ObservationBroadcast`, paper Experiment 3
   default, BL/CG/SN/CG+SN). Travellers natively observe only the route they
-  took; this channel relays the **true realised** route queue ``L_r`` (CG) and/or
+  took; this channel relays the **realised** route queue ``L_r`` (CG) and/or
   green split ``phi_r`` (SN) of the routes they did *not* take, fed straight into
   the traveller's smoother as *observations* (see :mod:`inference.population` /
   :mod:`inference.filter`). It reaches all travellers and works with any
@@ -215,7 +215,7 @@ class ObservationBroadcast:
 
     These are raw observations (not clipped, unlike the cost-advisory
     :class:`Broadcast`): the smoother treats them as noisy readings of the latent
-    ``L`` and ``phi``. They are the **true realised values** of the day, so the
+    ``L`` and ``phi``. They are the **realised** (noisy) values of the day, so the
     relay simply lifts the traveller's partial observation to a fuller one.
     """
 

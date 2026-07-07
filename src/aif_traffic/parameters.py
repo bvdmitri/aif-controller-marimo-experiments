@@ -208,16 +208,19 @@ class CohortSpec:
     sigma_pref: float = 4.0
     sigma_obs: float = 5.0
     """Assumed travel-time observation SD (min) -- the smoother likelihood /
-    VB-prior centre. Added TT measurement noise is separate (``obs_noise_sd``,
-    default 0)."""
+    VB-prior centre. The *injected* realised-travel-time noise is separate
+    (``NoiseParams.obs_noise_sd``); VB learning adapts this assumed SD to it."""
     sigma_L_obs: float = 3.0
-    """Queue observation SD (veh) -- both the *added* measurement noise (applied
-    every day in ``population.update_beliefs``) and the assumed likelihood SD.
-    Default ~3 veh ~= 10% of a typical route queue (tens of veh); keep it well
-    below the queue magnitude or it swamps the signal."""
+    """Queue observation SD (veh) -- both the SD of the *injected* environment
+    noise on the realised queue (a single shared noisy realisation per link per
+    interval, added in the simulator and observed identically by travellers and
+    the controller) and the smoother's assumed likelihood SD. Default ~3 veh
+    ~= 10% of a typical route queue; keep it well below the queue magnitude or it
+    swamps the signal. Injection is off under ``noise_free``; VB learning adapts
+    the assumed SD."""
     sigma_phi_obs: float = 0.03
-    """Green-split observation SD (fraction) -- added measurement noise on the
-    directly-sensed split and the assumed likelihood SD. Default 0.03 ~= a few %
+    """Green-split observation SD (fraction) -- SD of the injected noise on the
+    realised (observed) split and the assumed likelihood SD. Default 0.03 ~= a few %
     of the split, below the candidate-split grid step (~0.1), so the sensor is
     informative without pretending to be exact."""
     gamma: float = 1.0
@@ -326,18 +329,21 @@ class EFEParams:
 class NoiseParams:
     """Environment stochasticity knobs.
 
-    Travellers observe a *noisy* realisation of their trip; a fully deterministic
-    run is obtained with ``Params.with_noise_free(True)`` (the notebook toggle),
-    which zeros these and removes the queue/green-split measurement noise too.
+    The realised travel times / queues / green split are themselves stochastic: a
+    single shared noisy realisation is drawn per channel per interval per day (in
+    :func:`simulator.simulate_one_day`) and observed *identically* by every
+    traveller and by the controller ("observed == realised"). A fully
+    deterministic run is obtained with ``Params.with_noise_free(True)`` (the
+    notebook toggle / regime "off"), which withholds the environment-noise RNG so
+    the realised values are exact.
     """
 
     obs_noise_sd: float = 0.5
-    """Travel-time observation-noise SD (min) added to each traveller's realised
-    trip time. Default ~0.5 min ~= 10% of the route free-flow travel time (the
-    default network's routes are ~4-6 min free-flow) -- a realistic probe /
-    perceived-time measurement error, well below the smoother's assumed
-    ``sigma_obs`` so the filter stays stable. Set to 0 (or use
-    ``with_noise_free``) for an exact, noise-free trip time."""
+    """SD (min) of the injected noise on the realised route travel time -- one
+    shared draw per route per interval, so the recorded/plotted realised line
+    carries this noise and every traveller on that route observes it. Default
+    ~0.5 min ~= 10% of the route free-flow travel time. Scaled by the noise
+    regime; 0 (or ``with_noise_free``) gives exact, deterministic travel times."""
     demand_noise_cv: float = 0.0
     """Coefficient of variation of the per-day demand multiplier (lognormal).
     0 = identical demand every day."""
