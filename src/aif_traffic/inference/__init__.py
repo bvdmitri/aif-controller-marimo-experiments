@@ -10,11 +10,11 @@ window; L is a Gaussian Markov chain inside the window.
 
 Public entry points:
 
-* :class:`Population` -- agent population with begin_day /
+* :class:`Population`: agent population with begin_day /
   update_beliefs / snapshot.
-* :func:`build_population` -- factory from :class:`PopulationParams`.
-* :func:`window_step` -- the underlying closed-form smoother.
-* :func:`efe_route_probabilities` -- closed-form EFE action selection.
+* :func:`build_population`: factory from :class:`PopulationParams`.
+* :func:`window_step`: the underlying closed-form smoother.
+* :func:`efe_route_probabilities`: closed-form EFE action selection.
 """
 
 from .efe import efe_route_probabilities

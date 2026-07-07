@@ -5,17 +5,17 @@ can drive any of them polymorphically. A controller decides the **green-time
 split between the two competing signalised movements** (link 2 for A--B,
 link 6 for C--D) for the upcoming control interval. How it parameterises that
 decision, and whether it treats the split as a direct action or as something
-it infers, is each controller's private business -- the simulator only sees
+it infers, is each controller's private business; the simulator only sees
 ``decide`` returning ``(phi2, phi6)``.
 
 The protocol:
 
-* ``prepare_day(context)`` -- optional per-day hook (e.g. a predictive
+* ``prepare_day(context)``: optional per-day hook (e.g. a predictive
   controller precomputes a plan from the day's planned inflows). Default no-op.
-* ``decide(queue_obs, k)`` -- return ``(phi2, phi6)`` for control epoch ``k``,
+* ``decide(queue_obs, k)``: return ``(phi2, phi6)`` for control epoch ``k``,
   given the current per-link queue observation. ``phi2 + phi6 == phi_sat``.
-* ``observe(day_state)`` -- optional end-of-day learning hook. Default no-op.
-* ``snapshot()`` -- a small dict for plotting / inspection.
+* ``observe(day_state)``: optional end-of-day learning hook. Default no-op.
+* ``snapshot()``: a small dict for plotting / inspection.
 
 This is intentionally model-agnostic: the AIF controller's internal
 formulation is an open question and lives behind this same interface.
@@ -34,16 +34,16 @@ class QueueForecast(NamedTuple):
 
     For the AIF controller this is its **rolling-window smoother posterior** over
     the within-day queue trajectory (built by injecting the realised per-interval
-    observations and running inference -- :mod:`control.controller_smoother`), not
+    observations and running inference, :mod:`control.controller_smoother`), not
     a prior-predictive rollout. All arrays are length ``K`` (per within-day
     minute), indexed by the minute the queue/split refers to (the communication
     layer applies the traveller's arrival alignment ``k + N_l``):
 
-    * ``mu_L`` / ``var_L`` -- the controller's posterior belief over the
+    * ``mu_L`` / ``var_L``: the controller's posterior belief over the
       signalised A--B queue ``L_2`` (mean and per-interval marginal variance; the
       variance shrinks as the window fills with observations).
-    * ``phi2`` -- the controller's *planned* green split for the A--B movement.
-    * ``var_phi`` -- the (scalar) variance the controller attaches to its
+    * ``phi2``: the controller's *planned* green split for the A--B movement.
+    * ``var_phi``: the (scalar) variance the controller attaches to its
       planned split when shared.
     """
 

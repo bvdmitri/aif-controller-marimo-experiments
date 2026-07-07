@@ -7,7 +7,7 @@ the posterior mean.
 
 **The agent's outcome is the perceived generalized cost.** In active-inference
 terms the outcome the traveller has preferences about is
-``zeta_r = TT_r + theta * E_r`` -- its predicted travel time plus the share
+``zeta_r = TT_r + theta * E_r``, its predicted travel time plus the share
 ``theta`` of the congestion externality ``E_r`` it internalises. This is the
 textbook-clean way to encode a *social* preference: ``theta`` scales a goal /
 preference term, it is **not** a distortion of the agent's belief about its own
@@ -23,7 +23,7 @@ near the free-flow ideal ``F``"). The closed-form EFE components are then:
 * ``info_gain(a) = 1/2 log(1 + sigma_y^2 / sigma_obs^2)``   (unaffected by theta)
 
 with ``G(a) = w_R*risk - w_I*info_gain`` and route probability a softmax over
-``-gamma*G``. ``cost_offset=None`` gives ``zeta_r = TT_r`` -- the purely selfish
+``-gamma*G``. ``cost_offset=None`` gives ``zeta_r = TT_r``, the purely selfish
 (user-equilibrium) IWAI behaviour.
 """
 
@@ -135,7 +135,7 @@ def efe_route_probabilities(
 
     # Pragmatic value (risk): divergence of the predicted generalized cost from
     # the preferred one. Epistemic value (info_gain): expected reduction in
-    # state uncertainty -- independent of the preference, hence of theta.
+    # state uncertainty, independent of the preference, hence of theta.
     risk = _gaussian_kl(
         mu_q=mu_zeta, var_q=var_pred,
         mu_p=preferred_mean, var_p=(sigma_pref[:, None]) ** 2,

@@ -5,7 +5,7 @@ two-route corridor. Route inflows are mapped to link inflows through a
 route-link incidence matrix; congestion is a per-link store-and-forward
 queue. The two signalised links (2 = A--B, 6 = C--D) take their effective
 discharge capacity from the controller's green-time split each control
-interval -- this is the single point at which the macro-layer controller
+interval. This is the single point at which the macro-layer controller
 drives the physics.
 
 This module is **controller-agnostic**: :func:`run_within_day` accepts a
@@ -189,16 +189,17 @@ def run_within_day(
 ) -> tuple[dict[int, np.ndarray], dict[str, np.ndarray], np.ndarray, np.ndarray]:
     """Integrate the day while the controller sets the green split online.
 
-    Every ``control_interval`` minutes ``green_split_fn(queue_obs, k)`` is
-    called with the *current* link queues and returns ``(phi2, phi6)``, held
-    until the next control epoch.
+    Every ``control_interval`` steps (a within-day step is ``dt_min`` minutes;
+    the caller converts the controller's minute-specified cadence to steps)
+    ``green_split_fn(queue_obs, k)`` is called with the *current* link queues and
+    returns ``(phi2, phi6)``, held until the next control epoch.
 
     The queue **dynamics** are deterministic (store-and-forward). When
     ``queue_noise`` (a per-link length-``K`` array of exogenous per-interval
     noise, drawn once upstream) is supplied, the controller observes a *noisy*
     detector reading ``L + queue_noise`` at each control epoch, and the returned
     ``queues_by_link`` are the **observed** (noisy, floored at 0) queues that all
-    downstream consumers see -- the underlying evolution and the route travel
+    downstream consumers see; the underlying evolution and the route travel
     times are still computed from the true (noise-free) queues. Returns
     ``(observed_queues_by_link, tt_by_route, phi2_arr, phi6_arr)``.
     """

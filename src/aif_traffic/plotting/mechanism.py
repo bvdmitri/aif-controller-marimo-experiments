@@ -34,14 +34,14 @@ def plot_coupled_within_day(
     A grid with **one column per representative day** and two rows, so each day
     is read on its own axes rather than overlaid:
 
-    * top -- per-route traveller flow: intersection ``alpha`` (blue) and bypass
+    * top: per-route traveller flow: intersection ``alpha`` (blue) and bypass
       ``beta`` (green) [veh/h];
-    * bottom -- the controller's green split ``phi_2``: **realised** (solid,
+    * bottom: the controller's green split ``phi_2``: **realised** (solid,
       what it applied reacting to the day) vs **planned/believed** (dots, what
       it would apply from its typical-day belief alone), when recorded.
 
     ``days`` (an explicit iterable of day numbers) overrides the automatic
-    first/last/evenly-spaced pick of ``n_days`` days -- the paper uses a single
+    first/last/evenly-spaced pick of ``n_days`` days; the paper uses a single
     representative day (``days=[80]``).
 
     Read together with the traveller belief-vs-realised travel-time figure, this
@@ -113,7 +113,7 @@ def plot_co_adaptation(
 
     * (a) side-by-side heatmaps of the intersection share ``P_alpha(d, t)`` and
       the green split ``phi_2(d, t)`` over (day x time-of-day);
-    * (b) the daily profiles side by side -- demand-weighted daily ``P_alpha``
+    * (b) the daily profiles side by side: demand-weighted daily ``P_alpha``
       and the controller's daily mean ``phi_2``;
     * (c) total system cost (full width), with the **controller's cost-belief
       SD** (red dashed, right axis) overlaid when ``controller_df`` records it, so
@@ -156,7 +156,7 @@ def plot_co_adaptation(
                            cmap="viridis", vmin=0.0, vmax=1.0, shading="flat")
     fig.colorbar(im1, ax=ax_ph, orientation="horizontal", location="top",
                  fraction=0.06, pad=0.04, label=r"$\phi_2$")
-    # Day axis is shared with the daily row below -- draw it there only.
+    # Day axis is shared with the daily row below. Draw it there only.
     ax_pa.tick_params(labelbottom=False)
     ax_ph.tick_params(labelbottom=False, labelleft=False)
     panel_label(ax_pa, "a")
@@ -213,9 +213,9 @@ def plot_learning_uncertainty(
 
     Two panels sharing the day axis:
 
-    * top -- **traveller** posterior SD on the route travel time, ``TT_alpha``
+    * top: **traveller** posterior SD on the route travel time, ``TT_alpha``
       (blue) and ``TT_beta`` (green) [min];
-    * bottom -- **controller** uncertainty: its learned queue observation-noise
+    * bottom: **controller** uncertainty: its learned queue observation-noise
       SD per movement (``sigma_obs`` L_2 / L_6). (The controller's cost-belief
       SD now lives in the system-cost panel of :func:`plot_co_adaptation`.)
 
@@ -267,11 +267,11 @@ def plot_msc_tt_by_route(step_df: pd.DataFrame, *, seed: int | None = None):
     Three stacked day-series panels, one line per traveller route (``alpha``
     intersection, ``beta`` bypass):
 
-    * top -- daily mean travel time ``TT_r``;
-    * middle -- daily mean marginal social cost ``MSC_r`` (the finite-difference
+    * top: daily mean travel time ``TT_r``;
+    * middle: daily mean marginal social cost ``MSC_r`` (the finite-difference
       cost of one extra vehicle, recorded while the externality advisory is
       broadcast);
-    * bottom -- the raw externality ``E_r = MSC_r - TT_r`` (may be negative
+    * bottom: the raw externality ``E_r = MSC_r - TT_r`` (may be negative
       off-peak; the broadcast clips it at zero, this shows the unclipped value).
 
     Where the two routes' curves coincide, user equilibrium and system optimum

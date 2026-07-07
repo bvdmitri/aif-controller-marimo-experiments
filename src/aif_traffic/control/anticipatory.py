@@ -3,7 +3,8 @@
 Model-based deterministic benchmark. At **each control epoch** it observes the
 current junction (and network) queues and grid-searches the constant split that
 minimises the predicted total system cost over a short rollout horizon
-``H = horizon_min``, then applies that split until the next epoch (receding
+of ``horizon_min`` minutes (converted to steps via ``dt_min``), then applies
+that split until the next epoch (receding
 horizon). This is the deterministic, point-estimate counterpart of the AIF
 controller: same store-and-forward rollout and the same per-interval cadence,
 but it optimises a single predicted trajectory (no belief / no uncertainty) and
@@ -45,14 +46,14 @@ class AnticipatoryController(BaseController):
         self._Q_link = link_inflows(self._inflow_by_route, self.net)
         self._n_delay = self.net.n_delay(self.sim.dt_min)
 
-    # -- predicted system cost of a constant split over the horizon -------
+    # predicted system cost of a constant split over the horizon -------
     def _horizon_cost(
         self, queue_obs: Mapping[int, float], phi2: float, phi6: float, k: int,
     ) -> float:
         net, sim = self.net, self.sim
         dt_h = sim.dt_h
         sig_ab, sig_cd = net.signalised_links
-        H = max(1, int(self.spec.horizon_min))
+        H = sim.n_steps(self.spec.horizon_min)  # minutes -> within-day steps
         end = min(k + H, sim.K - 1)
 
         cap = {}

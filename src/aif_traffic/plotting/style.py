@@ -1,7 +1,7 @@
 """Central styling seam.
 
 The plotting layer has **one** place that decides visual constants: the
-*active style*. It is process-global — set once by the notebook / CI harness —
+*active style*. It is process-global, set once by the notebook / CI harness,
 so switching the whole app between looks is a single call, not an edit across
 the ~25 chart functions.
 
@@ -79,7 +79,7 @@ _MARIMO = StyleContext(
 
 # The publication style for the paper (Elsevier ``elsarticle`` 3p, single
 # column, Times; ``\textwidth = 486 pt ~= 6.72 in``). Figure fonts follow the
-# IWAI companion paper's figures — Arial/sans-serif text with STIX mathtext —
+# IWAI companion paper's figures: Arial/sans-serif text with STIX mathtext,
 # vector PDF output, colourblind-/greyscale-safe (Okabe-Ito) palette overrides.
 # ``fig_display_w == text_w`` so nothing is widened on export.
 _PAPER = StyleContext(

@@ -2,10 +2,10 @@
 
 A signalised-intersection network with a two-layer Active Inference model:
 
-* **Micro layer** -- decentralised AIF travellers choosing between an
+* **Micro layer**: decentralised AIF travellers choosing between an
   intersection route and a bypass route (reused from the IWAI route-choice
   demonstration).
-* **Macro layer** -- a *pluggable* signal controller allocating the green-time
+* **Macro layer**: a *pluggable* signal controller allocating the green-time
   split between the competing movements. Fixed-time, reactive, anticipatory,
   and an Active-Inference controller (placeholder) share one interface.
 

@@ -10,11 +10,11 @@ channels**:
 * **Cost-offset channel** (Experiment 1, ``theta``): ``begin_day(..., broadcast=...)``
   turns the cost-offset advisory into the EFE
   ``cost_offset = theta * compliance * E_r`` per (agent, route). This affects
-  *action selection only* -- the smoother (``filter.py``) is untouched by it.
+  *action selection only*: the smoother (``filter.py``) is untouched by it.
 * **Extra observations** (Experiment 3 default, CG/SN):
   ``update_beliefs(..., obs_broadcast=...)`` folds the **realised** route queue
   (CG) and/or green split (SN) into the smoother as observations of routes the
-  agent did *not* take that day. This DOES enter the belief update -- a deliberate,
+  agent did *not* take that day. This DOES enter the belief update: a deliberate,
   documented departure from the IWAI "belief update sees only first-hand,
   chosen-route observations" property. The gate ``(last_choice != route)`` keeps
   the chosen route's first-hand observation authoritative (no double counting). It
@@ -23,7 +23,7 @@ channels**:
   ``begin_day(..., belief_broadcast=...)`` fuses the controller's forward-predicted
   belief over the intersection queue (QB) and/or its planned green split (SP) into
   a **copy** of the traveller's posterior, *before* the route-choice EFE, for
-  compliant agents only. The fusion is **transient** -- it informs the decision but
+  compliant agents only. The fusion is **transient**: it informs the decision but
   is never written back to ``self.state``, so the smoother stays first-hand-only
   (IWAI-verbatim). With nobody compliant (or nothing shared) it is an exact no-op.
 """
@@ -113,7 +113,7 @@ class Population:
                 f"got {sorted(window_sizes)}."
             )
         # Stationary (continuous filtering): the window spans the WHOLE run so no
-        # day is ever dropped -- the posterior then accumulates all evidence and
+        # day is ever dropped: the posterior then accumulates all evidence and
         # tightens toward convergence (window_size is ignored). Otherwise it is
         # the rolling window_size-day smoother with forgetting.
         self.W: int = (
@@ -223,7 +223,7 @@ class Population:
         # chosen-route buffers above (one value per agent-day), these carry one
         # value per (agent, route, day): the relay informs routes the agent did
         # NOT take. The masks are choice-independent (set in update_beliefs) and
-        # ungated by compliance -- every agent receives the relayed observations.
+        # ungated by compliance: every agent receives the relayed observations.
         self._extra_L = np.zeros((self.N, 2, self.W), dtype=float)
         self._extra_sigma_L = np.ones((self.N, 2, self.W), dtype=float)
         self._extra_phi = np.zeros((self.N, 2, self.W), dtype=float)
@@ -300,7 +300,7 @@ class Population:
         (CG) and green split (SN) sampled at the agent's departure minute. The
         gate ``(last_choice != route)`` is the key correctness invariant: the
         relay informs only routes the agent did *not* take (the first-hand
-        observation wins there -- no double counting), and it reaches **every**
+        observation wins there, no double counting), and it reaches **every**
         agent (ungated by compliance: extra observations are not a recommendation
         a traveller may decline, just additional sensor data). When nothing is
         relayed the new slot's masks stay zero (a no-op in the smoother).
@@ -401,7 +401,7 @@ class Population:
 
         When ``belief_broadcast`` is given (the controller's forward-predicted
         belief), compliant agents additionally fuse it into a transient copy of
-        their posterior *before* choosing -- see :meth:`_fuse_controller_belief`.
+        their posterior *before* choosing. See :meth:`_fuse_controller_belief`.
         The fusion never touches ``self.state`` (the smoother stays
         first-hand-only); with nobody compliant or nothing shared it is skipped.
         """
@@ -470,7 +470,7 @@ class Population:
         First-hand: each agent updates from the realised travel time and queue on
         the route it actually took (and, on the signalised route, the green
         split). The realised TT / queue / green-split arrays passed in are the
-        **realised** values -- already carrying the environment's shared
+        **realised** values, already carrying the environment's shared
         measurement noise when a noise regime is active (see
         :func:`simulator.simulate_one_day`); every agent departing at the same
         interval on the same route therefore observes exactly the same realised
@@ -486,7 +486,7 @@ class Population:
         and/or green split (SN) into its belief about routes it did *not* take
         that day. ``None`` (or an empty broadcast, the baseline BL case) leaves
         the belief update bit-identical to the chosen-route-only smoother. The
-        controller's *belief-sharing* broadcast (QB/SP) does NOT enter here -- it
+        controller's *belief-sharing* broadcast (QB/SP) does NOT enter here. It
         is fused transiently at decision time in :meth:`begin_day`.
         """
         t_i = self.departure_time

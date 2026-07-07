@@ -56,6 +56,15 @@ class SimParams:
     def dt_h(self) -> float:
         return self.dt_min / 60.0
 
+    def n_steps(self, minutes: float) -> int:
+        """Number of within-day steps spanning ``minutes`` (at least 1).
+
+        The within-day arrays are indexed in ``dt_min``-minute steps, so any
+        duration specified in minutes (a control cadence, a prediction horizon)
+        must be converted to a step count before it indexes them, the same
+        minutes-to-steps conversion as :meth:`NetworkParams.n_delay`."""
+        return max(1, round(minutes / self.dt_min))
+
     @property
     def time(self) -> np.ndarray:
         return np.arange(0, self.h_min + self.dt_min, self.dt_min)
@@ -99,9 +108,9 @@ class NetworkParams:
     """Link-level intersection network.
 
     Routes:
-      * ``alpha`` -- intersection route A->B via links 1-2-3-4,
-      * ``beta``  -- bypass route A->B via links 1-5-4,
-      * ``gamma`` -- competing C->D stream via links 6-7 (exogenous demand).
+      * ``alpha``: intersection route A->B via links 1-2-3-4,
+      * ``beta``: bypass route A->B via links 1-5-4,
+      * ``gamma``: competing C->D stream via links 6-7 (exogenous demand).
 
     Links 2 (A--B) and 6 (C--D) are the two competing signalised movements;
     their effective discharge capacity is set by the controller's green-time
@@ -177,7 +186,7 @@ class DemandParams:
 
 
 # ============================================================================
-#  Travellers (micro layer) -- reuse the IWAI AIF agent, two routes alpha/beta
+#  Travellers (micro layer): reuse the IWAI AIF agent, two routes alpha/beta
 # ============================================================================
 @dataclass(frozen=True)
 class CohortSpec:
@@ -190,10 +199,10 @@ class CohortSpec:
 
     New macro-coupling knobs:
 
-    * ``theta``               -- social internalisation in ``[0, 1]``: the
+    * ``theta``: social internalisation in ``[0, 1]``: the
       fraction of the broadcast congestion externality folded into the
       perceived route cost ``zeta_r = TT_r + theta * E_r``.
-    * ``compliance_fraction`` -- fraction of the cohort that actually reads the
+    * ``compliance_fraction``: fraction of the cohort that actually reads the
       controller broadcast. The rest ignore it (fall back to private TT).
     """
 
@@ -207,11 +216,11 @@ class CohortSpec:
     # EFE preference: p_tilde_r(y) = N(mu_F_r, sigma_pref^2).
     sigma_pref: float = 4.0
     sigma_obs: float = 5.0
-    """Assumed travel-time observation SD (min) -- the smoother likelihood /
+    """Assumed travel-time observation SD (min): the smoother likelihood /
     VB-prior centre. The *injected* realised-travel-time noise is separate
     (``NoiseParams.obs_noise_sd``); VB learning adapts this assumed SD to it."""
     sigma_L_obs: float = 3.0
-    """Queue observation SD (veh) -- both the SD of the *injected* environment
+    """Queue observation SD (veh): both the SD of the *injected* environment
     noise on the realised queue (a single shared noisy realisation per link per
     interval, added in the simulator and observed identically by travellers and
     the controller) and the smoother's assumed likelihood SD. Default ~3 veh
@@ -219,7 +228,7 @@ class CohortSpec:
     swamps the signal. Injection is off under ``noise_free``; VB learning adapts
     the assumed SD."""
     sigma_phi_obs: float = 0.03
-    """Green-split observation SD (fraction) -- SD of the injected noise on the
+    """Green-split observation SD (fraction): SD of the injected noise on the
     realised (observed) split and the assumed likelihood SD. Default 0.03 ~= a few %
     of the split, below the candidate-split grid step (~0.1), so the sensor is
     informative without pretending to be exact."""
@@ -261,7 +270,7 @@ class CohortSpec:
     window_size: int = 30
     n_laplace_iters: int = 3
 
-    # -- Assume a stationary environment (continuous filtering) ----------------
+    # Assume a stationary environment (continuous filtering) ----------------
     stationary: bool = True
     """When ``True`` (the default) the traveller smoother assumes the environment
     is **stationary** and does *continuous filtering* instead of rolling-window
@@ -272,13 +281,14 @@ class CohortSpec:
     then ignored. Set ``False`` to recover the rolling ``window_size``-day
     smoother with forgetting (the IWAI non-stationary / disruption setting)."""
 
-    # -- Noise-free (fully deterministic) environment --------------------------
+    # Noise-free (fully deterministic) environment --------------------------
     noise_free: bool = False
     """When ``True`` the environment injects **no** stochastic noise: travellers
-    fold in the *exact* realised travel time / queue / green split (no measurement
-    noise is added -- note that the queue-observation noise ``sigma_L_obs`` is
-    otherwise applied every day regardless of ``NoiseParams.obs_noise_sd``), and
-    each agent's route choice is a **deterministic** function of its beliefs
+    and the controller fold in the *exact* realised travel time / queue / green
+    split. The shared realised-observation noise (drawn once per channel per
+    interval in :func:`simulator.simulate_one_day`, scaled by the noise regime)
+    is withheld by nulling its RNG, so the realised values are exact. Each
+    agent's route choice is also a **deterministic** function of its beliefs
     (a frozen per-agent decision threshold instead of a fresh random draw), so
     finite-population sampling no longer jitters the realised route shares.
     Combined with zero demand noise this makes the whole run smooth and
@@ -286,7 +296,7 @@ class CohortSpec:
     ``sigma_obs`` / ``sigma_L_obs`` still parameterise the smoother's *assumed*
     likelihood; only the *added* measurement noise is removed.)"""
 
-    # -- Learn the observation noise (per-agent variational Gamma) -------------
+    # Learn the observation noise (per-agent variational Gamma) -------------
     learn_obs_noise: bool = True
     """When ``True`` (the default), each traveller *learns* its observation-noise
     SD per channel (TT, L, phi) instead of fixing them at ``sigma_obs`` /
@@ -339,7 +349,7 @@ class NoiseParams:
     """
 
     obs_noise_sd: float = 0.5
-    """SD (min) of the injected noise on the realised route travel time -- one
+    """SD (min) of the injected noise on the realised route travel time, one
     shared draw per route per interval, so the recorded/plotted realised line
     carries this noise and every traveller on that route observes it. Default
     ~0.5 min ~= 10% of the route free-flow travel time. Scaled by the noise
@@ -361,7 +371,7 @@ _NOISE_REGIMES: dict[str, tuple[float, float, float]] = {
 
 
 # ============================================================================
-#  Controller (macro layer) -- a pluggable spec family
+#  Controller (macro layer): a pluggable spec family
 # ============================================================================
 @dataclass(frozen=True)
 class FixedTimeControllerSpec:
@@ -439,7 +449,7 @@ class AIFControllerSpec:
     realised split may still drift as it adapts to queues. Used as the fusion
     observation variance ``sigma_phi_plan**2``."""
 
-    # -- Trajectory-state rolling-window smoother (the controller's belief) ----
+    # Trajectory-state rolling-window smoother (the controller's belief) ----
     # The controller is one big AIF agent whose latent is the within-day queue
     # trajectory of both signalised movements; it estimates that trajectory from
     # the per-interval observations via a rolling-window Gaussian smoother over
@@ -458,7 +468,7 @@ class AIFControllerSpec:
     with forgetting (the non-stationary setting)."""
     controller_state_resolution: str = "minute"
     """Grid for the trajectory latent: ``"minute"`` (one node per within-day
-    minute -- a genuinely big state) or ``"epoch"`` (one node per control
+    minute, a genuinely big state) or ``"epoch"`` (one node per control
     interval, coarser/cheaper; the broadcast is then zero-order-hold expanded)."""
     sigma0: float = 5.0
     """SD (veh) of the start-of-day anchor ``L(0) ~ N(0, sigma0^2)`` that makes
@@ -468,7 +478,7 @@ class AIFControllerSpec:
     prior across the window, so the smoother can track non-stationarity. ``0``
     disables it (the within-day process noise still couples adjacent nodes)."""
 
-    # -- Learn the observation noise (variational Gamma on precision) ----------
+    # Learn the observation noise (variational Gamma on precision) ----------
     learn_obs_noise: bool = True
     """When ``True`` (the default), the controller *learns* its queue
     observation-noise scale instead of fixing it at ``sigma_obs``: a conjugate
@@ -524,7 +534,7 @@ class BeliefSignal(enum.Enum):
     a **distribution**, not a realised reading. Before travellers choose, a
     *compliant* traveller fuses the controller's Gaussian into its own posterior
     (precision-weighted) for the route-choice decision only; the fusion is
-    **transient** -- it never enters the traveller's smoother (see
+    **transient**: it never enters the traveller's smoother (see
     ``inference/population.begin_day`` and ``control/aif_controller.forecast``).
 
     Experiment-3 settings map to subsets of this enum::
@@ -547,8 +557,8 @@ class ObservationSignal(enum.Enum):
     realised travel time / queue (and, on the intersection, the green split) of
     the route it actually took that day, and learns nothing first-hand about the
     other route. This channel relays the **true realised values** of the
-    non-chosen routes -- route congestion ``L_r(d,t)`` (CG) and/or the signal
-    green split ``phi_r(d,t)`` (SN) -- which travellers fold into their
+    non-chosen routes, route congestion ``L_r(d,t)`` (CG) and/or the signal
+    green split ``phi_r(d,t)`` (SN), which travellers fold into their
     **end-of-day belief update** (the smoother, see ``inference/population`` and
     ``inference/filter``). Unlike the belief-sharing channel
     (:class:`BeliefSignal`), this carries *realised readings* (not a controller
@@ -574,10 +584,10 @@ class CommunicationSpec:
 
     Three orthogonal channels that can be combined:
 
-    * ``signal_type`` -- the cost-offset advisory (Experiment 1, theta);
-    * ``obs_signals`` -- **extra observations** of the non-chosen routes relayed
+    * ``signal_type``: the cost-offset advisory (Experiment 1, theta);
+    * ``obs_signals``: **extra observations** of the non-chosen routes relayed
       into the traveller's belief update (Experiment 3 default, BL/CG/SN/CG+SN);
-    * ``belief_signals`` -- the controller's own belief shared for decision-time
+    * ``belief_signals``: the controller's own belief shared for decision-time
       fusion (Experiment 3 optional, BL/QB/SP/QB+SP). Empty set = baseline
       (nothing shared).
     """
@@ -677,11 +687,11 @@ class Params:
     def with_noise_regime(self, regime: str) -> "Params":
         """Set the environment noise to a named regime (the notebook dropdown):
 
-        * ``"off"``    -- fully deterministic (delegates to ``with_noise_free``);
-        * ``"low"``    -- half the medium measurement noise;
-        * ``"medium"`` -- the default measurement noise (TT 0.5 min, queue 3 veh,
+        * ``"off"``: fully deterministic (delegates to ``with_noise_free``);
+        * ``"low"``: half the medium measurement noise;
+        * ``"medium"``: the default measurement noise (TT 0.5 min, queue 3 veh,
           split 0.03);
-        * ``"high"``   -- twice the medium measurement noise.
+        * ``"high"``: twice the medium measurement noise.
 
         Regimes scale the *added measurement noise* on the travel-time / queue /
         green-split observations (which is also the smoother's assumed likelihood

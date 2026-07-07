@@ -53,7 +53,7 @@ def animate_days(
         ax_q.plot(d["tau"], d["L6"], color="tab:orange", label=r"$L_6$ (C--D)")
         ax_q.set_ylim(0, q_max)
         ax_q.set_ylabel("queue [veh]")
-        ax_q.set_title(f"AIF controller -- day {day}")
+        ax_q.set_title(f"AIF controller, day {day}")
         place_legend_above(ax_q)
         ax_q.grid(alpha=0.25)
 
@@ -83,9 +83,9 @@ def animate_route_flows(
     """Write a gif with one frame per day of the travellers' per-route flow.
 
     The day-by-day counterpart of :func:`animate_days` for the *traveller* layer:
-    each frame is the within-day route flow of :func:`plot_route_flows` -- the
+    each frame is the within-day route flow of :func:`plot_route_flows`, the
     A--B total demand and its split into the intersection route ``alpha`` and the
-    bypass ``beta``, alongside the exogenous C--D stream ``gamma`` -- so the
+    bypass ``beta``, alongside the exogenous C--D stream ``gamma``, so the
     viewer watches the population redistribute between routes across learning
     days. Axis limits are fixed to the run-wide maximum across frames so heights
     are comparable. ``fps`` sets the playback speed. Returns the path written.
@@ -118,7 +118,7 @@ def animate_route_flows(
         ax.set_xlim(0, tau_max)
         ax.set_xlabel("time of day [min]")
         ax.set_ylabel("traveller flow [veh/h]")
-        ax.set_title(f"AIF travellers -- day {day}")
+        ax.set_title(f"AIF travellers, day {day}")
         place_legend_above(ax)
         ax.grid(alpha=0.25)
         fig.tight_layout()
@@ -146,7 +146,7 @@ def animate_network_state(
     minutes of a single ``day`` (the day chosen by the notebook's inspect-day
     slider, or the last day when ``day is None``), so the viewer watches the
     traveller flow (or queue) wave build up and clear across the junction. The
-    colour scale is fixed across frames -- to the run-wide maximum with
+    colour scale is fixed across frames: to the run-wide maximum with
     ``shared_scale`` (default) so it is comparable with the other days, or the
     day's own maximum otherwise. ``fps`` sets the playback speed (frames per
     second); the default is brisk because a fine-grained day has many minutes.
@@ -189,7 +189,7 @@ def animate_network_state(
         _render_network_axes(ax, row, net, norm, cmap, color_by)
         phi2, phi6 = float(row["phi2"]), float(row["phi6"])
         ax.set_title(
-            f"Network state — day {day}, t = {tau} min\n"
+            f"Network state, day {day}, t = {tau} min\n"
             f"green split $\\phi_2$={phi2:.2f}, $\\phi_6$={phi6:.2f}   "
             f"(colour: {color_by})",
             fontsize=8,

@@ -2,10 +2,10 @@
 
 A pluggable family of controllers behind one interface (:mod:`.interface`):
 
-* :class:`FixedTimeController`    -- non-adaptive constant split,
-* :class:`ReactiveController`     -- queue-feedback (SCOOT-like),
-* :class:`AnticipatoryController` -- predictive grid search,
-* :class:`AIFController`          -- Active-Inference (placeholder seam).
+* :class:`FixedTimeController`   : non-adaptive constant split,
+* :class:`ReactiveController`    : queue-feedback (SCOOT-like),
+* :class:`AnticipatoryController`: predictive grid search,
+* :class:`AIFController`         : Active-Inference (placeholder seam).
 
 ``build_controller(spec, ...)`` dispatches by spec type so notebooks and the
 simulator can swap controllers via config alone.

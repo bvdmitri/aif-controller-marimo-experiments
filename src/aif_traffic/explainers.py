@@ -2,24 +2,24 @@
 
 Centralised prose so the per-notebook "How the simulation actually works" cells
 share one source of truth. Right now the repository ships only the markdown
-landing page (notebook 00), so there are no per-notebook addenda yet -- this
+landing page (notebook 00), so there are no per-notebook addenda yet; this
 module grows as the experiment notebooks are added, in lockstep with the code
 paths they describe.
 
 Public API mirrors the IWAI companion repo:
 
-* ``notebook_explainer(nb_id)`` -- full markdown for an end-of-notebook cell.
-* ``explainer_pointer()``        -- short top-of-notebook pointer.
-* ``NOTEBOOK_IDS``               -- the canonical set of simulation-notebook IDs.
+* ``notebook_explainer(nb_id)``: full markdown for an end-of-notebook cell.
+* ``explainer_pointer()``       : short top-of-notebook pointer.
+* ``NOTEBOOK_IDS``              : the canonical set of simulation-notebook IDs.
 
 Per-chart "how to read" guidance lives in one place too (CLAUDE.md hard rule):
 
-* ``CHART_GUIDE``      -- registry keyed by plotting-function name; each entry is
+* ``CHART_GUIDE``     : registry keyed by plotting-function name; each entry is
   ``{title, what, read, slider}`` (``slider`` in ``{None,"day","tod","day+tod"}``).
-* ``NOTEBOOK_CHARTS``  -- which charts each notebook shows, in display order.
+* ``NOTEBOOK_CHARTS`` : which charts each notebook shows, in display order.
 * ``chart_caption(id)``-- short markdown rendered *next to* a figure (with a slider
   badge when the chart follows a day / time-of-day slider).
-* ``charts_section(nb_id)`` -- the "How to read the charts" list appended to the
+* ``charts_section(nb_id)``: the "How to read the charts" list appended to the
   end-of-notebook explainer, generated from the same registry so the two never drift.
 """
 
@@ -58,8 +58,8 @@ in two stages.
    cost from a preference centred on the free-flow ideal; the epistemic term
    rewards resolving uncertainty in the belief (the IWAI rolling-window Gaussian
    smoother) and is independent of $\theta$. Each route's latent is
-   $(F, C, L, \phi)$: free-flow time, capacity, queue, and -- extending the IWAI
-   model -- the **expected green split** $\phi$. On the signalised intersection
+   $(F, C, L, \phi)$: free-flow time, capacity, queue, and, extending the IWAI
+   model, the **expected green split** $\phi$. On the signalised intersection
    route $C$ is the saturation flow and the effective capacity is $\phi\,C$, so
    $TT_\alpha = F + 60\,L/(\phi\,C)$; the bypass has no signal and keeps
    $TT_\beta = F + 60\,L/C$ with $\phi$ inert. The green split is observed
@@ -86,12 +86,12 @@ evidence, so posteriors **tighten monotonically toward convergence**. This suits
 fixed environment and removes the periodic cost spikes that appear when a rolling
 window first drops its oldest day. Turning it **off** recovers the IWAI
 **rolling-window** smoother, which keeps only the last *window* days and re-inflates
-uncertainty on routes not seen recently -- the right choice when the environment is
+uncertainty on routes not seen recently, the right choice when the environment is
 *non-stationary* (disruptions), at the cost of some forgetting-driven churn. While
 stationary is on, the traveller/controller **window sliders have no effect**.
 
-By default travellers also observe a *noisy* trip -- a small measurement noise on
-the realised travel time / queue / green split -- and route choice is a finite
+By default travellers also observe a *noisy* trip, a small measurement noise on
+the realised travel time / queue / green split, and route choice is a finite
 sample, so realised shares jitter day to day. The **"noise-free environment"**
 toggle removes all of this (exact observations, deterministic route choice,
 identical demand each day) for clean, reproducible convergence; it is off by
@@ -123,7 +123,7 @@ network-wide view and can share it in three distinct ways.
   split $\hat\phi$ (**SP**). A **compliant** traveller *fuses* that Gaussian into
   its own posterior (precision-weighted) to make the route decision; a
   non-compliant traveller uses only its own posterior. The fusion is
-  **transient** -- it shapes the choice but is never written back into the
+  **transient**; it shapes the choice but is never written back into the
   smoother. Requires an AIF controller (only it holds beliefs). At zero
   compliance every QB/SP setting collapses onto BL exactly.
 """
@@ -132,7 +132,7 @@ _CONTROLLER = r"""
 ### The Active Inference signal controller
 
 The controller is the same kind of agent as the travellers, differing only in
-its preferred observation -- and, like them, it **learns with a rolling-window
+its preferred observation, and, like them, it **learns with a rolling-window
 Gaussian smoother**. Its latent is the **entire within-day queue trajectory** of
 both signalised movements $(L_2(t), L_6(t))_t$ (one big state), which it estimates
 from the per-interval queue observations over a window of the last few days, with
@@ -167,7 +167,7 @@ precision $\tau=1/\sigma_{obs}^2$, fit by mean-field coordinate-ascent
 variational Bayes inside the smoother (the controller learns one scale per
 movement; each traveller learns one per observation channel). The split-dependent
 structure is kept; only the magnitude is learned. The belief band below then
-becomes *data-driven* — and the learned-noise chart shows how it settles over
+becomes *data-driven*, and the learned-noise chart shows how it settles over
 days. (Off by default, so the fixed-noise model is unchanged.)
 
 A per-chart "how to read" guide is appended automatically below (one entry per
@@ -187,7 +187,7 @@ The same network and demand are run under four signal controllers, swapping only
   grid-searches the constant split minimising predicted system cost over a
   rollout horizon from the current queues (receding horizon, point estimate).
 - **AIF (proposed)** keeps a belief over the junction queues and minimises the
-  Expected Free Energy (risk minus information gain) each control interval --
+  Expected Free Energy (risk minus information gain) each control interval,
   the belief-propagated counterpart of the anticipatory controller (Section 4.2).
 
 The *summary table* collects, per controller, mean cost, day-to-day cost
@@ -207,8 +207,8 @@ equilibrium** ($\theta=0$, travellers minimise only their own travel time) to
 the **system optimum** ($\theta=1$, travellers fully internalise the congestion
 externality $E_r$ they impose). The summary panels compare route shares, travel
 times, queue imbalance, and total system cost across $\theta$: higher $\theta$
-is expected to spread demand more evenly between the intersection and bypass --
-especially at the demand peak -- and lower the total system cost.
+is expected to spread demand more evenly between the intersection and bypass,
+especially at the demand peak, and lower the total system cost.
 
 Note that $\theta$ enters the perceived cost as $\zeta_r = TT_r + \theta E_r$,
 so it only changes behaviour when the externality $E_r$ is actually communicated
@@ -231,17 +231,17 @@ nothing first-hand about the other route. This channel relays the **true realise
 values** of the routes the traveller did *not* take, folded into its end-of-day
 belief update (its rolling-window smoother), comparing four settings:
 
-- **BL (baseline)** -- nothing relayed; each traveller keeps its partial view.
-- **CG (route congestion)** -- the realised route queue $L_r(d,t)$ of the
+- **BL (baseline)**: nothing relayed; each traveller keeps its partial view.
+- **CG (route congestion)**: the realised route queue $L_r(d,t)$ of the
   non-chosen route is relayed.
-- **SN (signal control)** -- the realised green split $\phi_r(d,t)$ is relayed to
+- **SN (signal control)**: the realised green split $\phi_r(d,t)$ is relayed to
   travellers who did not take the intersection.
-- **CG+SN** -- both.
+- **CG+SN**: both.
 
 The relayed value is the day's true reading; the smoother folds it in with the
 same observation variance the traveller uses for its own first-hand readings,
 gated so it only informs the route the traveller did *not* take (its own
-experience stays authoritative -- no double counting). This channel reaches
+experience stays authoritative, no double counting). This channel reaches
 **every** traveller and works with **any** controller (it does not require the
 controller to hold beliefs); it simply lifts each traveller from a partial view
 toward a fuller one.
@@ -266,7 +266,7 @@ slider.
 
 A caveat the model makes explicit: both channels sharpen each traveller's
 *private* travel-time anticipation, which drives behaviour toward the **user
-equilibrium** -- neither carries an externality/social term, so (unlike the
+equilibrium**; neither carries an externality/social term, so (unlike the
 cost-offset $\theta\,E_r$ channel of Experiment 1) there is no guarantee
 that fuller information alone reaches the lowest *system* cost. Better
 anticipation can still help by reducing over-/under-reaction; read the
@@ -277,7 +277,7 @@ _COMPLIANCE = r"""
 ### Sweeping traveller compliance
 
 This experiment fixes the AIF controller and shares the controller's full belief
-(**QB+SP** -- queue belief and planned split) before travellers choose, then
+(**QB+SP**: queue belief and planned split) before travellers choose, then
 sweeps the **compliance fraction**: the share of travellers that actually fuse
 the controller's belief into their decision. The rest ignore it and decide on
 their own posterior alone.
@@ -290,7 +290,7 @@ listens* (the complement of Experiment 3, which fixes full compliance and varies
 
 A per-chart "how to read" guide is appended automatically below. The question
 this experiment asks is whether the coordination effect of shared anticipation
-degrades **gracefully** with compliance -- fading smoothly rather than collapsing
+degrades **gracefully** with compliance, fading smoothly rather than collapsing
 at a cliff.
 """
 
@@ -312,7 +312,7 @@ def notebook_explainer(nb_id: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Per-chart "how to read" guide -- single source of truth (CLAUDE.md hard rule)
+# Per-chart "how to read" guide: single source of truth (CLAUDE.md hard rule)
 # ---------------------------------------------------------------------------
 #
 # Every figure rendered in an experiment notebook is captioned from this registry
@@ -325,15 +325,15 @@ def notebook_explainer(nb_id: str) -> str:
 
 _SLIDER_BADGE: dict[str, str] = {
     "day": (
-        "🎚️ **Shows a single day -- whichever the _inspect day_ slider is set "
+        "🎚️ **Shows a single day, whichever the _inspect day_ slider is set "
         "to.** Move the slider to inspect any other day."
     ),
     "tod": (
-        "🎚️ **Shows a single time of day -- whichever the _time of day_ slider "
+        "🎚️ **Shows a single time of day, whichever the _time of day_ slider "
         "is set to.** Move it to scan across the day."
     ),
     "day+tod": (
-        "🎚️ **Shows a single day _and_ time of day -- set by the _inspect day_ "
+        "🎚️ **Shows a single day _and_ time of day, set by the _inspect day_ "
         "and _time of day_ sliders.** Move either to look elsewhere."
     ),
 }
@@ -344,7 +344,7 @@ CHART_GUIDE: dict[str, dict] = {
     "plot_demand_profile": {
         "title": "Demand profile",
         "slider": None,
-        "what": "The two demand streams over the time of day -- A--B (blue) and "
+        "what": "The two demand streams over the time of day: A--B (blue) and "
         "the exogenous C--D (orange), in veh/h.",
         "read": "This is the model's input, identical every day; both rise to a "
         "midday peak and A--B is the larger stream. Use the peak's position here as "
@@ -355,7 +355,7 @@ CHART_GUIDE: dict[str, dict] = {
         "slider": "day",
         "what": "Top: within-day queues on the two signalised links, L_2 (A--B, "
         "blue) and L_6 (C--D, orange), in veh. Bottom: the green split phi_2, phi_6 "
-        "they receive (the two sum to a fixed total below 1 -- the rest is lost time).",
+        "they receive (the two sum to a fixed total below 1; the rest is lost time).",
         "read": "Read the panels together: a queue grows whenever its movement's "
         "green time (capacity) sits below its arrival rate, and drains when it sits "
         "above. The Y-axis is fixed across all days, so a lower curve is a genuinely "
@@ -365,7 +365,7 @@ CHART_GUIDE: dict[str, dict] = {
         "title": "Controller belief vs realised queue",
         "slider": "day",
         "what": "Per link (L_2 top, L_6 bottom): the realised queue (solid) and the "
-        "controller's belief -- its smoother posterior mean (dashed) with a +/-1 sigma "
+        "controller's belief: its smoother posterior mean (dashed) with a +/-1 sigma "
         "band.",
         "read": "The belief is the controller's estimate of a typical day after "
         "folding this day into its window. A wide band means it is still uncertain; "
@@ -459,7 +459,7 @@ CHART_GUIDE: dict[str, dict] = {
     "plot_sweep_metrics": {
         "title": "Sweep metrics",
         "slider": None,
-        "what": "Stacked day-series panels, one line per swept variant -- by "
+        "what": "Stacked day-series panels, one line per swept variant: by "
         "default daily system cost, mean intersection route share, peak total "
         "queue, and traveller belief uncertainty over the intersection travel "
         "time (some views swap the last panel for the daily mean green split "
@@ -501,7 +501,7 @@ CHART_GUIDE: dict[str, dict] = {
         "slider": None,
         "what": "A 2x2 grid of day-series panels, one line per controller (full "
         "names in the legend): (a) daily system cost, and the daily queue on "
-        "(b) L_2, (c) L_5, (d) L_6 -- the within-day mean queue as a solid line "
+        "(b) L_2, (c) L_5, (d) L_6: the within-day mean queue as a solid line "
         "with the within-day min--max range shaded.",
         "read": "Compare controllers within each panel: lower cost and lower "
         "queues are better, and a narrower band means the queue varies less "
@@ -524,7 +524,7 @@ CHART_GUIDE: dict[str, dict] = {
         "last); rows are the queues (L_2,L_6), the green split (phi_2,phi_6), and "
         "belief-vs-realised for L_2 then L_6. The Y-axis is shared across each row.",
         "read": "Scan a row left-to-right to compare the same quantity on the first, "
-        "middle and last day on one scale -- e.g. whether queues shrink over the run. "
+        "middle and last day on one scale, e.g. whether queues shrink over the run. "
         "The inspect-day slider below drills into any single day.",
     },
     "animate_days": {
@@ -583,14 +583,14 @@ CHART_GUIDE: dict[str, dict] = {
         "title": "Belief vs realised queue",
         "slider": "day",
         "what": "Rows are the route-carrying links (L_2, L_5, L_6); columns are the "
-        "inspected day(s) -- the paper figure shows the first, middle, and last "
+        "inspected day(s): the paper figure shows the first, middle, and last "
         "recorded day so the beliefs sharpening over days is visible, while the "
         "notebook's day slider re-points a single-day view. Each panel: the "
         "realised within-day queue (solid) and, on the signalised L_2/L_6, the "
         "controller's queue belief (dashed mean + band; it holds no belief over "
         "the unsignalised bypass L_5). On L_2 and L_5, the queue belief of the "
         "traveller route that traverses the link (alpha and beta) is a dotted "
-        "line + band with markers -- each A--B traveller that took the route "
+        "line + band with markers: each A--B traveller that took the route "
         "placed at the minute it meets the queue (its arrival minute), agents in "
         "a minute averaged, the band their across-agent spread. L_6 (exogenous "
         "C--D) shows the controller only.",
@@ -608,7 +608,7 @@ CHART_GUIDE: dict[str, dict] = {
         "slider": None,
         "what": "A grid with one column per representative day and two rows. Top: "
         "within-day traveller flow on the intersection route alpha (blue) and "
-        "bypass beta (green). Bottom: the controller's green split phi_2 -- "
+        "bypass beta (green). Bottom: the controller's green split phi_2: "
         "realised (solid) vs planned/believed (dots).",
         "read": "Read with the travel-time belief chart: it shows the *controller* "
         "half of the coupled decision, day by day across the columns. Where "
@@ -620,8 +620,8 @@ CHART_GUIDE: dict[str, dict] = {
         "slider": None,
         "what": "A compact grid grouped (a)-(c). (a) side-by-side heatmaps of the "
         "intersection share P_alpha(d,t) and the green split phi_2(d,t) over "
-        "(day x time-of-day), with their colourbars on top; (b) their daily means "
-        "-- demand-weighted P_alpha and mean phi_2 -- side by side on a shared "
+        "(day x time-of-day), with their colourbars on top; (b) their daily means, "
+        "demand-weighted P_alpha and mean phi_2, side by side on a shared "
         "0-1 scale; (c) total system cost (full width), with the controller's "
         "cost-belief SD as a red dashed line on a right axis when recorded.",
         "read": "Scan the heatmaps left-to-right to see the daily patterns settle; "
@@ -643,8 +643,8 @@ CHART_GUIDE: dict[str, dict] = {
     "plot_theta_summary": {
         "title": "theta-sweep performance summary",
         "slider": None,
-        "what": "Four panels -- mean and SD of daily system cost, and mean and SD of "
-        "the daily peak queue L_2+L_5+L_6 -- against social internalisation theta, one "
+        "what": "Four panels: mean and SD of daily system cost, and mean and SD of "
+        "the daily peak queue L_2+L_5+L_6, against social internalisation theta, one "
         "line per controller (canonical colour), over the last days of each run.",
         "read": "Read each controller's line across theta: a flat line means theta "
         "barely changes that metric for that controller. Comparing controllers "
@@ -689,7 +689,7 @@ CHART_GUIDE: dict[str, dict] = {
         "read": "Read each controller's line across theta: a flat line means "
         "theta does not move that route's cost for that controller. Comparing "
         "the alpha and beta columns shows whether the two routes' costs "
-        "differ at all -- if they are alike, UE and SO coincide and the theta "
+        "differ at all; if they are alike, UE and SO coincide and the theta "
         "channel has nothing to redistribute.",
     },
     "plot_theta_route_choice": {
@@ -772,7 +772,7 @@ TABLE_GUIDE: dict[str, dict] = {
     "controller_summary": {
         "title": "Controller summary",
         "what": "One row per controller: mean and day-to-day std of the daily "
-        "system cost, the green-split variation (mean and std -- signal "
+        "system cost, the green-split variation (mean and std, signal "
         "stability), the mean daily peak queue L_2+L_5+L_6, and the mean daily peak "
         "on the C--D movement L_6.",
         "read": "Compare controllers row by row: lower `mean_SC` is cheaper, "
@@ -841,7 +841,7 @@ def charts_section(nb_id: str) -> str:
     for cid in ids:
         g = CHART_GUIDE[cid]
         note = _SLIDER_NOTE.get(g["slider"], "")
-        lines.append(f"- **{g['title']}**{note} -- {g['what']} {g['read']}")
+        lines.append(f"- **{g['title']}**{note}: {g['what']} {g['read']}")
     return "\n".join(lines)
 
 
@@ -866,5 +866,5 @@ def tables_section(nb_id: str) -> str:
     lines = ["### Summary tables", ""]
     for tid in ids:
         g = TABLE_GUIDE[tid]
-        lines.append(f"- **{g['title']}** -- {g['what']} {g['read']}")
+        lines.append(f"- **{g['title']}**: {g['what']} {g['read']}")
     return "\n".join(lines)

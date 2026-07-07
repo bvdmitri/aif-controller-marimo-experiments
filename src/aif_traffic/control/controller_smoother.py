@@ -1,25 +1,30 @@
-"""Rolling-window Gaussian smoother for the controller's queue-trajectory belief.
+"""Gaussian trajectory smoother for the controller's queue-trajectory belief.
 
 The Active-Inference signal controller is **one big agent** whose latent is the
 entire within-day queue trajectory of a signalised movement, ``x = (L(t))_{t=1..M}``
-on a grid of ``M`` nodes (per within-day minute, or per control epoch). It is the
-macro analogue of the travellers' rolling-window smoother (:mod:`inference.filter`):
-each day it observes the realised trajectory, and it estimates the *typical*
-trajectory over a window of the last ``W`` days. Two movements (links 2 and 6)
-are independent given the (known) split, so each is smoothed by a separate call.
+on a grid of ``M`` nodes (per within-day step, or per control epoch). It is the
+macro analogue of the travellers' smoother (:mod:`inference.filter`): each day it
+observes the realised trajectory and re-estimates the *typical* trajectory. By
+default it filters continuously over **all** observed days (stationary
+environment); the rolling ``W``-day window is the non-stationary variant. Two
+movements (links 2 and 6) are independent given the (known) split, so each is
+smoothed by a separate call.
 
 Generative model (linear-Gaussian state-space over the trajectory):
 
-* **Dynamics prior** -- a random walk with drift, ``L(t+1) = L(t) + u(t) + w(t)``,
+* **Dynamics prior**: a random walk, ``L(t+1) = L(t) + u(t) + w(t)``,
   ``w ~ N(0, q)`` (``q`` the per-step process variance), anchored at the start by
   ``L(0) ~ N(0, sigma0^2)``. This is what makes the posterior covariance **full**
   (dense, with temporal correlations ``Cov(L(t), L(s)) ∝ min(t, s)``); the
-  precision of this prior is **tridiagonal**. The drift only sets the prior
-  *mean* ``mu_prior`` (the deterministic store-and-forward rollout); the precision
-  depends only on ``q`` and ``sigma0``.
-* **Observation** -- linear, identity, per node: ``o(t) = L(t) + v(t)``,
+  precision of this prior is **tridiagonal**. The optional drift ``u(t)`` only
+  shifts the prior *mean* ``mu_prior`` and leaves the precision (a function of
+  ``q`` and ``sigma0`` alone) unchanged; the controller does not use it and
+  always passes a zero prior mean, so its effective belief prior is **driftless**
+  (the store-and-forward dynamics enter only the split-scoring rollout, not this
+  smoother prior).
+* **Observation**: linear, identity, per node: ``o(t) = L(t) + v(t)``,
   ``v ~ N(0, R(t))`` with a split-dependent precision (more green => sharper).
-  Linear observations need no linearisation -- this is an exact Gaussian solve.
+  Linear observations need no linearisation: this is an exact Gaussian solve.
 
 Folding ``W`` days of observations (the same typical trajectory explains all ``W``
 days, exactly as a traveller's ``L`` explains all ``W`` of its days) keeps the
@@ -140,7 +145,8 @@ def window_smoother(
     """Posterior mean + per-node marginal variance of the trajectory belief.
 
     Args:
-        prior_mean: ``(M,)`` prior-mean trajectory (the store-and-forward rollout).
+        prior_mean: ``(M,)`` prior-mean trajectory (zeros for the controller's
+                    driftless prior; a drift/rollout mean is supported but unused).
         q:          per-step process variance of the random-walk prior.
         sigma0:     start-of-day anchor SD.
         obs_traj:   ``(W, M)`` realised trajectories over the window.
@@ -187,10 +193,10 @@ def window_smoother_vb(
 
     Coordinate ascent (closed-form, deterministic):
 
-    * **state step** -- fix ``E[tau] = a/b``; the per-node observation variance is
+    * **state step**: fix ``E[tau] = a/b``; the per-node observation variance is
       ``R_d[t] = 1/(E[tau] * w_d[t])`` and the trajectory posterior is the banded
       :func:`window_smoother` solve (reused verbatim);
-    * **noise step** -- fix ``q(L)``; the conjugate Gamma update over the active
+    * **noise step**: fix ``q(L)``; the conjugate Gamma update over the active
       observations is ``a_post = a0 + 1/2 * N_active`` and
       ``b_post = b0 + 1/2 * sum_{d,t active} w_d[t] * E[(o_d[t] - L(t))^2]`` with
       ``E[(o - L)^2] = (o - mu_post[t])^2 + var_post[t]`` (the residual expectation
@@ -268,9 +274,11 @@ def cross_covariance(
 
 def expand_to_minutes(values: np.ndarray, control_interval: int, K: int) -> np.ndarray:
     """Zero-order-hold expand an epoch-resolution array (length ``M``) to the
-    per-minute grid (length ``K``): minute ``k`` takes epoch ``k // control_interval``
-    (the split is held constant over a control interval, matching the within-day
-    physics). For minute-resolution arrays (``len==K``) this is the identity."""
+    within-day step grid (length ``K``): step ``k`` takes epoch
+    ``k // control_interval`` where ``control_interval`` is the epoch stride in
+    *steps* (the split is held constant over a control interval, matching the
+    within-day physics). For step-resolution arrays (``len==K``) this is the
+    identity."""
     values = np.asarray(values, dtype=float)
     if values.shape[0] == K:
         return values

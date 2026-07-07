@@ -23,7 +23,7 @@ Each control is created as a named global in the cell (so downstream cells read
 whichever subset was passed.
 
 Convention (see CLAUDE.md): do **not** hand-define ``mo.ui`` sliders/checkboxes for
-the parameter panel in a notebook -- add or change a control here. ``theta`` is
+the parameter panel in a notebook: add or change a control here. ``theta`` is
 only meaningful where the externality cost-offset is broadcast (Experiments 1, 2);
 ``compliance`` only where a controller->traveller channel is gated (Experiments
 1-3; swept in Experiment 4). The per-notebook ``day_sel`` / ``tod_sel`` day-
@@ -137,7 +137,7 @@ DESCRIPTIONS: dict[str, str] = {
 
 
 # ---------------------------------------------------------------------------
-# Control builders -- one per control, returning a fresh widget with the
+# Control builders, one per control, returning a fresh widget with the
 # canonical range / default / label. (marimo needs a new element per cell run.)
 # ---------------------------------------------------------------------------
 def days():
@@ -242,7 +242,7 @@ _GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
         "bypass_capacity_scale",
         "learn_noise", "noise_regime",
         # The window sliders sit under (and are disabled by) the stationary
-        # toggle -- they only bite in the rolling-window (non-stationary) mode.
+        # toggle; they only bite in the rolling-window (non-stationary) mode.
         "stationary", "traveller_window", "controller_window",
     )),
     ("Communication / social", ("comm_mechanism", "theta", "compliance")),

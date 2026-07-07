@@ -1,7 +1,7 @@
 """Shared, semantic colour palette.
 
-One place defines what colour/label/abbreviation each *thing* gets — the four
-controllers, the three routes, and the four information-communication settings —
+One place defines what colour/label/abbreviation each *thing* gets (the four
+controllers, the three routes, and the four information-communication settings)
 so a controller (or route, or setting) keeps the **same** colour across every
 figure in the paper. Xue's review asks for this consistency repeatedly.
 
@@ -33,7 +33,7 @@ CTRL_ABBR: dict[str, str] = {
     "aif": "AIF",
 }
 # Distinct but unbiased hues; every controller gets the same line weight so no
-# controller is visually favoured — colour only tells them apart.
+# controller is visually favoured; colour only tells them apart.
 _CTRL_COLOURS_MARIMO: dict[str, str] = {
     "fixed_time": "#9e9e9e",    # grey
     "reactive": "#4393c3",      # blue
@@ -58,7 +58,7 @@ COMM_LABELS: dict[str, str] = {
     "CG+SN": "Congestion + signal (CG+SN)",
 }
 _COMM_COLOURS_MARIMO: dict[str, str] = {
-    "BL": "#9e9e9e",     # grey — the reference
+    "BL": "#9e9e9e",     # grey, the reference
     "CG": "#4393c3",     # blue
     "SN": "#d6604d",     # red
     "CG+SN": "#762a83",  # purple

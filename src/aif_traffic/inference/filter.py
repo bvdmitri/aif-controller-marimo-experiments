@@ -6,7 +6,7 @@ vector::
     z = (F, C, L, phi)  in R^4
 
 per (agent, route). All four latents are treated as fixed within the
-W-day window -- the same L value explains all W queue observations.
+W-day window: the same L value explains all W queue observations.
 
 Extension beyond the verbatim IWAI model: ``phi`` is the traveller's belief
 over the **green-split fraction** allocated to the route's signalised movement.
@@ -32,14 +32,14 @@ mask selects where ``phi`` couples. Each day:
    sequentially over the W days. A small number of relinearisation
    iterations (default 3) converges the Laplace approximation.
 
-There is no SVI, no stochastic gradient, no PRNG plumbing -- the
+There is no SVI, no stochastic gradient, no PRNG plumbing: the
 posterior is deterministic given the inputs. For an unobserved route
 the Kalman updates apply no information and the posterior equals the
 (inflated) prior exactly; no "clamp" needed.
 
 This smoother is **first-hand only** (IWAI-verbatim): it folds in observations
 of the route a traveller actually took, and nothing else. The controller's
-broadcast does not enter here -- it is fused transiently into the route-choice
+broadcast does not enter here. It is fused transiently into the route-choice
 belief at decision time (:mod:`inference.population`) and never persists into
 the smoother. The reusable rank-1 update :func:`_kalman_one_obs` is shared with
 that decision-time fusion.
@@ -100,7 +100,7 @@ class CohortPriors(NamedTuple):
     """Per-agent cohort-default priors used to rebuild Σ every window.
 
     All fields are JAX arrays of shape ``(N, 2)`` (per agent, per route).
-    These priors are NOT updated across days -- they are the fresh
+    These priors are NOT updated across days: they are the fresh
     "reset" applied at every window boundary (then inflated by
     ``n_stale_days``).
     """
@@ -258,7 +258,7 @@ def _laplace_iter_step(
     """One iterated-Laplace step.
 
     Linearises the TT forward map around ``mu_lin`` and folds in all W
-    chosen-route observations (TT, L, and -- on signalised routes -- the green
+    chosen-route observations (TT, L, and, on signalised routes, the green
     split ``phi``) starting from the prior. First-hand only for these: an
     unchosen route receives no information from them.
 
@@ -267,10 +267,10 @@ def _laplace_iter_step(
     (``mask_extra_L``/``mask_extra_phi``). These carry the true realised route
     queue / green split into routes the traveller did *not* take; the masks are
     constructed (in :mod:`inference.population`) to be zero on the chosen route
-    (the first-hand observation wins -- no double counting) and zero everywhere
+    (the first-hand observation wins, no double counting) and zero everywhere
     when nothing is relayed, in which case these folds are exact no-ops and the
     smoother is bit-identical to the chosen-route-only model. The
-    ``mask_extra_*`` arrays are ``(N, R, W)`` -- one value per route -- so, unlike
+    ``mask_extra_*`` arrays are ``(N, R, W)``, one value per route, so, unlike
     the chosen-route ``y_L``/``y_phi`` (``(N, W)`` broadcast via the ``chosen``
     one-hot), they do not use the ``chosen`` selector. The ``phi`` relay is
     additionally gated to signalised routes.
@@ -663,7 +663,7 @@ def window_step(
 
 # JIT-compiled smoother (the per-day hot path). ``window_step`` is eager
 # ``jax.numpy`` with Python loops over the W-day window and the Laplace/VB
-# iterations -- at N=2000 that is hundreds of individually-dispatched tiny ops
+# iterations. At N=2000 that is hundreds of individually-dispatched tiny ops
 # per day. ``jax.jit`` fuses them into one compiled kernel: identical math (same
 # operations, same float32 precision), just compiled. The static args are the
 # ones that set loop counts / branch structure / output shape; they are constant

@@ -1,12 +1,12 @@
 """Active-Inference signal controller.
 
 The controller is **one big AIF agent** that allocates green time between the two
-signalised movements (link 2 for A--B, link 6 for C--D) -- the macro analogue of
+signalised movements (link 2 for A--B, link 6 for C--D), the macro analogue of
 the thousands of tiny traveller agents, under the same inference scheme. Its
 latent is the **entire within-day queue trajectory** ``(L_2(t), L_6(t))_t``, which
 it estimates from the per-interval queue observations with a **rolling-window
 Gaussian smoother over the last few days** (full covariance, capturing temporal
-correlations -- see :mod:`control.controller_smoother`). It still **acts** at each
+correlations; see :mod:`control.controller_smoother`). It still **acts** at each
 control interval: it predicts the queues one interval ahead under each candidate
 split (seeded by its learned belief) and scores the splits with the
 Expected-Free-Energy functional ``G = risk - epistemic``. The smoother posterior
@@ -21,8 +21,8 @@ and differs only in its preferred observation.
 
 The epistemic (information-gain) term is **live**: the controller's detectors
 sample a movement more accurately the more green it receives, so the predicted
-observation precision -- and hence the expected information gain about the queue
-state -- depends on the split. The epistemic term therefore pulls green toward
+observation precision, and hence the expected information gain about the queue
+state, depends on the split. The epistemic term therefore pulls green toward
 the movement the controller is currently least certain about, traded off against
 the pragmatic (risk) term that pulls toward low, balanced queues. This makes the
 "propagate a full belief over queues" property substantive: both the predicted
@@ -87,10 +87,14 @@ class AIFController(BaseController):
         self._last_info = float("nan")
         self._last_efe = float("nan")
 
-        # -- Trajectory-state rolling-window smoother (the controller's belief).
+        # Trajectory-state rolling-window smoother (the controller's belief).
         # Grid (M nodes) and node<-minute map are set in _setup_context.
         self._minute_res = (spec.controller_state_resolution != "epoch")
+        # Control-epoch stride in *steps* (not minutes); the real value depends on
+        # ``dt_min`` and is set in _setup_context. This placeholder assumes the
+        # default dt_min == 1 and is overwritten before any grid is built.
         self._ci = max(1, int(spec.control_interval_min))
+        self._H_steps = max(1, int(spec.horizon_min))
         self._M = 0
         # Stationary (continuous filtering): the window spans the WHOLE run so no
         # day is dropped and the posterior tightens toward convergence. The final
@@ -109,7 +113,7 @@ class AIFController(BaseController):
         self._post_var: np.ndarray | None = None       # (2, M) posterior marginal var
         self._last_phi2: np.ndarray | None = None       # last realised split schedule (K,)
 
-        # -- Optional learned observation noise (variational Gamma on precision).
+        # Optional learned observation noise (variational Gamma on precision).
         # Per movement (0 = L_2, 1 = L_6): the learned E[sigma_obs^2] that
         # _obs_var uses, plus the posterior Gamma(a, b) over the precision for
         # diagnostics. Seeded at the fixed default; updated each day in observe().
@@ -118,7 +122,7 @@ class AIFController(BaseController):
         self._obs_a = np.full(2, float("nan"))
         self._obs_b = np.full(2, float("nan"))
 
-    # -- preference -------------------------------------------------------
+    # preference -------------------------------------------------------
     def _build_sigma_pref(self) -> None:
         """``Sigma_pref^{-1} = sigma_pref^{-2} I + omega n n^T`` with ``n`` the
         **unit** capacity-normalised imbalance direction ``prop. (1/Cbar2, -1/Cbar6)``.
@@ -136,12 +140,12 @@ class AIFController(BaseController):
         prec = (1.0 / s.sigma_pref ** 2) * np.eye(2) + s.omega * np.outer(n, n)
         self._Sigma_pref = np.linalg.inv(prec)
 
-    # -- per-day setup ----------------------------------------------------
+    # per-day setup ----------------------------------------------------
     def _setup_context(self, context: Mapping) -> None:
         """Fill the per-day prediction context (inflows, capacities, delays,
         preference) from ``context``. Shared by :meth:`prepare_day` (today's
         realised inflows) and :meth:`forecast` (expected inflows for a future
-        day). Pure context only -- does NOT touch the running belief
+        day). Pure context only: does NOT touch the running belief
         ``_mu``/``_var``/``phi2_prev`` or the ``_last_*`` snapshot fields."""
         net = context["net"]
         sim = context["sim"]
@@ -152,6 +156,12 @@ class AIFController(BaseController):
         self._cbar6 = net.cbar(self.sig_cd)
         self._dt_h = sim.dt_h
         self._K = sim.K
+        # The control cadence and prediction horizon are specified in *minutes*
+        # but index the within-day step grid, so convert them to step counts via
+        # ``dt_min`` (here, where ``sim`` is available; ``__init__`` has no
+        # ``dt_min``). At ``dt_min == 1`` this is the identity.
+        self._ci = sim.n_steps(self.spec.control_interval_min)
+        self._H_steps = sim.n_steps(self.spec.horizon_min)
         # Stationary: size the window to the whole run so it accumulates every
         # observed day (continuous filtering) rather than a rolling W-day window.
         if self._stationary:
@@ -212,7 +222,7 @@ class AIFController(BaseController):
         self._var = None
         self.phi2_prev = self.signal.phi_sat / 2.0
 
-    # -- generative-model pieces -----------------------------------------
+    # generative-model pieces -----------------------------------------
     def _obs_var(self, phi2: float, phi6: float) -> np.ndarray:
         """Action-dependent observation variance per movement.
 
@@ -263,7 +273,7 @@ class AIFController(BaseController):
         previous split)."""
         s = self.spec
         sat = self.signal.phi_sat
-        H = max(1, int(s.horizon_min))
+        H = self._H_steps
         lo = self.signal.phi_min
         hi = sat - self.signal.phi_min
         grid = np.linspace(lo, hi, int(s.phi_grid_size))
@@ -290,7 +300,7 @@ class AIFController(BaseController):
                 best = (risk, info, efe)
         return best_phi2, best
 
-    # -- action selection (minimise the EFE: risk - epistemic) ------------
+    # action selection (minimise the EFE: risk - epistemic) ------------
     def decide(self, queue_obs: Mapping[int, float], k: int) -> tuple[float, float]:
         if self._Sigma_pref is None:  # prepare_day not called (bare unit test)
             return project_to_constraint(
@@ -303,7 +313,7 @@ class AIFController(BaseController):
             float(queue_obs.get(self.sig_cd, 0.0)),
         ])
 
-        # -- Perception: Bayesian correction of the prior by the new observation.
+        # Perception: Bayesian correction of the prior by the new observation.
         #    The observation precision reflects the split actually applied over
         #    the elapsed interval (more green -> sharper). The PRIOR is the
         #    controller's one belief: when the rolling-window smoother has a
@@ -326,21 +336,21 @@ class AIFController(BaseController):
 
         # Prior over the future queue state (state covariance grows with the
         # rollout; this part is split-independent, as in any linear-Gaussian
-        # model -- the action enters through the *observation* precision below).
-        H = max(1, int(s.horizon_min))
+        # model; the action enters through the *observation* precision below).
+        H = self._H_steps
         var_state = var_b + H * (s.sigma_proc ** 2)
 
         best_phi2, best = self._score_best_split(mu_b, var_state, k, self.phi2_prev)
 
         # Carry the belief forward one control interval under the chosen split.
-        n_int = max(1, int(s.control_interval_min))
+        n_int = self._ci
         self._mu = self._rollout_mean(mu_b, best_phi2, sat - best_phi2, k, n_int)
         self._var = var_b + n_int * (s.sigma_proc ** 2)
         self.phi2_prev = best_phi2
         self._last_risk, self._last_info, self._last_efe = best
         return project_to_constraint(best_phi2, sat, self.signal.phi_min)
 
-    # -- learning: fold the realised day into the rolling-window smoother -----
+    # learning: fold the realised day into the rolling-window smoother -----
     def observe(self, day_state: Mapping) -> None:
         """End-of-day learning: append the realised within-day queue trajectory
         to the W-day window and refit the trajectory belief (the controller
@@ -420,14 +430,14 @@ class AIFController(BaseController):
         self._post_mu = post_mu
         self._post_var = post_var
 
-    # -- forecast (belief broadcast for decision-time fusion) -------------
+    # forecast (belief broadcast for decision-time fusion) -------------
     def forecast(self, context: Mapping) -> QueueForecast:
         """Broadcast the controller's belief over the upcoming day for
         decision-time fusion (Experiment 3 / 4).
 
         This is the **rolling-window smoother posterior** over the within-day
         queue trajectory (built in :meth:`observe` by injecting the realised
-        per-interval observations and running inference) -- a genuine inference
+        per-interval observations and running inference), a genuine inference
         object, not a prior-predictive rollout. Returns a :class:`QueueForecast`
         with the per-minute posterior mean/variance of the A--B queue ``L_2``
         (expanded from the node grid), the controller's planned split (the most
@@ -457,8 +467,8 @@ class AIFController(BaseController):
         """The smoother posterior over the within-day queue trajectory, expanded
         to the per-minute grid for plotting against the realised queues.
 
-        Returns ``(mu, sd)`` each shape ``(2, K)`` -- row 0 = the A--B queue
-        ``L_2``, row 1 = the C--D queue ``L_6`` -- where ``mu`` is the posterior
+        Returns ``(mu, sd)`` each shape ``(2, K)`` (row 0 = the A--B queue
+        ``L_2``, row 1 = the C--D queue ``L_6``) where ``mu`` is the posterior
         mean trajectory and ``sd`` its per-minute marginal standard deviation
         (it shrinks as the rolling window fills). This is the same posterior the
         controller broadcasts (:meth:`forecast`) and uses as its prior in
@@ -478,7 +488,7 @@ class AIFController(BaseController):
 
     def planned_split(self) -> np.ndarray | None:
         """The green-split schedule the controller would apply from its **belief
-        about the typical day alone** -- i.e. scoring the EFE at each node using
+        about the typical day alone**, i.e. scoring the EFE at each node using
         the smoother posterior, *without* the within-day Bayesian correction from
         today's realised queues that :meth:`decide` folds in.
 
@@ -492,7 +502,7 @@ class AIFController(BaseController):
             return None
         s = self.spec
         sat = self.signal.phi_sat
-        H = max(1, int(s.horizon_min))
+        H = self._H_steps
         node_minutes = self._node_minutes()
         plan = np.empty(self._M)
         prev = sat / 2.0

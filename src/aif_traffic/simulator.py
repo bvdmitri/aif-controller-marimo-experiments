@@ -100,13 +100,15 @@ def simulate_one_day(
         "day": day_index,
     })
 
-    control_interval = int(getattr(params.controller, "control_interval_min", 10))
+    # Control cadence in *steps* (the minutes-specified period converted via
+    # ``dt_min``); ``run_within_day`` fires the controller every this many steps.
+    control_interval = sim.n_steps(getattr(params.controller, "control_interval_min", 10))
 
     # --- Environment realised-observation noise --------------------------------
     # A single noisy realisation per channel per interval, scaled by the noise
     # regime, drawn from ``rng_obs`` (which is ``None`` under noise_free, so the
-    # run stays deterministic). Every consumer -- travellers, the controller, the
-    # relay, and the recorded columns -- observes exactly the same noisy realised
+    # run stays deterministic). Every consumer (travellers, the controller, the
+    # relay, and the recorded columns) observes exactly the same noisy realised
     # value ("observed == realised"). The queue dynamics stay deterministic; the
     # noise is on the observed realised state, not fed back into the evolution.
     K = sim.K
@@ -266,7 +268,7 @@ def _cohort_record(seed: int, day_index: int, population: Population,
             "F_beta_post": float(latents["F_mean"][mask, 1].mean()),
             "C_alpha_post": float(latents["C_mean"][mask, 0].mean()),
             "C_beta_post": float(latents["C_mean"][mask, 1].mean()),
-            # Traveller *queue* belief L (mean +/- SD) per route -- the
+            # Traveller *queue* belief L (mean +/- SD) per route, the
             # IWAI-translated latent, surfaced so belief-vs-realised queue
             # charts can be drawn. Route alpha traverses the signalised link L2.
             "L_alpha_post": float(latents["L_mean"][mask, 0].mean()),

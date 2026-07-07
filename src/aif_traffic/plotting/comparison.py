@@ -203,7 +203,7 @@ def plot_controller_theta_grid(
     """Heatmap of steady-state mean system cost over (theta x controller).
 
     ``results_by_ctrl_theta`` is a nested mapping
-    ``{controller_name: {theta: ExperimentResult}}`` -- one full run per
+    ``{controller_name: {theta: ExperimentResult}}``, one full run per
     (controller, theta) cell. Rows are the social-internalisation values theta
     (ascending), columns the controllers in canonical order; each cell is the
     mean daily system cost over the last ``n_last`` recorded days (lower is
@@ -258,8 +258,8 @@ def plot_theta_summary(
     """Steady-state performance vs social internalisation ``theta``, per
     controller (Xue's Experiment-1 theta Figure 1).
 
-    Four panels -- mean and SD of the daily system cost, and mean and SD of the
-    daily peak total queue ``L_2+L_5+L_6`` -- each over the last ``n_last`` days.
+    Four panels (mean and SD of the daily system cost, and mean and SD of the
+    daily peak total queue ``L_2+L_5+L_6``), each over the last ``n_last`` days.
     x-axis is ``theta``; one line per controller (canonical colour). Reveals
     whether increasing ``theta`` moves performance and whether the adaptive
     controller "absorbs" that effect.
@@ -422,7 +422,7 @@ def plot_msc_vs_theta(
 
 def controller_summary(results_by_ctrl: Mapping[str, object]) -> pd.DataFrame:
     """One row per controller: mean cost + day-to-day cost stability (std), the
-    green-split variation (mean and its day-to-day std -- the 'stable splits'
+    green-split variation (mean and its day-to-day std, the 'stable splits'
     claim), the mean daily peak total queue, and the mean daily peak on the C--D
     movement ``L_6`` (the queue the SCOOT-style controller mismanages)."""
     rows = []

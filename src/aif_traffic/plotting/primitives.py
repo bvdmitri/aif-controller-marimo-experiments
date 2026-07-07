@@ -55,8 +55,8 @@ def place_legend_above(
     columnspacing: float = 1.4,
     handlelength: float | None = None,
 ):
-    """Place ``ax``'s legend outside the data area -- centred above the plot
-    and below the title -- as a single horizontal row, instead of floating
+    """Place ``ax``'s legend outside the data area, centred above the plot
+    and below the title, as a single horizontal row, instead of floating
     inside the data.
 
     The existing axes title is re-applied with extra padding so it clears the
@@ -87,7 +87,7 @@ def panel_label(ax, s: str, *, x: float = 0.025, y: float = 0.97,
 
     Placed in axes-fraction coordinates *inside* the data area (with a faint
     white backing box for legibility over lines or a heatmap), so it never
-    extends the tight bounding box -- the saved figure keeps exactly the same
+    extends the tight bounding box: the saved figure keeps exactly the same
     dimensions. Used to mark the panels a multi-PDF paper figure stitches
     together so in-text ``Figure~Xa`` references map to the right panel.
     """

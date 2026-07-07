@@ -4,7 +4,7 @@ The notebooks expose a "save PDFs to outputs/" control that writes figures to
 the *local* repository's ``outputs/`` directory. On the public / deployed
 marimo build that control is meaningless (and would let visitors write to the
 server filesystem), so it is hidden when a deployment environment variable is
-set -- the env-var gating pattern suggested in marimo-team/marimo#6049.
+set, the env-var gating pattern suggested in marimo-team/marimo#6049.
 """
 
 from __future__ import annotations
@@ -102,7 +102,7 @@ def sweep_progress_bar(n_experiments: int, sim, *, title: str, n_seeds: int = 1)
 
     A sweep runs many experiments back-to-back (e.g. one per communication
     setting). Wrapping only the outer loop makes the bar advance once per
-    *finished* experiment -- it sits at ``0/N`` for a whole 90-day run and gives
+    *finished* experiment. It sits at ``0/N`` for a whole 90-day run and gives
     no useful ETA. Instead, create this bar once and pass its ``.update`` to
     ``run_experiment(..., on_step=...)`` so it advances **per simulated day**
     across all experiments::
@@ -111,7 +111,7 @@ def sweep_progress_bar(n_experiments: int, sim, *, title: str, n_seeds: int = 1)
             for name, p in settings.items():
                 results[name] = run_experiment(p, seeds=[seed], on_step=bar.update)
 
-    The total is ``n_experiments * n_seeds * (sim.burn_in + sim.days)`` -- one
+    The total is ``n_experiments * n_seeds * (sim.burn_in + sim.days)``, one
     tick per simulated day (``run_experiment`` ticks every day, burn-in included).
     marimo shows the rate + ETA automatically.
     """

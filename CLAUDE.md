@@ -35,30 +35,30 @@ experiment notebook.
     `theta` social-internalisation (Experiment 1). MSC/externality use the
     finite-difference re-roll; travel-time/congestion are direct proxies.
   - **Extra observations** (`ObservationSignal` = `ROUTE_CONGESTION` / `SIGNAL_CONTROL`,
-    `build_observation_broadcast`, `ObservationBroadcast`; settings BL/CG/SN/CG+SN —
+    `build_observation_broadcast`, `ObservationBroadcast`; settings BL/CG/SN/CG+SN,
     the **Experiment 3 default story**): travellers natively observe only the route
     they chose; this relays the **true realised** route queue `L_r` (CG) and/or
     green split `phi_r` (SN) of the *non-chosen* routes into the **end-of-day
     belief update** (`population._append_observation_broadcast` → `update_beliefs`
     → a choice-independent fold in `filter.window_step`/`_laplace_iter_step`,
-    gated `last_choice != route` so first-hand obs wins — no double counting). It
+    gated `last_choice != route` so first-hand obs wins, no double counting). It
     **persists** into the smoother (a documented departure from IWAI first-hand-only),
     reaches **all** travellers (NOT gated by compliance), and works with **any**
     controller. Built from the **same-day** realised values. Empty `obs_signals` (BL)
     is bit-identical (masks all-zero → exact no-op).
   - **Controller-belief broadcast** (`BeliefSignal` = `QUEUE_BELIEF` / `SPLIT_PLAN`,
-    `build_belief_broadcast`, `BeliefBroadcast`; settings BL/QB/SP/QB+SP — **parked
+    `build_belief_broadcast`, `BeliefBroadcast`; settings BL/QB/SP/QB+SP, **parked
     for a future "heterogeneity" paper, kept off by default and NOT part of the
     current paper**): the controller shares its **smoother posterior** over the
-    upcoming day — its queue belief `N(L_hat, var)` (QB) and/or its planned green
-    split (SP) — *before* travellers choose. A *compliant* traveller **fuses** that
+    upcoming day, its queue belief `N(L_hat, var)` (QB) and/or its planned green
+    split (SP), *before* travellers choose. A *compliant* traveller **fuses** that
     Gaussian into a **copy** of its own posterior at decision time
     (`population._fuse_controller_belief`, reusing `filter._kalman_one_obs`), gated
-    by compliance. The fusion is **transient** — it informs the choice but is never
+    by compliance. The fusion is **transient**: it informs the choice but is never
     written back, so the traveller smoother stays **first-hand-only**
     (IWAI-verbatim). Empty `belief_signals` (BL), or zero compliance, is
     bit-identical to no information. (Compliance, being human-level trust toward an
-    assistant agent, is likewise deferred to that future paper — not a paper
+    assistant agent, is likewise deferred to that future paper, not a paper
     experiment here.)
   - The Experiment 3 notebook (`03_information_communication.py`) picks the channel
     via the `nc.comm_mechanism()` dropdown (Disable / Extra observations [default] /
@@ -68,6 +68,14 @@ experiment notebook.
 
 ## Conventions
 
+- **HARD RULE: no em-dashes (long dashes).** Never write an em-dash in any prose
+  in this repository or the paper. This means neither the unicode `—` (U+2014)
+  nor the ASCII ` -- ` (space, hyphen, hyphen, space) used as an em-dash in
+  docstrings, comments, markdown, `explainers.py` strings, notebook text, or
+  LaTeX (`---`). Use a comma, colon, parentheses, semicolon, or a full stop
+  instead. En-dashes without surrounding spaces in compounds and ranges
+  (`A--B`, links `1-2-3-4`) and CLI flags (`--runslow`, `--extra`) are not
+  em-dashes and are fine. (Applies to everything you author, code and paper.)
 - **Pure simulation, pure plotting.** Simulator returns DataFrames; every plot
   function returns a `matplotlib.figure.Figure` and never calls `plt.show` /
   `plt.savefig`. Notebooks handle display and saving.
@@ -90,12 +98,12 @@ experiment notebook.
   `.update` as `run_experiment(..., on_step=bar.update)`, so the single bar
   advances per simulated day across all experiments (`k/(N*days)`, real ETA)
   instead of once per finished experiment.
-- **HARD RULE — experiment controls come from `notebook_controls.py`.** Every
+- **HARD RULE: experiment controls come from `notebook_controls.py`.** Every
   experiment notebook builds its parameter panel from `aif_traffic.notebook_controls`
   (`nc.days()`, `nc.theta()`, … as named globals) and renders it with
   `nc.standard_panel({...}, run_btn)`, which fixes the canonical order, grouping,
   labels and one-line descriptions. **Never hand-define an `mo.ui` slider/checkbox
-  for the parameter panel inline** — add or change a control (its range/default/
+  for the parameter panel inline**; add or change a control (its range/default/
   label/description) once in `notebook_controls.py`, so all four experiments stay
   consistent. A notebook shows only the subset it needs, but each shown control is
   identical across experiments. Placement: `theta` only where the externality
@@ -113,15 +121,15 @@ experiment notebook.
   When you change the per-day loop, the controller's generative model /
   preference / EFE, or the belief update, update `explainers.py` in the same
   commit. The same module also owns the per-chart reading guide (`CHART_GUIDE`,
-  `chart_caption`, `NOTEBOOK_CHARTS`, `charts_section`) — see the next rule.
-- **HARD RULE — every chart carries a "how to read" caption from
+  `chart_caption`, `NOTEBOOK_CHARTS`, `charts_section`); see the next rule.
+- **HARD RULE: every chart carries a "how to read" caption from
   `explainers.CHART_GUIDE`.** Every figure rendered in an experiment notebook is
   displayed through `notebook_io.figure_block("<plot_fn>", fig)`, which renders a
   **centred** caption-above-figure block; the caption text is generated from the
   chart's `CHART_GUIDE` entry (`{title, what, read, slider}`), and the *same*
   registry generates the end-of-notebook "How to read the charts" section
   (`charts_section`), so the two never drift. **Never write a figure's reading
-  guidance inline** — add or change it once in `CHART_GUIDE`, and list the chart
+  guidance inline**; add or change it once in `CHART_GUIDE`, and list the chart
   in `NOTEBOOK_CHARTS[nb_id]`. Captions must be **descriptive**: say *what is on
   screen and how to read it* ("if you see X, that is Y"); they must **not** assert
   the experiment's conclusion or inject analysis. When a chart is governed by the
@@ -146,8 +154,8 @@ Beyond unit tests, this repo keeps **behavioural characterization tests** in
 `tests/test_behaviour.py`: they run a small default experiment and assert
 *emergent* facts about the coupled two-layer dynamics (e.g. the queue dip at the
 demand peak is route diversion; travellers learn the green split only by taking
-the intersection). Each test **prints its reasoning** — what it expected, the
-observed numbers, and a verdict — so the behaviour can be audited, not just
+the intersection). Each test **prints its reasoning** (what it expected, the
+observed numbers, and a verdict) so the behaviour can be audited, not just
 pass/fail-checked. Read the narration with:
 
     uv run --extra dev pytest tests/test_behaviour.py -s
@@ -158,14 +166,14 @@ read the narration, and directly confirm or disconfirm the documented
 understanding of how the model behaves. Guidelines:
 
 - Assert robust *qualitative* facts (with generous margins), not brittle exact
-  numbers — emergent equilibria shift slightly with parameters/seeds.
+  numbers: emergent equilibria shift slightly with parameters/seeds.
 - Narrate via `print(...)` (pytest shows it on `-s` and on failure); state the
   expectation, the evidence, and a one-line verdict.
 - If a behavioural test starts failing, that is a signal to re-investigate and
-  consciously revise the documented understanding — not to silently loosen it.
+  consciously revise the documented understanding, not to silently loosen it.
 - **Run the real experiment, not a reduced stand-in.** Behavioural tests use the
-  full default configuration — at least 90 days and the default 2000-traveller
-  population (no shrunk `n_agents`/horizon) — so the verdicts reflect the model
+  full default configuration, at least 90 days and the default 2000-traveller
+  population (no shrunk `n_agents`/horizon), so the verdicts reflect the model
   as actually used. Share one `run_experiment` via a module-scoped fixture and
   prefer the deterministic (noise-free) path to keep them tractable.
 - The **full-scale behavioural characterization modules** themselves
@@ -174,7 +182,7 @@ understanding of how the model behaves. Guidelines:
   re-roll, multi-run sweeps, and the narrative reports. All `slow` tests are
   **skipped unless** you pass `--runslow` (see `tests/conftest.py`), so the fast
   `pytest tests/` and the per-push CI stay quick. Run the heavy tier locally on
-  demand with `uv run --extra dev pytest --runslow` — it is deliberately not
+  demand with `uv run --extra dev pytest --runslow`; it is deliberately not
   run in CI.
 - When the throwaway `/tmp` analysis you wrote to understand a behaviour proves a
   point worth keeping, promote it into `tests/test_behaviour.py`.
@@ -182,7 +190,7 @@ understanding of how the model behaves. Guidelines:
 ### Two flavours of characterization test
 
 Both print their reasoning; they differ in what they assert (this is the classic
-*characterization / golden-master* idea — describe what the code actually does so
+*characterization / golden-master* idea, describe what the code actually does so
 a human or another agent can read it back):
 
 - **Direction-asserting** (`tests/test_behaviour.py`,
@@ -190,7 +198,7 @@ a human or another agent can read it back):
   direction with a generous margin (e.g. "sharing the controller's queue belief
   QB shifts route choice; non-compliant travellers ignore it").
 - **Report-style** (`tests/test_narrative_reports.py`): assert only *sanity*
-  (finite, in range, not NaN) and **print** whether each paper claim holds —
+  (finite, in range, not NaN) and **print** whether each paper claim holds:
   `PAPER CLAIMS … / OBSERVED … / consistent | MISMATCH`. The direction is
   deliberately NOT asserted, so a discrepancy between the code's behaviour and
   the paper text gets *surfaced* (for a human to reconcile) rather than asserted
@@ -206,20 +214,20 @@ a human or another agent can read it back):
 The three experiment notebooks mirror the paper's Experiment section one-to-one
 (explainer IDs in `explainers.py` match the filenames):
 
-- `00_introduction.py` — markdown landing page (two-layer model, two
+- `00_introduction.py`: markdown landing page (two-layer model, two
   communication channels, the three experiments).
-- `01_social_internalisation.py` — **Experiment 1**: fix the AIF controller,
+- `01_social_internalisation.py`: **Experiment 1**: fix the AIF controller,
   sweep `theta in {0,0.25,0.5,0.75,1}`. A single-run section (within-day and
   day-to-day charts: `plot_signal_day`, `plot_green_split_heatmap`,
   `plot_daily_system_cost`, `plot_route_share_over_days`, optional `animate_days`)
   plus a `theta`-sweep overlay (`plot_sweep_metrics`).
-- `02_controller_benchmark.py` — **Experiment 2**: runs all four controllers and
+- `02_controller_benchmark.py`: **Experiment 2**: runs all four controllers and
   compares them (`plotting/comparison.py`): scalar day-series overlaid
   (`plot_controller_metrics`: system cost, peak queue, green-split variation),
   per-controller green-split heatmaps (`plot_green_split_heatmaps_by_controller`),
   a `controller_summary` table, and an optional faceted gif
   (`animate_controller_comparison`).
-- `03_information_communication.py` — **Experiment 3**: fix the AIF controller and
+- `03_information_communication.py`: **Experiment 3**: fix the AIF controller and
   sweep the **extra-observations** settings BL/CG/SN/CG+SN via
   `with_extra_observations(...)` (the relayed *realised* queue / green split of
   non-chosen routes), overlaying outcomes and belief uncertainty
@@ -227,7 +235,7 @@ The three experiment notebooks mirror the paper's Experiment section one-to-one
   (`plot_route_choice_heatmaps`). The dropdown can also run the parked
   belief-sharing channel (QB/SP) for exploration. A fourth notebook
   `04_compliance_robustness.py` sweeps the compliance fraction that gates the
-  belief-sharing fusion — **exploratory, parked for a future heterogeneity paper,
+  belief-sharing fusion: **exploratory, parked for a future heterogeneity paper,
   not part of the current paper's experiment set.**
 
 Heavy per-experiment analysis charts (e.g. Experiment 2's theta×controller grid,
@@ -235,7 +243,7 @@ Experiment 3's route-choice heatmaps) are scaffolded but not all built yet.
 
 ## Scope reminders
 
-- Plotting and `explainers.py` grow only as notebooks actually need them — no
+- Plotting and `explainers.py` grow only as notebooks actually need them, no
   speculative code.
 - Don't over-formalise: design code structure first; keep model math out until
   the paper section settles it.

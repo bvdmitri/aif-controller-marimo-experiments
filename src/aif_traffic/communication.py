@@ -16,8 +16,8 @@ marginal social cost ``MSC_r`` is computed by finite-difference re-rolling of
 the store-and-forward queue model (insert one extra vehicle on route ``r`` in
 interval ``t``, re-integrate the day under the *realised* green splits, and
 measure the increase in system cost), and the externality is
-``E_r = MSC_r - TT_r``. This is performance-heavy -- it re-rolls the network
-once per (traveller route, minute) -- so it only runs when one of those two
+``E_r = MSC_r - TT_r``. This is performance-heavy, it re-rolls the network
+once per (traveller route, minute), so it only runs when one of those two
 signals is actually broadcast.
 
 Two further controller -> traveller channels are defined here, both orthogonal
@@ -242,8 +242,8 @@ def build_observation_broadcast(
     """Assemble the extra-observation broadcast from the *realised* day.
 
     * ``ObservationSignal.ROUTE_CONGESTION`` (CG) -> ``L_r``: the arrival-aligned
-      route queue ``route_arrival_queues`` -- the very quantity a traveller senses
-      first-hand when it *does* take the route -- relayed for every traveller
+      route queue ``route_arrival_queues``, the very quantity a traveller senses
+      first-hand when it *does* take the route, relayed for every traveller
       route.
     * ``ObservationSignal.SIGNAL_CONTROL`` (SN) -> ``phi``: the arrival-aligned
       realised intersection green split ``phi2`` for the signalised traveller
@@ -293,16 +293,16 @@ class BeliefBroadcast:
     route** for the upcoming day, arrival-aligned to the traveller's departure
     minute (so a traveller departing at minute ``t`` reads index ``t``):
 
-    * ``mu_L`` / ``var_L`` -- the controller's predicted queue belief
+    * ``mu_L`` / ``var_L``: the controller's predicted queue belief
       ``N(mu_L[t], var_L[t])`` (the QUEUE_BELIEF signal), or ``None`` when not
       shared.
-    * ``phi`` / ``var_phi`` -- the controller's planned green split and its
+    * ``phi`` / ``var_phi``: the controller's planned green split and its
       variance (the SPLIT_PLAN signal), or ``None`` when not shared.
 
     Both ``None`` is the baseline (BL) case. Only the signalised intersection
     route is informed (the controller has no belief about the uncongested
     bypass). Compliant travellers fuse these Gaussians into their own posterior
-    over the intersection-route latent ``(L, phi)`` *before* choosing -- a
+    over the intersection-route latent ``(L, phi)`` *before* choosing, a
     transient, decision-time fusion that never enters the smoother (see
     :mod:`inference.population`).
     """
@@ -336,11 +336,11 @@ def build_belief_broadcast(
     the signalised link), matching the chosen-route observation the simulator
     builds first-hand:
 
-    * ``BeliefSignal.QUEUE_BELIEF`` (QB) -> ``(mu_L, var_L)`` -- the controller's
+    * ``BeliefSignal.QUEUE_BELIEF`` (QB) -> ``(mu_L, var_L)``: the controller's
       predicted intersection queue belief. (``L_2`` is the controlling component
       of the intersection route's queue; the free-flow approach links rarely
       queue, so ``L_alpha ~= L_2``.)
-    * ``BeliefSignal.SPLIT_PLAN`` (SP) -> ``(phi, var_phi)`` -- the controller's
+    * ``BeliefSignal.SPLIT_PLAN`` (SP) -> ``(phi, var_phi)``: the controller's
       planned green split, which a traveller cannot otherwise anticipate.
 
     Empty ``belief_signals`` or a ``None`` forecast returns the baseline

@@ -80,7 +80,7 @@ def plot_queue_belief_day(step: pd.DataFrame, day: int | None = None, *,
     (defaults to the last recorded day), on both signalised movements.
 
     The belief is the controller's rolling-window smoother posterior *after*
-    folding day ``N`` into its window -- i.e. what the controller now believes a
+    folding day ``N`` into its window, i.e. what the controller now believes a
     typical day's queue looks like, compared against day ``N``'s single realised
     sample. The band narrows on later days as the window fills. Requires the
     ``*_belief_mu`` / ``*_belief_sd`` columns the simulator records for a
@@ -164,8 +164,8 @@ def plot_route_flows(step: pd.DataFrame, day: int | None = None, *,
                      shared_ylim: bool = True):
     """Within-day traveller flow on each route, for a single day.
 
-    Shows the two A--B options -- the intersection route ``alpha`` (link 2) and
-    the bypass ``beta`` (link 5) -- and the exogenous C--D stream ``gamma``
+    Shows the two A--B options, the intersection route ``alpha`` (link 2) and
+    the bypass ``beta`` (link 5), and the exogenous C--D stream ``gamma``
     (link 6), with the total A--B demand for reference. ``alpha`` and ``beta``
     together make up the A--B demand, so when ``Q_alpha`` dips while ``Q_beta``
     rises travellers have shifted from the intersection to the bypass.
@@ -209,7 +209,7 @@ def plot_day_overview_grid(step: pd.DataFrame, *, days=None):
     ``days=(a, b, c)``); rows are (1) queues ``L_2,L_6``, (2) green split
     ``phi_2,phi_6``, (3) belief-vs-realised for ``L_2`` and (4) for ``L_6``. The
     Y-axis is shared across each row (computed over all days), so the three
-    columns are directly comparable -- e.g. whether queues shrink from the first
+    columns are directly comparable, e.g. whether queues shrink from the first
     to the last day. If the belief columns are absent (a controller with no
     belief), rows 3-4 show only the realised queue."""
     all_days = sorted(int(x) for x in step["day"].unique())
@@ -433,7 +433,7 @@ def plot_network_state(
     fig.colorbar(sm, ax=ax, label=clabel, fraction=0.04, pad=0.02)
 
     ax.set_title(
-        f"Network state — day {day}, t = {tau} min\n"
+        f"Network state, day {day}, t = {tau} min\n"
         f"green split $\\phi_2$={phi[2]:.2f}, $\\phi_6$={phi[6]:.2f}   "
         f"(colour: {color_by})",
         fontsize=8,

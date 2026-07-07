@@ -9,7 +9,7 @@ plus the ``step`` DataFrame.
 Route mapping for the queue figure: the A--B intersection route ``alpha``
 traverses the signalised link ``L_2``; the A--B bypass ``beta`` traverses the
 unsignalised link ``L_5``. The exogenous C--D stream (link ``L_6``) is *not* a
-learning cohort, so there is no traveller queue belief for ``L_6`` -- only the
+learning cohort, so there is no traveller queue belief for ``L_6``; only the
 controller believes it.
 """
 
@@ -83,14 +83,14 @@ def plot_within_day_tt_vs_belief(
 
     A grid with **one column per representative day** and two rows (route alpha
     top, route beta bottom), so each day is read on its own axes rather than
-    overlaid. In each panel the realised ``TT(tau)`` is drawn as-is -- the raw,
-    genuinely-stochastic within-day series, not averaged -- and the belief is
-    **dots** -- the cross-agent mean posterior-predictive TT at each departure
+    overlaid. In each panel the realised ``TT(tau)`` is drawn as-is (the raw,
+    genuinely-stochastic within-day series, not averaged) and the belief is
+    **dots**: the cross-agent mean posterior-predictive TT at each departure
     minute. Reading a row left-to-right shows the belief dots settling onto the
     realised as the agents learn.
 
     ``days`` (an explicit iterable of day numbers) overrides the automatic
-    first/last/evenly-spaced pick of ``n_days`` days -- the paper uses a single
+    first/last/evenly-spaced pick of ``n_days`` days; the paper uses a single
     representative day (``days=[80]``).
 
     Requires per-agent ``snapshots`` on the plotted days (pass ``snapshot_days``
@@ -106,7 +106,7 @@ def plot_within_day_tt_vs_belief(
     routes = ("alpha", "beta")
     colours = {r: route_colour(r) for r in routes}
 
-    # Per route: the raw realised TT per (day, tau) -- shown as-is, NOT averaged
+    # Per route: the raw realised TT per (day, tau), shown as-is, NOT averaged
     # (the realised series is genuinely stochastic).
     realised = {}
     for r in routes:
@@ -251,8 +251,8 @@ def _route_queue_belief_profile(
     Each A--B traveller holds a single scalar queue belief (``L_mean_alpha`` /
     ``L_mean_beta``) per route (the smoother latent is fixed within the day) and
     a fixed ``departure_time``. We keep only agents who actually *took* the
-    given ``route`` -- their belief is first-hand for that route's queue link
-    (alpha -> L_2, beta -> L_5) -- and place each at the within-day minute where
+    given ``route``, their belief is first-hand for that route's queue link
+    (alpha -> L_2, beta -> L_5), and place each at the within-day minute where
     they meet that queue: the **arrival** minute ``departure*dt_min +
     delay_min``. Averaging the agents in each minute bucket turns the population
     of per-agent scalars into a within-day *profile*, directly comparable to the
@@ -308,7 +308,7 @@ def plot_belief_reality_queues(
     ``L_6`` (C--D); columns are the days in ``days`` (default: the first, middle,
     and last recorded day). Each panel shows the realised within-day queue
     (solid); the signalised movements ``L_2``/``L_6`` also show the
-    **controller's** queue belief (dashed mean +/-1 sigma band) -- the controller
+    **controller's** queue belief (dashed mean +/-1 sigma band). The controller
     holds no belief over the unsignalised bypass. On ``L_2``/``L_5`` the
     **traveller queue belief** of the route traversing the link is drawn as a
     per-departure-minute profile (dots + across-agent spread band), so early- vs
@@ -451,7 +451,7 @@ def plot_within_day_communication(
         4, 2, figsize=(text_w(), text_w() * 0.9), sharex=True, sharey="row",
     )
     # The raw per-minute realised series (~300 points) is dense and noisy, so
-    # draw it thin and semi-transparent -- it reads as a light noise cloud while
+    # draw it thin and semi-transparent; it reads as a light noise cloud while
     # the smoother belief stays legible on top.
     raw_lw, raw_alpha = 0.6, 0.55
     row_specs = [

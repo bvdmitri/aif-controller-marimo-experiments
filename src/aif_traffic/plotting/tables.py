@@ -2,7 +2,7 @@
 
 The charts are qualitative; these give the numbers behind them. Each table
 aggregates the **steady state** (the last ``n_last`` recorded days) of results
-the notebooks already computed -- no new simulation. They reuse the per-day
+the notebooks already computed: no new simulation. They reuse the per-day
 metric helpers in :mod:`.comparison` and :mod:`.sweep`, and are rendered in the
 notebooks via :func:`aif_traffic.notebook_io.table_block` (caption + table).
 """
