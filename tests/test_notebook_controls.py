@@ -20,7 +20,7 @@ import pytest
 from aif_traffic import notebook_controls as nc
 
 NOTEBOOKS = sorted(
-    (Path(__file__).resolve().parent.parent / "notebooks").glob("0[1-4]_*.py")
+    (Path(__file__).resolve().parent.parent / "notebooks").glob("0[1-5]_*.py")
 )
 
 

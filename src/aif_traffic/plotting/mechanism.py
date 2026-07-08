@@ -110,13 +110,11 @@ def plot_co_adaptation(
 ):
     """Day-to-day co-adaptation of route choice, signal control, and cost.
 
-    A compact grid grouped as the paper's (a)-(c):
+    A compact grid grouped as the paper's (a)-(b):
 
     * (a) side-by-side heatmaps of the intersection share ``P_alpha(d, t)`` and
       the green split ``phi_2(d, t)`` over (day x time-of-day);
-    * (b) the daily profiles side by side: demand-weighted daily ``P_alpha``
-      and the controller's daily mean ``phi_2``;
-    * (c) total system cost (full width), with the **controller's cost-belief
+    * (b) total system cost (full width), with the **controller's cost-belief
       SD** (red dashed, right axis) overlaid when ``controller_df`` records it, so
       the controller's shrinking uncertainty can be read against the settling
       cost.
@@ -131,22 +129,17 @@ def plot_co_adaptation(
     taus = pa.index.to_numpy(dtype=float)
     days = pa.columns.to_numpy(dtype=float)
 
-    # Daily summaries.
-    daily_pa = sd.groupby("day")["P_alpha"].mean()
-    daily_phi = sd.groupby("day")["phi2"].mean()
+    # Daily summary.
     cost = _daily_cost(sd)
 
-    # Heatmaps (colourbars on top) in row 1, daily profiles in row 2, cost
-    # full-width in row 3. Axes are shared so labels/scales are not repeated:
-    # both heatmaps share "time of day", both daily panels share the 0-1 scale,
-    # and the day axis is shared down each column (drawn once, on the daily row).
-    fig = plt.figure(figsize=(text_w(), text_w() * 0.95), constrained_layout=True)
-    gs = fig.add_gridspec(3, 2, height_ratios=[2.1, 1.05, 1.35])
+    # Heatmaps (colourbars on top) in row 1, cost full-width in row 2. Axes are
+    # shared so labels/scales are not repeated: both heatmaps share "time of
+    # day", and the day axis is shared down to the cost panel (drawn once there).
+    fig = plt.figure(figsize=(text_w(), text_w() * 0.72), constrained_layout=True)
+    gs = fig.add_gridspec(2, 2, height_ratios=[2.1, 1.35])
     ax_pa = fig.add_subplot(gs[0, 0])
     ax_ph = fig.add_subplot(gs[0, 1], sharex=ax_pa, sharey=ax_pa)
-    ax_dpa = fig.add_subplot(gs[1, 0], sharex=ax_pa)
-    ax_dph = fig.add_subplot(gs[1, 1], sharex=ax_pa, sharey=ax_dpa)
-    ax_cost = fig.add_subplot(gs[2, :], sharex=ax_pa)
+    ax_cost = fig.add_subplot(gs[1, :], sharex=ax_pa)
 
     im0 = ax_pa.pcolormesh(_edges(days), _edges(taus), pa.values,
                            cmap="magma", vmin=0.0, vmax=1.0, shading="flat")
@@ -165,27 +158,10 @@ def plot_co_adaptation(
     # More y-ticks so the "time of day" axis is readable (drives ax_ph via
     # shared y); default gave essentially one tick.
     ax_pa.yaxis.set_major_locator(MaxNLocator(nbins=6))
-    # Day axis is shared with the daily row below. Draw it there only.
+    # Day axis is shared with the cost panel below. Draw it there only.
     ax_pa.tick_params(labelbottom=False)
     ax_ph.tick_params(labelbottom=False, labelleft=False)
     panel_label(ax_pa, "a")
-
-    ax_dpa.plot(daily_pa.index.to_numpy(), daily_pa.to_numpy(),
-                color=route_colour("alpha"), linewidth=1.4)
-    ax_dpa.set_ylim(0, 1)
-    ax_dpa.set_ylabel("daily mean")
-    ax_dpa.set_xlabel("day")
-    # More y-ticks on the daily row (drives ax_dph via shared y).
-    ax_dpa.yaxis.set_major_locator(MaxNLocator(nbins=5))
-    ax_dpa.grid(alpha=0.25)
-    ax_dpa.text(0.04, 0.86, r"$P_\alpha$", transform=ax_dpa.transAxes, fontsize=9)
-    panel_label(ax_dpa, "b")
-    ax_dph.plot(daily_phi.index.to_numpy(), daily_phi.to_numpy(),
-                color="0.25", linewidth=1.4)
-    ax_dph.set_xlabel("day")
-    ax_dph.grid(alpha=0.25)
-    ax_dph.tick_params(labelleft=False)
-    ax_dph.text(0.04, 0.86, r"$\phi_2$", transform=ax_dph.transAxes, fontsize=9)
 
     ax = ax_cost
     handles = []
@@ -195,7 +171,7 @@ def plot_co_adaptation(
     ax.set_ylabel("system cost\n[veh-min]")
     ax.set_xlabel("day")
     ax.grid(alpha=0.25)
-    panel_label(ax, "c")
+    panel_label(ax, "b")
     ctrl = controller_df
     if ctrl is not None and "SC_belief_sd" in getattr(ctrl, "columns", []) \
             and ctrl["SC_belief_sd"].notna().any():

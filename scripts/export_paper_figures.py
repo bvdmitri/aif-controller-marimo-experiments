@@ -33,6 +33,7 @@ from aif_traffic.parameters import (  # noqa: E402
     AIFControllerSpec,
     AnticipatoryControllerSpec,
     CohortSpec,
+    DemandParams,
     FixedTimeControllerSpec,
     ObservationSignal,
     Params,
@@ -47,6 +48,14 @@ from aif_traffic.simulator import run_experiment  # noqa: E402
 # --- experiment configuration ----------------------------------------------
 SEED = 42
 THETAS = (0.0, 0.25, 0.5, 0.75, 1.0)
+# The advisory used wherever the externality cost-offset is broadcast (Exp 1, the
+# controller/theta grid, Exp 5): the per-traveller SEQUENTIAL externality seeded
+# FROM BELIEF, matching the notebook control defaults (signal_mechanism /
+# sequential_seed). The raw single-value externality herds the population and is a
+# poor baseline, so it is not the default here either.
+ADVISORY = SignalType.EXTERNALITY_SEQUENTIAL
+SEQ_SEED = "belief"
+SEQ_INCREMENTS = 12
 # The theta the single-run (Exp 1) and benchmark (Exp 2) figures render at. It
 # matches the notebook theta-slider default (``nc.theta()``), so the exported
 # figures reproduce what the notebooks show by default. (Exp 1's *sweep* over
@@ -89,7 +98,19 @@ def _base(cfg: dict, *, controller=None, theta: float = 0.0,
     ).with_stationary(True)
     if comm is not SignalType.NONE:
         p = p.with_comm(comm).with_compliance(1.0)
+        if comm in (SignalType.EXTERNALITY_SEQUENTIAL, SignalType.MSC_SEQUENTIAL):
+            p = (p.with_sequential_increments(SEQ_INCREMENTS)
+                  .with_sequential_seed(SEQ_SEED))
     return p.with_theta(theta)
+
+
+def _demand_scaled(p: Params, scale: float) -> Params:
+    """Scale the peak A--B and C--D demand by ``scale`` (Experiment 5), the way
+    the notebooks apply the ``demand_scale`` control: reset to the default
+    ``DemandParams`` then multiply the two maxima."""
+    base = DemandParams()
+    return replace(p, demand=replace(
+        base, d_AB_max=base.d_AB_max * scale, d_CD_max=base.d_CD_max * scale))
 
 
 # --- figure registry --------------------------------------------------------
@@ -103,8 +124,9 @@ def _build_registry(cfg: dict):
     # match the notebooks' day_sel default.
     profile_day = _profile_day(cfg)
 
-    # -- Experiment 1: single AIF run (theta = notebook default; externality on)
-    p1 = _base(cfg, theta=SINGLE_THETA, comm=SignalType.EXTERNALITY)
+    # -- Experiment 1: single AIF run (theta = notebook default; sequential
+    # externality advisory seeded from belief, the notebook default)
+    p1 = _base(cfg, theta=SINGLE_THETA, comm=ADVISORY)
     r1 = run_experiment(p1, seeds=[SEED], snapshot_days=range(cfg["days"]))
 
     reg += [
@@ -122,10 +144,13 @@ def _build_registry(cfg: dict):
         ("within_day_profile_b", "plot_within_day_tt_vs_belief",
          lambda: pl.plot_within_day_tt_vs_belief(
              r1.step, r1.snapshots, p1, days=[profile_day])),
-        # fig:within-day-profile (c) -- belief vs realised queues across the
-        # first / middle / last day (learning evolution as columns).
+        # fig:within-day-profile (c) -- realised queue vs controller belief on
+        # the two signalised movements L2 (top) / L6 (bottom) at the profile day,
+        # sized tall+narrow so panels (a)-(c) line up in one row.
         ("within_day_profile_c", "plot_belief_reality_queues",
-         lambda: pl.plot_belief_reality_queues(r1.step, r1.snapshots, p1)),
+         lambda: pl.plot_belief_reality_queues(
+             r1.step, r1.snapshots, p1, days=[profile_day], links=("L2", "L6"),
+             show_traveller_belief=False)),
         # fig:across-day-profile -- heatmaps + daily profiles + cost & belief SD.
         ("across_day_profile", "plot_co_adaptation",
          lambda: pl.plot_co_adaptation(r1.step, r1.controller)),
@@ -149,7 +174,7 @@ def _build_registry(cfg: dict):
         name: {
             th: run_experiment(
                 _base(cfg, controller=spec, theta=th,
-                      comm=SignalType.EXTERNALITY), seeds=[SEED])
+                      comm=ADVISORY), seeds=[SEED])
             for th in cfg["thetas"]
         }
         for name, spec in CONTROLLERS.items()
@@ -172,9 +197,12 @@ def _build_registry(cfg: dict):
     reg += [
         ("exp2_controller_metrics", "plot_controller_metrics",
          lambda: pl.plot_controller_metrics(by_ctrl)),
-        # fig:controller-comparison -- cost + per-link queues (L2/L5/L6).
+        # fig:controller-TT_tot -- (a) system cost, (b) total queue band.
         ("controller_comparison", "plot_controller_queue_comparison",
          lambda: pl.plot_controller_queue_comparison(by_ctrl)),
+        # fig:within-day-queue-controller -- within-day L2/L5/L6 per controller.
+        ("within_day_queue_controllers", "plot_within_day_queue_by_controller",
+         lambda: pl.plot_within_day_queue_by_controller(by_ctrl, day=profile_day)),
         # fig:green-split-controllers.
         ("green_split_controllers", "plot_green_split_heatmaps_by_controller",
          lambda: pl.plot_green_split_heatmaps_by_controller(by_ctrl)),
@@ -196,11 +224,9 @@ def _build_registry(cfg: dict):
         for name, pp in settings.items()
     }
     reg += [
-        # fig:across-day-communication -- system performance incl. green split.
+        # fig:across-day-communication (b) -- total system cost only.
         ("across_day_communication", "plot_sweep_metrics",
-         lambda: pl.plot_sweep_metrics(
-             by_setting, layout="grid",
-             panels=("cost", "share", "peak_queue", "phi2"))),
+         lambda: pl.plot_sweep_metrics(by_setting, panels=("cost",))),
         # Its companion uncertainty figure: belief SD on TT_a / TT_b / phi.
         ("belief_sd_communication", "plot_belief_sd_sweep",
          lambda: pl.plot_belief_sd_sweep(by_setting)),
@@ -215,6 +241,24 @@ def _build_registry(cfg: dict):
          lambda: pl.plot_route_choice_heatmaps(by_setting)),
         ("vary_observation_info_b", "plot_route_choice_heatmaps",
          lambda: pl.plot_route_choice_heatmaps(by_setting, value="L2")),
+    ]
+
+    # -- Experiment 5: robustness to traffic demand (varying-demand analysis) --
+    # Same coupled AIF base as Exp 1 (sequential-from-belief advisory, full
+    # compliance), re-run at several peak-demand scales; one line per scale.
+    demand_scales = (0.8, 1.0, 1.2, 1.4)
+    p5 = _base(cfg, theta=SINGLE_THETA, comm=ADVISORY)
+    by_demand = {
+        f"{s:g}x": run_experiment(_demand_scaled(p5, s), seeds=[SEED])
+        for s in demand_scales
+    }
+    reg += [
+        # fig:robust-within-day -- within-day Q_alpha / Q_beta / phi_2 by demand.
+        ("robustness_within_day_demand", "plot_within_day_by_demand",
+         lambda: pl.plot_within_day_by_demand(by_demand, day=profile_day)),
+        # fig:robust-across-day -- daily P_alpha / phi_2 / cost (+ ctrl SD) by demand.
+        ("robustness_across_day_demand", "plot_across_day_by_demand",
+         lambda: pl.plot_across_day_by_demand(by_demand)),
     ]
     return reg
 

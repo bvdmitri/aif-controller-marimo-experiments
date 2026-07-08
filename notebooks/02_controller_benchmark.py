@@ -74,6 +74,7 @@ def _():
         plot_controller_theta_grid,
         plot_green_split_heatmaps_by_controller,
         plot_learned_obs_noise,
+        plot_within_day_queue_by_controller,
         setup_style,
     )
     from aif_traffic.simulator import run_experiment
@@ -102,6 +103,7 @@ def _():
         plot_controller_theta_grid,
         plot_green_split_heatmaps_by_controller,
         plot_learned_obs_noise,
+        plot_within_day_queue_by_controller,
         replace,
         run_experiment,
         sweep_progress_bar,
@@ -283,14 +285,28 @@ def _(figure_block, figure_placeholder, plot_controller_metrics, results_by_ctrl
 @app.cell
 def _(figure_block, figure_placeholder, plot_controller_queue_comparison,
       results_by_ctrl):
-    # The paper's controller-comparison row: system cost plus the daily queue on
-    # each route-carrying link (L2 / L5 / L6), mean + within-day range.
+    # The paper's controller-comparison row: system cost plus the daily total
+    # network queue L2+L5+L6, mean + within-day range.
     fig_queue_cmp = (
-        figure_placeholder("System cost & per-link queues by controller")
+        figure_placeholder("System cost & total queue by controller")
         if results_by_ctrl is None
         else plot_controller_queue_comparison(results_by_ctrl)
     )
     figure_block("plot_controller_queue_comparison", fig_queue_cmp)
+    return
+
+
+@app.cell
+def _(figure_block, figure_placeholder, plot_within_day_queue_by_controller,
+      results_by_ctrl):
+    # Within-day realised queue on L2 / L5 / L6 for each controller, one square
+    # panel per strategy at the representative day.
+    fig_within_q = (
+        figure_placeholder("Within-day queue on L2/L5/L6 by controller")
+        if results_by_ctrl is None
+        else plot_within_day_queue_by_controller(results_by_ctrl)
+    )
+    figure_block("plot_within_day_queue_by_controller", fig_within_q)
     return
 
 

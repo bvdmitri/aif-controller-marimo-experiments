@@ -30,6 +30,7 @@ NOTEBOOK_IDS: tuple[str, ...] = (
     "controller_benchmark",
     "information_communication",
     "capacity_sensitivity",
+    "robustness",
 )
 
 
@@ -326,11 +327,36 @@ Two levers break the cobweb, both selectable in the notebook:
 A per-chart "how to read" guide is appended automatically below.
 """
 
+_ROBUSTNESS = r"""
+### How do the coupled agents behave under different traffic demand?
+
+This experiment fixes the AIF controller (externality advisory on, full
+compliance) and re-runs the coupled system at several **traffic-demand scales**,
+multiplying the peak A--B and C--D demand by $\{0.8, 1.0, 1.2, 1.4\}$. It asks
+whether the two-layer Active Inference framework keeps coordinating rather than
+relying on a single fixed operating point as the network fills up.
+
+Two views, one coloured line per demand scale:
+
+* **Within-day.** At a representative day after learning, the intersection-route
+  flow $Q_\alpha$, the bypass-route flow $Q_\beta$ and the controller's green
+  split $\phi_2$ across the day. As the load grows, more travellers divert to the
+  bypass at the peak while the controller allocates more green time to the
+  congested approach; the two adapt together rather than independently.
+* **Across-day.** The daily route share $P_\alpha$, the daily mean green split
+  $\phi_2$, and the daily total system cost (with the controller's cost-belief SD
+  on a right axis). Each load should re-settle to its own stable route split and
+  signal policy, with cost and controller uncertainty falling together as before.
+
+A per-chart "how to read" guide is appended automatically below.
+"""
+
 _ADDENDA: dict[str, str] = {
     "social_internalisation": _CONTROLLER + "\n" + _SOCIAL,
     "controller_benchmark": _COMPARISON,
     "information_communication": _CONTROLLER + "\n" + _COMMUNICATION,
     "capacity_sensitivity": _CONTROLLER + "\n" + _CAPACITY,
+    "robustness": _CONTROLLER + "\n" + _ROBUSTNESS,
 }
 
 
@@ -516,13 +542,15 @@ CHART_GUIDE: dict[str, dict] = {
     "plot_belief_sd_sweep": {
         "title": "Belief uncertainty by setting",
         "slider": None,
-        "what": "Three stacked day-series, one line per swept variant: the "
-        "travellers' daily mean posterior SD on TT_alpha, on TT_beta, and on the "
-        "expected green split phi_alpha.",
-        "read": "Falling curves mean travellers are getting surer of that "
-        "quantity. Compare a variant against the baseline within each panel: a "
-        "setting that relays a quantity should shrink the corresponding belief "
-        "SD, which is the direct value-of-information readout.",
+        "what": "Two stacked day-series, one line per swept variant: (top) the "
+        "travellers' daily mean posterior SD on the intersection travel time "
+        "TT_alpha, and (bottom) the controller's posterior SD on the total system "
+        "travel time TT^tot (its system-cost belief SD, in veh-min).",
+        "read": "Falling curves mean that agent layer is getting surer of that "
+        "quantity. Compare a variant against the baseline: route-congestion "
+        "information should shrink the traveller curve (top), while signal "
+        "information should sharpen the controller's total-travel-time belief "
+        "(bottom); the direct value-of-information readout.",
     },
     "plot_within_day_communication": {
         "title": "Within-day realised vs belief by setting",
@@ -542,16 +570,26 @@ CHART_GUIDE: dict[str, dict] = {
         "exogenous L_6.",
     },
     "plot_controller_queue_comparison": {
-        "title": "Controller day-series: cost & per-link queues",
+        "title": "Controller day-series: cost & total queue",
         "slider": None,
-        "what": "A 2x2 grid of day-series panels, one line per controller (full "
-        "names in the legend): (a) daily system cost, and the daily queue on "
-        "(b) L_2, (c) L_5, (d) L_6: the within-day mean queue as a solid line "
-        "with the within-day min--max range shaded.",
+        "what": "Two day-series panels, one line per controller (full names in "
+        "the legend): (a) daily system cost, and (b) the daily total network "
+        "queue L_2+L_5+L_6: the within-day mean total queue as a solid line with "
+        "the within-day min--max range shaded.",
         "read": "Compare controllers within each panel: lower cost and lower "
-        "queues are better, and a narrower band means the queue varies less "
-        "within the day. The L_5 panel shows how much demand each controller "
-        "pushes onto the bypass.",
+        "total queue are better, and a narrower band on (b) means the total queue "
+        "varies less within the day.",
+    },
+    "plot_within_day_queue_by_controller": {
+        "title": "Within-day queue by controller",
+        "slider": None,
+        "what": "One square panel per controller (FT/RF/AC/AIF), sharing a "
+        "y-axis: the within-day realised queue on the three critical links L_2 "
+        "(A--B intersection), L_5 (A--B bypass) and L_6 (C--D) at a "
+        "representative day.",
+        "read": "Compare the panels on the common scale: a controller that keeps "
+        "all three link queues low and balanced across the day, without a single "
+        "movement spiking, is coordinating the competing streams well.",
     },
     "plot_route_choice_heatmaps": {
         "title": "Route-choice heatmaps",
@@ -663,16 +701,15 @@ CHART_GUIDE: dict[str, dict] = {
     "plot_co_adaptation": {
         "title": "Day-to-day co-adaptation",
         "slider": None,
-        "what": "A compact grid grouped (a)-(c). (a) side-by-side heatmaps of the "
+        "what": "A compact grid grouped (a)-(b). (a) side-by-side heatmaps of the "
         "intersection share P_alpha(d,t) and the green split phi_2(d,t) over "
-        "(day x time-of-day), with their colourbars on top; (b) their daily means, "
-        "demand-weighted P_alpha and mean phi_2, side by side on a shared "
-        "0-1 scale; (c) total system cost (full width), with the controller's "
-        "cost-belief SD as a red dashed line on a right axis when recorded.",
-        "read": "Scan the heatmaps left-to-right to see the daily patterns settle; "
-        "the (b) lines show each layer's day-to-day adaptation, and (c) ties them "
-        "to whether system cost falls while the controller's uncertainty (red "
-        "dashed) shrinks. Together they show the two layers co-adapting over days.",
+        "(day x time-of-day), with their colourbars on top; (b) total system cost "
+        "(full width), with the controller's cost-belief SD as a red dashed line "
+        "on a right axis when recorded.",
+        "read": "Scan the heatmaps left-to-right to see the daily route-choice and "
+        "signal patterns settle, and read (b) to see whether system cost falls "
+        "while the controller's uncertainty (red dashed) shrinks. Together they "
+        "show the two layers co-adapting over days.",
     },
     "plot_learning_uncertainty": {
         "title": "Learning uncertainty over days",
@@ -747,6 +784,31 @@ CHART_GUIDE: dict[str, dict] = {
         "internalisation; if they barely move, the behavioural response is small. "
         "Compare controllers to see whether the signal policy masks that response.",
     },
+    "plot_within_day_by_demand": {
+        "title": "Within-day adaptation by demand",
+        "slider": None,
+        "what": "Three panels at a representative day, one coloured line per "
+        "traffic-demand scale: (a) the intersection-route flow Q_alpha, (b) the "
+        "bypass-route flow Q_beta, and (c) the controller's green split phi_2, "
+        "across the within-day time axis.",
+        "read": "Compare the lines within each panel: as the demand scale grows, a "
+        "lower Q_alpha with a higher Q_beta at the peak means more travellers "
+        "divert to the bypass, and a shifting phi_2 shows the controller "
+        "re-allocating green time in step with them.",
+    },
+    "plot_across_day_by_demand": {
+        "title": "Across-day learning by demand",
+        "slider": None,
+        "what": "Three day-series panels, one coloured line per traffic-demand "
+        "scale: (a) the daily route share P_alpha, (b) the daily mean green split "
+        "phi_2, and (c) the daily total system cost (left axis) with the "
+        "controller's cost-belief SD (dashed, matching colour) on a shared right "
+        "axis.",
+        "read": "Read each scale's line across days: a route share and green split "
+        "that flatten out mean the coupled system re-settled at that load, and on "
+        "(c) a falling cost tracked by a falling dashed SD means cost and "
+        "controller uncertainty shrink together as before.",
+    },
 }
 
 # Which charts each notebook shows, in display order. Drives both the generated
@@ -780,6 +842,7 @@ NOTEBOOK_CHARTS: dict[str, tuple[str, ...]] = {
     "controller_benchmark": (
         "plot_controller_metrics",
         "plot_controller_queue_comparison",
+        "plot_within_day_queue_by_controller",
         "plot_learned_obs_noise",
         "plot_green_split_heatmaps_by_controller",
         "animate_controller_comparison",
@@ -797,6 +860,10 @@ NOTEBOOK_CHARTS: dict[str, tuple[str, ...]] = {
     "capacity_sensitivity": (
         "plot_cost_vs_theta_by_capacity",
         "plot_sweep_metrics",
+    ),
+    "robustness": (
+        "plot_within_day_by_demand",
+        "plot_across_day_by_demand",
     ),
 }
 
@@ -863,6 +930,7 @@ NOTEBOOK_TABLES: dict[str, tuple[str, ...]] = {
     "controller_benchmark": ("controller_summary",),
     "information_communication": ("communication_summary_table",),
     "capacity_sensitivity": ("capacity_theta_summary",),
+    "robustness": (),
 }
 
 _SLIDER_NOTE: dict[str, str] = {

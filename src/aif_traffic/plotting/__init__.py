@@ -31,6 +31,7 @@ from .comparison import (
     plot_msc_vs_theta,
     plot_theta_route_choice,
     plot_theta_summary,
+    plot_within_day_queue_by_controller,
 )
 from .demand import plot_demand_profile
 from .mechanism import (
@@ -51,6 +52,10 @@ from .network import (
     plot_signal_day,
 )
 from .primitives import TEXT_W, TEXT_W_HALF, figure_placeholder
+from .robustness import (
+    plot_across_day_by_demand,
+    plot_within_day_by_demand,
+)
 from .style import active_style, apply_style
 from .sweep import (
     plot_belief_sd_sweep,
@@ -97,6 +102,7 @@ __all__ = [
     "animate_network_state",
     "plot_controller_metrics",
     "plot_controller_queue_comparison",
+    "plot_within_day_queue_by_controller",
     "plot_green_split_heatmaps_by_controller",
     "plot_controller_theta_grid",
     "plot_theta_summary",
@@ -120,4 +126,6 @@ __all__ = [
     "plot_learning_uncertainty",
     "plot_msc_tt_by_route",
     "plot_msc_vs_theta",
+    "plot_within_day_by_demand",
+    "plot_across_day_by_demand",
 ]

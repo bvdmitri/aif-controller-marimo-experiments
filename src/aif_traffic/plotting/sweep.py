@@ -210,33 +210,55 @@ def plot_route_choice_heatmaps(
 
 
 def plot_belief_sd_sweep(results_by_label: Mapping[str, object]):
-    """Traveller belief uncertainty per sweep variant, three stacked panels.
+    """Belief uncertainty per sweep variant, two stacked panels.
 
-    Daily mean posterior SD on the route travel times ``TT_alpha`` and
-    ``TT_beta`` and on the expected green split ``phi_alpha``, one line per
-    variant (e.g. BL/CG/SN/CG+SN, palette colours). The direct "value of
-    information" readout of the communication experiment: a setting that relays
-    a quantity should visibly shrink the corresponding belief SD relative to
-    the baseline.
+    * top: the **traveller** posterior SD on the intersection-route travel time
+      ``TT_alpha`` (``sigma_alpha_post``), averaged over travellers;
+    * bottom: the **controller** posterior SD on the total system travel time
+      ``TT^tot``, read from its system-cost belief SD ``SC_belief_sd`` [veh-min]
+      (the system cost is the total travel time in veh-min).
+
+    One line per variant (e.g. BL/CG/SN/CG+SN, palette colours). The direct
+    "value of information" readout of the communication experiment: route
+    congestion relayed to travellers should shrink the top curve, while signal
+    information should sharpen the controller's total-travel-time belief below.
+    A variant whose result lacks a series (missing column, or a controller that
+    records no cost belief) is skipped for that panel.
     """
     items = list(results_by_label.items())
     colours = _colours_for_labels([lab for lab, _ in items])
     lw = active_style().line_main
 
+    def _trav_alpha_sd(res):
+        cohort = res.cohort
+        if "sigma_alpha_post" not in cohort.columns:
+            return None
+        return cohort.groupby("day")["sigma_alpha_post"].mean()
+
+    def _ctrl_tot_sd(res):
+        ctrl = getattr(res, "controller", None)
+        cols = getattr(ctrl, "columns", [])
+        if ctrl is None or "SC_belief_sd" not in cols:
+            return None
+        if "seed" in cols:
+            ctrl = ctrl[ctrl["seed"] == ctrl["seed"].min()]
+        ctrl = ctrl.sort_values("day")
+        if not ctrl["SC_belief_sd"].notna().any():
+            return None
+        return ctrl.set_index("day")["SC_belief_sd"]
+
     panels = [
-        (r"belief SD on $TT_\alpha$ [min]", "sigma_alpha_post"),
-        (r"belief SD on $TT_\beta$ [min]", "sigma_beta_post"),
-        (r"belief SD on $\phi_\alpha$", "sigma_phi_alpha_post"),
+        (r"traveller SD on $TT_\alpha$ [min]", _trav_alpha_sd),
+        (r"controller SD on $TT^{tot}$ [veh-min]", _ctrl_tot_sd),
     ]
     fig, axes = plt.subplots(
-        len(panels), 1, figsize=(text_w(), text_w() * 1.05), sharex=True,
+        len(panels), 1, figsize=(text_w(), text_w() * 0.7), sharex=True,
     )
-    for ax, (ylabel, col) in zip(axes, panels):
+    for ax, (ylabel, fn) in zip(axes, panels):
         for (label, res), colour in zip(items, colours):
-            cohort = res.cohort
-            if col not in cohort.columns:
+            s = fn(res)
+            if s is None:
                 continue
-            s = cohort.groupby("day")[col].mean()
             ax.plot(s.index.to_numpy(), s.to_numpy(),
                     color=colour, linewidth=lw, label=_sweep_label(label))
         ax.set_ylabel(ylabel)
@@ -247,6 +269,6 @@ def plot_belief_sd_sweep(results_by_label: Mapping[str, object]):
     handles, labels = axes[0].get_legend_handles_labels()
     fig.legend(handles=handles, labels=labels, loc="upper center",
                ncol=_legend_ncol(items), frameon=False,
-               bbox_to_anchor=(0.5, 1.02), fontsize=7.5)
-    fig.tight_layout(rect=(0, 0, 1, 0.955))
+               bbox_to_anchor=(0.5, 1.03), fontsize=7.5)
+    fig.tight_layout(rect=(0, 0, 1, 0.93))
     return fig

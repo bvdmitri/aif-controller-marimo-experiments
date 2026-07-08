@@ -300,27 +300,33 @@ def plot_belief_reality_queues(
     *,
     day: int | None = None,
     days: list[int] | None = None,
+    links: tuple[str, ...] = ("L2", "L5", "L6"),
+    show_traveller_belief: bool = True,
     seed: int | None = None,
 ):
-    """Belief--reality consistency for the three route-carrying queues, one
-    column per inspected day so the day-to-day learning evolution is visible.
+    """Belief--reality consistency for the route-carrying queues, one column per
+    inspected day so the day-to-day learning evolution is visible.
 
-    Rows are the queues ``L_2`` (A--B intersection), ``L_5`` (A--B bypass), and
-    ``L_6`` (C--D); columns are the days in ``days`` (default: the first, middle,
-    and last recorded day). Each panel shows the realised within-day queue
-    (solid); the signalised movements ``L_2``/``L_6`` also show the
-    **controller's** queue belief (dashed mean +/-1 sigma band). The controller
-    holds no belief over the unsignalised bypass. On ``L_2``/``L_5`` the
-    **traveller queue belief** of the route traversing the link is drawn as a
-    per-departure-minute profile (dots + across-agent spread band), so early- vs
-    peak-departers holding different beliefs stays visible. Rows share a y-axis
-    (days directly comparable) and the x-axis is shared throughout.
+    Rows are the queues in ``links`` (default all three: ``L_2`` A--B
+    intersection, ``L_5`` A--B bypass, ``L_6`` C--D); columns are the days in
+    ``days`` (default: the first, middle, and last recorded day). Each panel
+    shows the realised within-day queue (solid); the signalised movements
+    ``L_2``/``L_6`` also show the **controller's** queue belief (dashed mean
+    +/-1 sigma band). The controller holds no belief over the unsignalised
+    bypass. On ``L_2``/``L_5`` the **traveller queue belief** of the route
+    traversing the link is drawn as a per-departure-minute profile (dots +
+    across-agent spread band), so early- vs peak-departers holding different
+    beliefs stays visible. Rows share a y-axis (days directly comparable) and the
+    x-axis is shared throughout.
 
     Answers "do both agent types learn a consistent representation of the network
     state, and how does it sharpen over days?". Requires per-agent ``snapshots``
     on each inspected day (pass ``snapshot_days`` to :func:`run_experiment`).
     ``day=`` (singular) renders a single column, for the notebooks' interactive
-    day selector.
+    day selector. The paper's within-day panel (c) passes ``links=("L2","L6")``
+    and ``show_traveller_belief=False`` to show only the realised queue vs the
+    controller's belief on the two signalised movements (the controller half of
+    the coupled picture, complementing the traveller travel-time panel).
     """
     day_step, sample_seed = _seed_slice(step_df, seed)
     all_days = sorted(int(x) for x in day_step["day"].unique())
@@ -337,16 +343,24 @@ def plot_belief_reality_queues(
     tau_max = float(day_step["tau"].max())
     lw = active_style().line_main
 
-    specs = [
+    all_specs = [
         ("L2", r"$L_2$ (A--B int.)", route_colour("alpha"), "L2_belief_mu",
          "L2_belief_sd", "alpha"),
         ("L5", r"$L_5$ (A--B byp.)", route_colour("beta"), None, None, "beta"),
         ("L6", r"$L_6$ (C--D)", route_colour("gamma"), "L6_belief_mu",
          "L6_belief_sd", None),
     ]
+    specs = [s for s in all_specs if s[0] in links]
+    nrow = max(len(specs), 1)
 
-    height = text_w() * (0.95 if ncol == 1 else 0.8)
-    fig, axgrid = plt.subplots(3, ncol, figsize=(text_w(), height),
+    # Paper's within-day-profile panel (c): a single day and the two signalised
+    # movements L2/L6 -> a tall, narrow 2-row figure sized like the companion
+    # panels (a)/(b) so the three subfigures line up in one row.
+    if ncol == 1 and nrow == 2:
+        fig_w, height = text_w_half(), 3.8
+    else:
+        fig_w, height = text_w(), text_w() * (0.95 if ncol == 1 else 0.8)
+    fig, axgrid = plt.subplots(nrow, ncol, figsize=(fig_w, height),
                                sharex=True, sharey="row", squeeze=False)
     for ci, dsel in enumerate(days):
         d = day_step[day_step["day"] == dsel].sort_values("tau")
@@ -354,7 +368,7 @@ def plot_belief_reality_queues(
         has_ctrl_belief = "L2_belief_mu" in d.columns and d["L2_belief_mu"].notna().any()
         trav: dict[str, tuple] = {}
         snap = (snapshots or {}).get((sample_seed, int(dsel)))
-        if snap is not None:
+        if show_traveller_belief and snap is not None:
             for route in ("alpha", "beta"):
                 prof = _route_queue_belief_profile(
                     snap, route, dt_min, _route_link_delay_min(params, route), tau_max,
@@ -390,7 +404,7 @@ def plot_belief_reality_queues(
                 ax.set_ylabel(f"queue {label} [veh]")
     # An (almost) empty row (typical for the high-capacity bypass) would get a
     # 1e-9 offset scale; pin a sane floor (shared across the row via sharey).
-    for ri in range(3):
+    for ri in range(nrow):
         if axgrid[ri][0].get_ylim()[1] < 1.0:
             axgrid[ri][0].set_ylim(-0.05, 1.0)
     for ax in axgrid[-1]:

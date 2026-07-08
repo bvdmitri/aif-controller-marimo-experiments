@@ -250,9 +250,12 @@ def advisory_smoothing():
 
 
 def signal_mechanism():
+    # Default to the per-traveller SEQUENTIAL externality: the raw single-value
+    # externality herds the population and is a poor baseline, so the sequential
+    # advisory (which splits toward the system optimum) is the good default.
     return mo.ui.dropdown(
         options=["Raw externality", "Sequential externality"],
-        value="Raw externality",
+        value="Sequential externality",
         label="advisory mechanism",
     )
 
@@ -262,9 +265,12 @@ def sequential_increments():
 
 
 def sequential_seed():
+    # Default to seeding the sequential schedule FROM BELIEF (posterior-as-prior:
+    # reassign the marginal travellers from the controller's believed split, the
+    # minimal, least-disruptive move to the balanced split).
     return mo.ui.dropdown(
         options=["From empty", "From belief"],
-        value="From empty",
+        value="From belief",
         label="sequential seed",
     )
 

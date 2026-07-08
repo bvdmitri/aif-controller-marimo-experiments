@@ -22,7 +22,7 @@ import pytest
 from aif_traffic import explainers as ex
 
 NOTEBOOKS = sorted(
-    (Path(__file__).resolve().parent.parent / "notebooks").glob("0[1-4]_*.py")
+    (Path(__file__).resolve().parent.parent / "notebooks").glob("0[1-5]_*.py")
 )
 
 

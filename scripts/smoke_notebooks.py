@@ -27,6 +27,7 @@ from aif_traffic.parameters import (
     AnticipatoryControllerSpec,
     BeliefSignal,
     CohortSpec,
+    DemandParams,
     FixedTimeControllerSpec,
     NoiseParams,
     ObservationSignal,
@@ -38,8 +39,10 @@ from aif_traffic.parameters import (
 )
 from aif_traffic.plotting import (
     capacity_theta_summary,
+    plot_across_day_by_demand,
     plot_belief_reality_queues,
     plot_co_adaptation,
+    plot_controller_queue_comparison,
     plot_controller_theta_grid,
     plot_cost_vs_theta_by_capacity,
     plot_coupled_within_day,
@@ -55,7 +58,9 @@ from aif_traffic.plotting import (
     plot_sweep_metrics,
     plot_theta_route_choice,
     plot_theta_summary,
+    plot_within_day_by_demand,
     plot_within_day_by_setting,
+    plot_within_day_queue_by_controller,
     plot_within_day_tt_vs_belief,
     setup_style,
 )
@@ -88,10 +93,13 @@ def _small_params(controller_spec, signal_type=SignalType.NONE) -> Params:
 
 
 def smoke_controllers() -> None:
-    """Run the coupled pipeline under each controller; render diagnostics."""
+    """Run the coupled pipeline under each controller; render diagnostics and
+    the cross-controller comparison charts (Experiment 2)."""
+    results = {}
     for name, spec in CONTROLLERS.items():
         params = _small_params(spec)
         res = run_experiment(params, snapshot_days=range(params.sim.days))
+        results[name] = res
         daily, summary = build_daily_and_summary(res.step, params)
         assert not res.step.empty, f"{name}: empty step frame"
         assert (res.step["phi2"] + res.step["phi6"]).sub(
@@ -104,6 +112,12 @@ def smoke_controllers() -> None:
         _save_figure(plot_network_state(res.step, params.network, color_by="queue"),
                      f"network_queue_{name}.png")
         _save_figure(plot_route_share_over_days(res.step), f"route_share_{name}.png")
+    # Cross-controller comparison row (system cost + total queue) and the
+    # within-day queue-by-controller figure.
+    _save_figure(plot_controller_queue_comparison(results),
+                 "controller_queue_comparison.png")
+    _save_figure(plot_within_day_queue_by_controller(results),
+                 "within_day_queue_by_controller.png")
 
 
 def smoke_mechanism() -> None:
@@ -331,6 +345,11 @@ def smoke_controls() -> None:
                  "demand_scale", "bypass_capacity_scale", "traveller_window",
                  "controller_window", "learn_noise", "stationary",
                  "noise_regime", "advisory_smoothing"],
+        "exp5": ["days", "warmup", "seed", "time_step", "control_interval",
+                 "traveller_window", "controller_window", "learn_noise",
+                 "stationary", "noise_regime", "signal_mechanism",
+                 "sequential_increments", "sequential_seed",
+                 "advisory_smoothing"],
     }
     import marimo as mo
 
@@ -338,6 +357,24 @@ def smoke_controls() -> None:
         widgets = {k: getattr(nc, k)() for k in keys}
         panel = nc.standard_panel(widgets, mo.ui.run_button(label="Run"))
         assert panel is not None, f"{name}: standard_panel returned None"
+
+
+def smoke_robustness() -> None:
+    """Experiment 5: robustness to traffic demand. Re-run the coupled AIF system
+    (sequential-from-belief advisory, full compliance) at a few peak-demand
+    scales and render the within-day and across-day demand overlays."""
+    base = (_small_params(AIFControllerSpec(), SignalType.EXTERNALITY_SEQUENTIAL)
+            .with_sequential_seed("belief").with_compliance(1.0))
+    by_demand = {}
+    for s in (0.8, 1.0, 1.2):
+        demand = replace(DemandParams(),
+                         d_AB_max=DemandParams().d_AB_max * s,
+                         d_CD_max=DemandParams().d_CD_max * s)
+        by_demand[f"{s:g}x"] = run_experiment(replace(base, demand=demand))
+    for label, res in by_demand.items():
+        assert not res.step.empty, f"{label}: empty step frame"
+    _save_figure(plot_within_day_by_demand(by_demand), "robustness_within_day.png")
+    _save_figure(plot_across_day_by_demand(by_demand), "robustness_across_day.png")
 
 
 def smoke_demand() -> None:
@@ -357,6 +394,7 @@ def main() -> int:
         "extra_observations": smoke_extra_observations,
         "belief_communication": smoke_belief_communication,
         "capacity_sensitivity": smoke_capacity_sensitivity,
+        "robustness": smoke_robustness,
         "theta_grid": smoke_theta_grid,
         "learn_obs_noise": smoke_learn_obs_noise,
         "controls": smoke_controls,

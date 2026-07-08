@@ -21,6 +21,7 @@ from .palette import (
     controller_colour,
     controller_label,
     ordered_controllers,
+    route_colour,
 )
 from .primitives import light_borders, panel_label, text_w
 from .style import active_style
@@ -51,6 +52,15 @@ def _daily_peak_total_queue(step: pd.DataFrame) -> pd.Series:
     # Total network queue: both signalised movements plus the bypass (L5).
     tmp = step.assign(_Ltot=step["L2"] + step["L5"] + step["L6"])
     return _per_day(tmp.groupby(_keys(step))["_Ltot"].max(), step)
+
+
+def _daily_total_queue_band(step: pd.DataFrame):
+    """Per-day within-day mean / min / max of the total network queue
+    ``L2+L5+L6`` (mean over seeds), as three day-indexed Series."""
+    tmp = step.assign(_Ltot=step["L2"] + step["L5"] + step["L6"])
+    g = tmp.groupby(_keys(step))["_Ltot"]
+    return (_per_day(g.mean(), step), _per_day(g.min(), step),
+            _per_day(g.max(), step))
 
 
 def _daily_signal_variation(step: pd.DataFrame) -> pd.Series:
@@ -103,20 +113,17 @@ def plot_controller_metrics(results_by_ctrl: Mapping[str, object]):
 
 
 def plot_controller_queue_comparison(results_by_ctrl: Mapping[str, object]):
-    """A 2x2 grid of day-series panels, one coloured line per controller:
-    (a) daily system cost, and the daily queue on (b) ``L_2``, (c) ``L_5``, and
-    (d) ``L_6``. The queue panels draw the within-day **mean** queue as a solid
-    line with the within-day min--max range as a shaded band, so both the level
-    and the daily excursion of each queue can be compared per controller.
+    """Two day-series panels, one coloured line per controller: (a) daily system
+    cost and (b) the daily **total** network queue ``L_2+L_5+L_6``. The queue
+    panel draws the within-day **mean** total queue as a solid line with the
+    within-day min--max range as a shaded band, so both the level and the daily
+    excursion of the total queue can be compared per controller.
     """
     items = _ordered(results_by_ctrl)
     st = active_style()
     lw, band_a = st.line_main, st.band_alpha
 
-    fig, axgrid = plt.subplots(
-        2, 2, figsize=(text_w(), text_w() * 0.62), sharex=True,
-    )
-    axes = axgrid.ravel()  # [cost, L2, L5, L6]
+    fig, axes = plt.subplots(1, 2, figsize=(text_w(), text_w() * 0.42))
     for name, res in items:
         cost = _daily_cost(res.step)
         axes[0].plot(cost.index.to_numpy(), cost.to_numpy(),
@@ -124,29 +131,21 @@ def plot_controller_queue_comparison(results_by_ctrl: Mapping[str, object]):
     axes[0].set_ylabel("system cost [veh-min]")
     panel_label(axes[0], "a")
 
-    for k, (ax, col) in enumerate(zip(axes[1:], ("L2", "L5", "L6"))):
-        for name, res in items:
-            step = res.step
-            g = step.groupby(_keys(step))[col]
-            mean = _per_day(g.mean(), step)
-            lo = _per_day(g.min(), step)
-            hi = _per_day(g.max(), step)
-            days = mean.index.to_numpy()
-            colour = controller_colour(name)
-            ax.plot(days, mean.to_numpy(), color=colour, linewidth=lw)
-            ax.fill_between(days, lo.to_numpy(), hi.to_numpy(),
-                            color=colour, alpha=band_a, linewidth=0)
-        ax.set_ylabel(f"queue $L_{col[1]}$ [veh]")
-        # An (almost) always-empty queue (typical for the high-capacity bypass)
-        # would otherwise get a +/-0.04 autoscale; pin a sane floor instead.
-        if ax.get_ylim()[1] < 1.0:
-            ax.set_ylim(-0.05, 1.0)
-        panel_label(ax, "bcd"[k])
-    for ax in axgrid[-1]:
-        ax.set_xlabel("day")
+    ax = axes[1]
+    for name, res in items:
+        mean, lo, hi = _daily_total_queue_band(res.step)
+        days = mean.index.to_numpy()
+        colour = controller_colour(name)
+        ax.plot(days, mean.to_numpy(), color=colour, linewidth=lw)
+        ax.fill_between(days, lo.to_numpy(), hi.to_numpy(),
+                        color=colour, alpha=band_a, linewidth=0)
+    ax.set_ylabel(r"total queue $L_2{+}L_5{+}L_6$ [veh]")
+    panel_label(ax, "b")
+
     for ax in axes:
+        ax.set_xlabel("day")
         ax.grid(alpha=0.25)
-    light_borders(axgrid)
+    light_borders(axes)
 
     handles = [
         Line2D([0], [0], color=controller_colour(k),
@@ -154,8 +153,61 @@ def plot_controller_queue_comparison(results_by_ctrl: Mapping[str, object]):
         for k, _ in items
     ]
     fig.legend(handles=handles, loc="upper center", ncol=len(handles),
-               frameon=False, bbox_to_anchor=(0.5, 1.02), fontsize=7.5)
-    fig.tight_layout(rect=(0, 0, 1, 0.95))
+               frameon=False, bbox_to_anchor=(0.5, 1.04), fontsize=7.5)
+    fig.tight_layout(rect=(0, 0, 1, 0.92))
+    return fig
+
+
+def plot_within_day_queue_by_controller(
+    results_by_ctrl: Mapping[str, object], *, day: int | None = None,
+    seed: int | None = None,
+):
+    """One square panel per controller: the within-day realised queue on the
+    three critical links ``L_2`` (A--B intersection), ``L_5`` (A--B bypass) and
+    ``L_6`` (C--D) at a representative day.
+
+    A 1xN row (one column per controller in canonical order, FT/RF/AC/AIF) with
+    a shared y-axis so the queue levels are directly comparable across strategies.
+    ``day`` selects the inspected day (default the last recorded day); ``seed``
+    picks the run when several are present (default the first).
+    """
+    items = _ordered(results_by_ctrl)
+    n = max(len(items), 1)
+    lw = active_style().line_main
+    specs = [
+        ("L2", route_colour("alpha"), r"$L_2$"),
+        ("L5", route_colour("beta"), r"$L_5$"),
+        ("L6", route_colour("gamma"), r"$L_6$"),
+    ]
+
+    fig, axgrid = plt.subplots(
+        1, n, figsize=(text_w(), text_w() * 0.40), sharex=True, sharey=True,
+        squeeze=False,
+    )
+    axes = axgrid[0]
+    for ax, (name, res) in zip(axes, items):
+        step = res.step
+        if "seed" in step.columns:
+            s = int(step["seed"].min()) if seed is None else int(seed)
+            step = step[step["seed"] == s]
+        d_use = int(step["day"].max()) if day is None else int(day)
+        dd = step[step["day"] == d_use].sort_values("tau")
+        tau = dd["tau"].to_numpy(dtype=float)
+        for col, colour, _lab in specs:
+            ax.plot(tau, dd[col].to_numpy(), color=colour, linewidth=lw)
+        ax.set_title(controller_label(name, abbr=True), fontsize=8)
+        ax.set_xlabel("time of day [min]")
+        ax.grid(alpha=0.25)
+    axes[0].set_ylabel("queue [veh]")
+    light_borders(axgrid)
+
+    handles = [
+        Line2D([0], [0], color=colour, linewidth=lw, label=lab)
+        for _col, colour, lab in specs
+    ]
+    fig.legend(handles=handles, loc="upper center", ncol=len(handles),
+               frameon=False, bbox_to_anchor=(0.5, 1.05), fontsize=7.5)
+    fig.tight_layout(rect=(0, 0, 1, 0.90))
     return fig
 
 
