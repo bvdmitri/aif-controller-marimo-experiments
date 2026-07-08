@@ -144,6 +144,14 @@ DESCRIPTIONS: dict[str, str] = {
         r"finer, more stable split; keep $M\ge 8$ (very small $M$ degenerates "
         r"toward the raw signal). Ignored unless the sequential advisory is on."
     ),
+    "sequential_seed": (
+        r"Starting point for the **sequential** advisory. **From empty** rebuilds "
+        r"the split from zero each day (depends only on the split-independent "
+        r"demand, so stable by construction). **From belief** starts from the "
+        r"controller's believed split and reassigns travellers toward the balanced "
+        r"split (posterior-as-prior: keeps current knowledge, minimal move). "
+        r"Ignored unless the sequential advisory is on."
+    ),
     "gamma": (
         r"AIF action precision $\gamma^c$. Higher $\to$ a sharper preference for "
         r"the lowest-EFE split (more decisive control)."
@@ -253,6 +261,14 @@ def sequential_increments():
     return mo.ui.slider(4, 24, value=12, label="sequential increments M")
 
 
+def sequential_seed():
+    return mo.ui.dropdown(
+        options=["From empty", "From belief"],
+        value="From empty",
+        label="sequential seed",
+    )
+
+
 def gamma():
     return mo.ui.slider(0.5, 20.0, step=0.5, value=4.0, label="AIF gamma")
 
@@ -289,7 +305,7 @@ _GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
     )),
     ("Communication / social",
      ("comm_mechanism", "signal_mechanism", "sequential_increments",
-      "theta", "compliance", "advisory_smoothing")),
+      "sequential_seed", "theta", "compliance", "advisory_smoothing")),
     ("AIF controller", ("gamma", "omega", "sigma_pref", "phi_grid", "k_L")),
 )
 

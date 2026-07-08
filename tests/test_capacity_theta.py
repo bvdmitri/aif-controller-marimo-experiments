@@ -22,7 +22,9 @@ WHY THIS EXISTS
          value broadcast to everyone, it hands each traveller a rank-indexed
          marginal cost from an incremental assignment, so the population splits
          instead of herding. It collapses the same cobweb even at W=1 (no
-         smoothing), so theta stops backfiring at the throttled scale.
+         smoothing), so theta stops backfiring at the throttled scale. Both
+         seedings work (fill from empty, or reassign from the controller's
+         belief); the belief seed is at least as stable and reaches a lower cost.
 
 HOW TO READ THE OUTPUT
     Run with ``-s`` to see the narration:
@@ -61,14 +63,16 @@ SMOOTH_W = 25
 
 
 def _steady(theta: float, scale: float, smoothing: int, *,
-            signal: SignalType = SignalType.EXTERNALITY, increments: int = 12):
+            signal: SignalType = SignalType.EXTERNALITY, increments: int = 12,
+            seed: str = "empty"):
     """Steady-state total system cost and day-to-day P_alpha std for one cell.
 
     AIF controller, externality advisory on at full compliance (required for
     theta to act), deterministic, throttling link 5 (bypass) by ``scale`` and
     averaging the advisory over ``smoothing`` days. ``signal`` selects the
     advisory mechanism (raw ``EXTERNALITY`` or per-traveller
-    ``EXTERNALITY_SEQUENTIAL`` with ``increments`` bins)."""
+    ``EXTERNALITY_SEQUENTIAL`` with ``increments`` bins, ``seed`` = 'empty' or
+    'belief')."""
     p = (
         replace(Params(), sim=replace(SimParams(), days=DAYS, seed=SEED),
                 controller=AIFControllerSpec())
@@ -80,7 +84,7 @@ def _steady(theta: float, scale: float, smoothing: int, *,
         .with_advisory_smoothing(smoothing)
     )
     if signal in (SignalType.EXTERNALITY_SEQUENTIAL, SignalType.MSC_SEQUENTIAL):
-        p = p.with_sequential_increments(increments)
+        p = p.with_sequential_increments(increments).with_sequential_seed(seed)
     step = run_experiment(p, seeds=[SEED]).step
     daily_cost = step.groupby("day")["SC"].first()
     daily_share = step.groupby("day")["P_alpha"].mean()
@@ -100,6 +104,10 @@ def corners():
         "thr_smooth": _steady(1.0, 0.25, SMOOTH_W),  # throttled, theta on, smoothed
         # throttled, theta on, per-traveller sequential advisory, NO smoothing
         "thr_seq": _steady(1.0, 0.25, 1, signal=SignalType.EXTERNALITY_SEQUENTIAL),
+        # ... same but seeded from the controller's belief (posterior-as-prior)
+        "thr_seq_belief": _steady(1.0, 0.25, 1,
+                                  signal=SignalType.EXTERNALITY_SEQUENTIAL,
+                                  seed="belief"),
     }
 
 
@@ -208,26 +216,31 @@ def test_sequential_advisory_damps_the_cobweb_without_smoothing(corners):
     thr_off_sc, thr_off_std = corners["thr_off"]
     thr_raw_sc, thr_raw_std = corners["thr_raw"]
     thr_seq_sc, thr_seq_std = corners["thr_seq"]
+    thr_belief_sc, thr_belief_std = corners["thr_seq_belief"]
 
     _narrate(
         "BEHAVIOUR: the sequential (per-traveller) advisory kills the cobweb at W=1",
         [
             f"throttled (x0.25), theta=1, no smoothing (W=1):",
-            f"   raw advisory:        cost {thr_raw_sc:10.0f}   P_alpha std: {thr_raw_std:.3f}  <- cobweb",
-            f"   sequential advisory: cost {thr_seq_sc:10.0f}   P_alpha std: {thr_seq_std:.3f}",
-            f"   theta=0 baseline:    cost {thr_off_sc:10.0f}",
-            f"   sequential theta 0->1: {100 * (thr_seq_sc - thr_off_sc) / thr_off_sc:+.1f}%",
+            f"   raw advisory:             cost {thr_raw_sc:10.0f}   P_alpha std: {thr_raw_std:.3f}  <- cobweb",
+            f"   sequential (from empty):  cost {thr_seq_sc:10.0f}   P_alpha std: {thr_seq_std:.3f}",
+            f"   sequential (from belief): cost {thr_belief_sc:10.0f}   P_alpha std: {thr_belief_std:.3f}",
+            f"   theta=0 baseline:         cost {thr_off_sc:10.0f}",
+            f"   seq(empty)  theta 0->1: {100 * (thr_seq_sc - thr_off_sc) / thr_off_sc:+.1f}%",
+            f"   seq(belief) theta 0->1: {100 * (thr_belief_sc - thr_off_sc) / thr_off_sc:+.1f}%",
             "VERDICT: handing each traveller a rank-indexed marginal cost splits "
             "the population instead of herding it, so the day-to-day oscillation "
             "collapses and theta stops backfiring, all without any temporal "
-            "smoothing of the advisory.",
+            "smoothing of the advisory. Seeding from the controller's belief "
+            "(posterior-as-prior) is at least as stable and reaches a lower cost.",
         ],
     )
 
-    assert np.isfinite([thr_seq_sc, thr_seq_std]).all()
-    # The oscillation is gone even at W=1 (matches the smoothed-corner threshold).
-    assert thr_seq_std < 0.05, thr_seq_std
-    assert thr_seq_std < 0.5 * thr_raw_std, (thr_seq_std, thr_raw_std)
-    # theta no longer backfires: cost near the theta=0 baseline, not +200%.
-    assert thr_seq_sc < 1.10 * thr_off_sc, (thr_seq_sc, thr_off_sc)
-    assert thr_seq_sc < 0.5 * thr_raw_sc, (thr_seq_sc, thr_raw_sc)
+    for sc, std in ((thr_seq_sc, thr_seq_std), (thr_belief_sc, thr_belief_std)):
+        assert np.isfinite([sc, std]).all()
+        # The oscillation is gone even at W=1 (matches the smoothed-corner threshold).
+        assert std < 0.05, std
+        assert std < 0.5 * thr_raw_std, (std, thr_raw_std)
+        # theta no longer backfires: cost near the theta=0 baseline, not +200%.
+        assert sc < 1.10 * thr_off_sc, (sc, thr_off_sc)
+        assert sc < 0.5 * thr_raw_sc, (sc, thr_raw_sc)

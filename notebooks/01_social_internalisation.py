@@ -44,6 +44,12 @@ def _(mo):
         externality $E_r$ is communicated so $\theta$ can act on it; the
         belief-informing broadcasts (CG/SN) of Experiment 3 are *not* used here.
 
+        The **advisory mechanism** dropdown chooses how $E_r$ is computed: the
+        *raw* externality (one value broadcast to everyone) or the per-traveller
+        *sequential* externality (a rank-indexed schedule, seeded from empty or
+        from the controller's belief) that splits the population instead of
+        letting it herd.
+
         Set the parameters, click **Run**, and read the charts below.
         """
     )
@@ -175,6 +181,9 @@ def _(mo, nc):
     learn_noise = nc.learn_noise()
     noise_regime = nc.noise_regime()
     stationary = nc.stationary()
+    signal_mechanism = nc.signal_mechanism()
+    sequential_increments = nc.sequential_increments()
+    sequential_seed = nc.sequential_seed()
     theta = nc.theta()
     compliance = nc.compliance()
     gamma = nc.gamma()
@@ -198,7 +207,10 @@ def _(mo, nc):
         phi_grid,
         run_btn,
         seed,
+        sequential_increments,
+        sequential_seed,
         sigma_pref,
+        signal_mechanism,
         stationary,
         theta,
         time_step,
@@ -209,7 +221,8 @@ def _(mo, nc):
 @app.cell
 def _(bypass_capacity_scale, compliance, control_interval, days, demand_scale,
       gamma, learn_noise, nc, noise_regime, omega, phi_grid, run_btn, seed,
-      sigma_pref, stationary, theta, time_step, warmup):
+      sequential_increments, sequential_seed, sigma_pref, signal_mechanism,
+      stationary, theta, time_step, warmup):
     # The rolling-window sliders live under (and are disabled by) the stationary
     # toggle: they only bite in the non-stationary mode. Defined here, downstream
     # of `stationary`, so toggling it re-renders them (updating `disabled`)
@@ -225,6 +238,9 @@ def _(bypass_capacity_scale, compliance, control_interval, days, demand_scale,
         "learn_noise": learn_noise, "noise_regime": noise_regime,
         "stationary": stationary, "traveller_window": traveller_window,
         "controller_window": controller_window,
+        "signal_mechanism": signal_mechanism,
+        "sequential_increments": sequential_increments,
+        "sequential_seed": sequential_seed,
         "theta": theta, "compliance": compliance,
         "gamma": gamma, "omega": omega, "sigma_pref": sigma_pref,
         "phi_grid": phi_grid,
@@ -255,7 +271,10 @@ def _(
     run_btn,
     run_experiment,
     seed,
+    sequential_increments,
+    sequential_seed,
     sigma_pref,
+    signal_mechanism,
     SignalType,
     stationary,
     theta,
@@ -285,15 +304,18 @@ def _(
         )
         # theta enters the perceived cost as zeta_r = TT_r + theta * E_r, so it
         # only changes behaviour when the externality E_r is communicated. We
-        # broadcast EXTERNALITY at full compliance; with no such signal theta
-        # multiplies a zero offset and every theta gives an identical result.
+        # broadcast the externality at full compliance; with no such signal theta
+        # multiplies a zero offset and every theta gives an identical result. The
+        # advisory-mechanism dropdown picks the raw (single, herd-inducing)
+        # externality vs the per-traveller sequential externality (M bins, seeded
+        # from empty or from the controller's belief).
         params = replace(
             Params(),
             sim=replace(SimParams(), days=int(days.value), seed=int(seed.value),
                         burn_in=int(warmup.value), dt_min=int(time_step.value)),
             controller=spec,
             demand=demand,
-        ).with_comm(SignalType.EXTERNALITY).with_compliance(
+        ).with_compliance(
             float(compliance.value)
         ).with_theta(
             float(theta.value)
@@ -302,6 +324,13 @@ def _(
         ).with_stationary(bool(stationary.value)).with_noise_regime(
             noise_regime.value
         ).with_bypass_capacity_scale(float(bypass_capacity_scale.value))
+        if signal_mechanism.value == "Sequential externality":
+            _seed = "belief" if sequential_seed.value == "From belief" else "empty"
+            params = (params.with_comm(SignalType.EXTERNALITY_SEQUENTIAL)
+                      .with_sequential_increments(int(sequential_increments.value))
+                      .with_sequential_seed(_seed))
+        else:
+            params = params.with_comm(SignalType.EXTERNALITY)
         # Snapshot every day so the belief-vs-realised charts have the per-agent
         # posterior on the days they overlay.
         results = run_experiment(

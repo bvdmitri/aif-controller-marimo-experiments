@@ -141,6 +141,7 @@ def _(mo, nc):
     bypass_capacity_scale = nc.bypass_capacity_scale()
     signal_mechanism = nc.signal_mechanism()
     sequential_increments = nc.sequential_increments()
+    sequential_seed = nc.sequential_seed()
     advisory_smoothing = nc.advisory_smoothing()
     learn_noise = nc.learn_noise()
     noise_regime = nc.noise_regime()
@@ -159,6 +160,7 @@ def _(mo, nc):
         run_btn,
         seed,
         sequential_increments,
+        sequential_seed,
         signal_mechanism,
         stationary,
         time_step,
@@ -169,7 +171,7 @@ def _(mo, nc):
 @app.cell
 def _(advisory_smoothing, bypass_capacity_scale, control_interval, days,
       demand_scale, learn_noise, nc, noise_regime, run_btn, seed,
-      sequential_increments, signal_mechanism, stationary,
+      sequential_increments, sequential_seed, signal_mechanism, stationary,
       time_step, warmup):
     # Window sliders under (and disabled by) the stationary toggle.
     traveller_window = nc.traveller_window(disabled=stationary.value)
@@ -185,6 +187,7 @@ def _(advisory_smoothing, bypass_capacity_scale, control_interval, days,
         "controller_window": controller_window,
         "signal_mechanism": signal_mechanism,
         "sequential_increments": sequential_increments,
+        "sequential_seed": sequential_seed,
         "advisory_smoothing": advisory_smoothing,
     }, run_btn)
     controls
@@ -207,6 +210,7 @@ def _(
     replace,
     seed,
     sequential_increments,
+    sequential_seed,
     signal_mechanism,
     stationary,
     time_step,
@@ -233,8 +237,10 @@ def _(
         demand=_demand,
     )
     if signal_mechanism.value == "Sequential externality":
+        _seed = "belief" if sequential_seed.value == "From belief" else "empty"
         _base = (_base.with_comm(SignalType.EXTERNALITY_SEQUENTIAL)
-                 .with_sequential_increments(int(sequential_increments.value)))
+                 .with_sequential_increments(int(sequential_increments.value))
+                 .with_sequential_seed(_seed))
     else:
         _base = _base.with_comm(SignalType.EXTERNALITY)
     base_params = (
@@ -318,7 +324,8 @@ def _(mo):
 
 @app.cell
 def _(SignalType, advisory_smoothing, base_params, bypass_capacity_scale,
-      run_btn, run_experiment, seed, sequential_increments, sweep_progress_bar):
+      run_btn, run_experiment, seed, sequential_increments, sequential_seed,
+      sweep_progress_bar):
     # The two cobweb fixes side by side at theta=1, for the single bypass scale on
     # the slider: the raw stale advisory (W=1, the cobweb), the raw advisory
     # smoothed over W days, and the per-traveller sequential advisory (W=1). This
@@ -330,15 +337,18 @@ def _(SignalType, advisory_smoothing, base_params, bypass_capacity_scale,
         _s = float(bypass_capacity_scale.value)
         _W = int(advisory_smoothing.value)
         _M = int(sequential_increments.value)
+        _seed = "belief" if sequential_seed.value == "From belief" else "empty"
         _base = base_params.with_bypass_capacity_scale(_s).with_theta(1.0)
         _variants = {
             "raw stale (W=1)": _base.with_comm(SignalType.EXTERNALITY)
                                     .with_advisory_smoothing(1),
             f"raw smoothed (W={_W})": _base.with_comm(SignalType.EXTERNALITY)
                                           .with_advisory_smoothing(_W),
-            "sequential (W=1)": _base.with_comm(SignalType.EXTERNALITY_SEQUENTIAL)
-                                     .with_sequential_increments(_M)
-                                     .with_advisory_smoothing(1),
+            f"sequential ({_seed}, W=1)":
+                _base.with_comm(SignalType.EXTERNALITY_SEQUENTIAL)
+                     .with_sequential_increments(_M)
+                     .with_sequential_seed(_seed)
+                     .with_advisory_smoothing(1),
         }
         results_by_advisory = {}
         with sweep_progress_bar(len(_variants), base_params.sim,

@@ -636,7 +636,25 @@ class CommunicationSpec:
     green splits, not on yesterday's realised route split: that is what makes it a
     stable day-to-day fixed point rather than a cobweb. Cost is ``M * (2K + 1)``
     full-day re-rolls per day (roughly ``M`` times the raw MSC), incurred only for
-    the two sequential signals."""
+    the two sequential signals. See ``sequential_seed`` for the alternative
+    (belief-seeded) construction."""
+
+    sequential_seed: str = "empty"
+    """Starting point for the sequential advisory's incremental assignment
+    (``EXTERNALITY_SEQUENTIAL`` / ``MSC_SEQUENTIAL``); ignored by other signals.
+
+    * ``"empty"`` (default): fill the whole day's A--B demand from zero, jointly
+      across minutes. The schedule then depends only on the split-independent
+      total demand, ``gamma`` and the green splits, so it is a stable day-to-day
+      fixed point (no cobweb) by construction.
+    * ``"belief"``: start from the controller's believed split (the most recent
+      realised inflow) and *reassign* travellers rank by rank, each moved to the
+      currently-cheaper route with the running state updated after each move (a
+      Gauss--Seidel rebalancing sweep). This is the posterior-as-prior version:
+      it keeps the current knowledge and makes the minimal redistribution toward
+      the balanced split, rather than re-solving from scratch. It targets the same
+      balanced split as ``"empty"``; because the schedule now depends on the
+      believed split its stability is not automatic and is validated empirically."""
 
 
 # ============================================================================
@@ -801,6 +819,15 @@ class Params:
         ``>= 1``; keep ``>= 8`` in practice (see ``sequential_increments``)."""
         return replace(self, comm=replace(self.comm,
                                           sequential_increments=max(1, int(m))))
+
+    def with_sequential_seed(self, seed: str) -> "Params":
+        """Choose the sequential advisory's starting point: ``"empty"`` (fill the
+        day from zero, the stable default) or ``"belief"`` (start from the believed
+        split and reassign, posterior-as-prior). See ``sequential_seed``."""
+        seed = str(seed).lower()
+        if seed not in ("empty", "belief"):
+            raise ValueError(f"sequential_seed must be 'empty' or 'belief', got {seed!r}.")
+        return replace(self, comm=replace(self.comm, sequential_seed=seed))
 
     def with_belief_signals(self, *signals: BeliefSignal) -> "Params":
         """Set which parts of the controller's belief are shared for

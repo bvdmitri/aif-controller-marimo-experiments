@@ -317,7 +317,11 @@ Two levers break the cobweb, both selectable in the notebook:
   $C$--$D$ flow and the green splits, making it a stable day-to-day fixed point
   rather than a cobweb. It is also heterogeneous across travellers, so the
   coordinated herd that caused the overshoot is gone; the oscillation collapses
-  even at $W=1$.
+  even at $W=1$. The **sequential seed** selects the starting point: *from empty*
+  (rebuild from zero, stable by construction) or *from belief* (start from the
+  controller's believed split and reassign the marginal travellers toward the
+  balance, posterior-as-prior); both reach the same balanced split, with the
+  belief seed making the minimal, least-disruptive move.
 
 A per-chart "how to read" guide is appended automatically below.
 """

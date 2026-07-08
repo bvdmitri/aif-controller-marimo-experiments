@@ -187,6 +187,26 @@ def test_sequential_msc_schedule_rises_as_the_loaded_route_fills():
         assert np.all(np.isfinite(diag["msc"][r]))
 
 
+def test_sequential_belief_seed_is_scheduled_and_ordered():
+    """The belief-seeded sequential advisory (start from the realised split and
+    reassign) also returns a non-negative (K, M) schedule that orders the
+    congested route above the free one and varies across bins."""
+    net, sim, inflow, queues, tt_route, phi2, phi6 = _congested_alpha_scenario()
+    M = 12
+    bc = build_broadcast(
+        CommunicationSpec(signal_type=SignalType.EXTERNALITY_SEQUENTIAL,
+                          sequential_increments=M, sequential_seed="belief"),
+        tt_route, queues, net, sim, inflow_by_route=inflow, phi2=phi2, phi6=phi6,
+    )
+    for r in net.traveller_routes:
+        assert bc.value[r].shape == (sim.K, M)
+        assert np.all(bc.value[r] >= 0.0)
+        assert np.all(np.isfinite(bc.value[r]))
+    assert bc.value["alpha"].mean() > bc.value["beta"].mean()
+    variation = max(np.ptp(bc.value[r], axis=1).max() for r in net.traveller_routes)
+    assert variation > 0.0
+
+
 def test_sequential_increments_inert_for_nonsequential_signals():
     """The new sequential_increments field only bites for the sequential signals:
     an EXTERNALITY run is bit-identical regardless of its value, guarding that the

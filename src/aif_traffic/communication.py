@@ -163,26 +163,35 @@ def _sequential_marginal_social_cost(
     net: NetworkParams,
     sim: SimParams,
     M: int,
+    seed: str = "empty",
 ) -> dict[str, np.ndarray]:
     """Per-route, per-minute, per-increment marginal social cost schedule.
 
-    The whole day's A--B demand is redistributed **from empty**, jointly across
-    all departure minutes, in ``M`` equal increments. The AB routes (``alpha`` /
-    ``beta``) start at zero inflow at every minute; ``gamma`` (the exogenous C--D
-    demand) and the realised green splits ``(phi2, phi6)`` are held fixed. At each
-    increment, every minute ``t`` is probed for the per-vehicle marginal social
-    cost of adding one chunk to each route against the shared running assignment,
-    the pair is recorded, and each minute's chunk is assigned to its argmin route
-    (so a route's cost rises as it fills). The per-minute chunk size is
-    ``d_ab(t) / M`` where ``d_ab(t) = alpha(t) + beta(t)`` is the realised total
-    AB demand at ``t``.
+    The whole day's A--B demand is assigned over ``M`` rank increments, jointly
+    across all departure minutes. ``gamma`` (the exogenous C--D demand) and the
+    realised green splits ``(phi2, phi6)`` are held fixed. Each increment probes,
+    per minute, the per-vehicle marginal social cost of putting one chunk on each
+    route against the shared running assignment, records the pair, and assigns the
+    chunk to the argmin route (so a route's cost rises as it fills). The per-minute
+    chunk is ``d_ab(t) / M`` with ``d_ab(t) = alpha(t) + beta(t)`` the realised
+    total AB demand at ``t``.
 
-    Filling from empty is what makes the schedule a stable day-to-day fixed point:
-    the total AB demand ``d_ab(t)`` is the *split-independent* exogenous demand, so
-    the schedule depends only on that demand, ``gamma`` and the green splits, not
-    on yesterday's realised route split. (An earlier per-minute variant that held
-    the other minutes at yesterday's realised inflow inherited yesterday's herd
-    and failed to damp the cobweb.)
+    ``seed`` sets the starting assignment:
+
+    * ``"empty"`` (default): start from zero AB inflow everywhere and *load* the
+      demand from empty. Filling from empty is what makes the schedule a stable
+      day-to-day fixed point: ``d_ab(t)`` is the *split-independent* exogenous
+      demand, so the schedule depends only on that demand, ``gamma`` and the green
+      splits, not on yesterday's realised route split. (An earlier per-minute
+      variant that held the other minutes at yesterday's realised inflow inherited
+      yesterday's herd and failed to damp the cobweb.)
+    * ``"belief"``: start from the believed split (``inflow_by_route``) and
+      *reassign* rank by rank. Each increment removes its slice from the route it
+      is believed to sit on, probes both routes, and moves it to the cheaper one,
+      updating the running state (a Gauss--Seidel rebalancing sweep). This keeps
+      the current knowledge and makes the minimal move toward the balanced split.
+      It targets the same balanced split as ``"empty"``; its stability is not
+      guaranteed a priori because the schedule now depends on the believed split.
 
     Returns ``{route: (K, M)}`` raw (unclipped) marginal social cost. Cost is
     ``M * (2K + 1)`` full-day re-rolls.
@@ -211,15 +220,32 @@ def _sequential_marginal_social_cost(
     chunk_flow = d_ab / M            # (K,) veh/h added per increment per minute
     chunk_veh = chunk_flow * dt_h    # (K,) vehicles that flow represents
 
-    # Start from empty AB everywhere; gamma / non-AB routes stay at the realised
-    # base, green splits fixed via caps.
-    running = {rr: base_infl[rr].copy() for rr in base_infl}
-    for r in routes:
-        running[r][:] = 0.0
+    if seed == "belief":
+        # Start from the believed split; reassign rank slices one by one.
+        running = {rr: base_infl[rr].copy() for rr in base_infl}
+        # Believed route-1 flow fraction per minute (0.5 where there is no demand).
+        frac1 = np.where(d_ab > 0.0, base_infl[routes[0]] / np.where(d_ab > 0.0, d_ab, 1.0), 0.5)
+    else:  # "empty"
+        running = {rr: base_infl[rr].copy() for rr in base_infl}
+        for r in routes:
+            running[r][:] = 0.0
+        frac1 = None
+
     sc_now = _system_cost(running)
 
     for m in range(M):
-        # Probe each (minute, route) against the shared start-of-increment state.
+        if seed == "belief":
+            # Remove this rank slice from the route it is believed to sit on
+            # (the first frac1 fraction of ranks is believed on route 0), then
+            # re-roll the shared baseline with the slice pulled out.
+            for t in range(K):
+                if chunk_veh[t] <= 0.0:
+                    continue
+                bel = 0 if (m + 0.5) / M <= frac1[t] else 1
+                running[routes[bel]][t] = max(running[routes[bel]][t] - chunk_flow[t], 0.0)
+            sc_now = _system_cost(running)
+
+        # Probe each (minute, route) against the shared baseline.
         marginals = {r: np.zeros(K) for r in routes}
         for t in range(K):
             if chunk_veh[t] <= 0.0:
@@ -309,6 +335,7 @@ def build_broadcast(
             )
         sched = _sequential_marginal_social_cost(
             inflow_by_route, phi2, phi6, net, sim, comm.sequential_increments,
+            seed=getattr(comm, "sequential_seed", "empty"),
         )
         if out_diagnostics is not None:
             # Length-K summary (mean over increment bins) so the recorded MSC
