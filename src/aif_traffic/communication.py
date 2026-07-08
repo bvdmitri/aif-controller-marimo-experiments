@@ -66,10 +66,16 @@ from .utils import daily_system_cost
 class Broadcast:
     """Per-traveller-route advisory over departure minutes.
 
-    ``value[route]`` is a length-``K`` array; a traveller departing at minute
-    ``t`` on route ``r`` reads ``value[r][t]``. Higher values discourage the
-    route once folded into the perceived cost. ``signal_type`` records which
-    information was broadcast.
+    ``value[route]`` is a length-``K`` array for the direct / finite-difference
+    signals; a traveller departing at minute ``t`` on route ``r`` reads
+    ``value[r][t]``. For the sequential signals (``EXTERNALITY_SEQUENTIAL`` /
+    ``MSC_SEQUENTIAL``) it is instead a ``(K, M)`` schedule: a per-departure-minute
+    marginal-social-cost curve over ``M`` increment bins, and the traveller reads
+    ``value[r][t, bin]`` at its stable within-minute rank bin (see
+    :meth:`inference.population.Population._broadcast_cost_offset`). Higher values
+    discourage the route once folded into the perceived cost. ``signal_type``
+    records which information was broadcast. :func:`average_broadcasts` is
+    shape-agnostic and handles both.
     """
 
     signal_type: SignalType
@@ -150,6 +156,91 @@ def _marginal_social_cost(
     return msc
 
 
+def _sequential_marginal_social_cost(
+    inflow_by_route: Mapping[str, np.ndarray],
+    phi2: np.ndarray,
+    phi6: np.ndarray,
+    net: NetworkParams,
+    sim: SimParams,
+    M: int,
+) -> dict[str, np.ndarray]:
+    """Per-route, per-minute, per-increment marginal social cost schedule.
+
+    The whole day's A--B demand is redistributed **from empty**, jointly across
+    all departure minutes, in ``M`` equal increments. The AB routes (``alpha`` /
+    ``beta``) start at zero inflow at every minute; ``gamma`` (the exogenous C--D
+    demand) and the realised green splits ``(phi2, phi6)`` are held fixed. At each
+    increment, every minute ``t`` is probed for the per-vehicle marginal social
+    cost of adding one chunk to each route against the shared running assignment,
+    the pair is recorded, and each minute's chunk is assigned to its argmin route
+    (so a route's cost rises as it fills). The per-minute chunk size is
+    ``d_ab(t) / M`` where ``d_ab(t) = alpha(t) + beta(t)`` is the realised total
+    AB demand at ``t``.
+
+    Filling from empty is what makes the schedule a stable day-to-day fixed point:
+    the total AB demand ``d_ab(t)`` is the *split-independent* exogenous demand, so
+    the schedule depends only on that demand, ``gamma`` and the green splits, not
+    on yesterday's realised route split. (An earlier per-minute variant that held
+    the other minutes at yesterday's realised inflow inherited yesterday's herd
+    and failed to damp the cobweb.)
+
+    Returns ``{route: (K, M)}`` raw (unclipped) marginal social cost. Cost is
+    ``M * (2K + 1)`` full-day re-rolls.
+    """
+    from .network import _integrate_queues  # local: heavy path only
+
+    K = sim.K
+    dt_h = sim.dt_h
+    caps = effective_capacities(phi2, phi6, net)
+
+    def _system_cost(infl: Mapping[str, np.ndarray]) -> float:
+        Q_link = link_inflows(infl, net)
+        queues = _integrate_queues(Q_link, caps, net, sim)
+        _, tt_route = link_and_route_travel_times(queues, caps, net, sim)
+        return daily_system_cost(infl, tt_route, dt_h)
+
+    base_infl = {r: np.asarray(q, dtype=float) for r, q in inflow_by_route.items()}
+    routes = list(net.traveller_routes)  # AB routes, e.g. ["alpha", "beta"]
+    M = max(1, int(M))
+    sched = {r: np.zeros((K, M)) for r in routes}
+
+    # Total AB demand per minute (split-independent) and the per-increment chunk.
+    d_ab = np.zeros(K)
+    for r in routes:
+        d_ab = d_ab + base_infl[r]
+    chunk_flow = d_ab / M            # (K,) veh/h added per increment per minute
+    chunk_veh = chunk_flow * dt_h    # (K,) vehicles that flow represents
+
+    # Start from empty AB everywhere; gamma / non-AB routes stay at the realised
+    # base, green splits fixed via caps.
+    running = {rr: base_infl[rr].copy() for rr in base_infl}
+    for r in routes:
+        running[r][:] = 0.0
+    sc_now = _system_cost(running)
+
+    for m in range(M):
+        # Probe each (minute, route) against the shared start-of-increment state.
+        marginals = {r: np.zeros(K) for r in routes}
+        for t in range(K):
+            if chunk_veh[t] <= 0.0:
+                continue
+            for r in routes:
+                probe = {rr: running[rr].copy() for rr in running}
+                probe[r][t] += chunk_flow[t]
+                marginals[r][t] = (_system_cost(probe) - sc_now) / chunk_veh[t]
+                sched[r][t, m] = marginals[r][t]
+        # Assign each minute's chunk to its argmin route, then re-roll once for
+        # the next increment's baseline.
+        for t in range(K):
+            if chunk_veh[t] <= 0.0:
+                continue
+            winner = min(routes, key=lambda rr: marginals[rr][t])
+            running[winner][t] += chunk_flow[t]
+        sc_now = _system_cost(running)
+
+    return sched
+
+
 def build_broadcast(
     comm: CommunicationSpec,
     tt_by_route: Mapping[str, np.ndarray],
@@ -169,17 +260,23 @@ def build_broadcast(
     * ``TRAVEL_TIME``  -> the route travel time ``TT_r`` (direct reading);
     * ``CONGESTION``   -> the total queued vehicles along the route (direct);
     * ``EXTERNALITY``  -> ``E_r = MSC_r - TT_r`` (finite-difference);
-    * ``MSC``          -> the marginal social cost ``MSC_r`` (finite-difference).
+    * ``MSC``          -> the marginal social cost ``MSC_r`` (finite-difference);
+    * ``EXTERNALITY_SEQUENTIAL`` / ``MSC_SEQUENTIAL`` -> a per-departure-minute
+      ``(K, M)`` schedule (incremental marginal social cost over ``M`` rank bins;
+      see :func:`_sequential_marginal_social_cost`), delivered per traveller by
+      rank in :mod:`inference.population`.
 
-    The EXTERNALITY / MSC signals require the realised route inflows and green
-    splits (``inflow_by_route``, ``phi2``, ``phi6``) to re-roll the queue model.
-    All advisories are clipped to be non-negative (higher discourages a route).
+    The EXTERNALITY / MSC (and their sequential variants) require the realised
+    route inflows and green splits (``inflow_by_route``, ``phi2``, ``phi6``) to
+    re-roll the queue model. All advisories are clipped to be non-negative
+    (higher discourages a route).
 
-    ``out_diagnostics``, when given, receives the **raw** (unclipped)
-    finite-difference marginal social cost under ``"msc"``
-    (``{route: length-K array}``) whenever it is computed, so the simulator can
-    record it without re-rolling the day. It is left untouched for the direct
-    (non-MSC) signals.
+    ``out_diagnostics``, when given, receives the **raw** (unclipped) marginal
+    social cost under ``"msc"`` (``{route: length-K array}``) whenever it is
+    computed, so the simulator can record it without re-rolling the day. For the
+    sequential signals the recorded value is the schedule averaged over the ``M``
+    bins (a length-K summary), so the existing MSC step columns and charts stay
+    unchanged. It is left untouched for the direct (non-MSC) signals.
     """
     st = comm.signal_type
     if st is SignalType.NONE:
@@ -202,6 +299,27 @@ def build_broadcast(
                 value[r] = np.maximum(msc[r], 0.0)
             else:  # EXTERNALITY: E_r = MSC_r - TT_r
                 value[r] = np.maximum(msc[r] - tt, 0.0)
+        return Broadcast(signal_type=st, value=value)
+
+    if st in (SignalType.EXTERNALITY_SEQUENTIAL, SignalType.MSC_SEQUENTIAL):
+        if inflow_by_route is None or phi2 is None or phi6 is None:
+            raise ValueError(
+                f"Signal {st!r} needs inflow_by_route, phi2, phi6 to compute the "
+                "sequential marginal social cost schedule."
+            )
+        sched = _sequential_marginal_social_cost(
+            inflow_by_route, phi2, phi6, net, sim, comm.sequential_increments,
+        )
+        if out_diagnostics is not None:
+            # Length-K summary (mean over increment bins) so the recorded MSC
+            # columns / route-cost chart keep the same shape as the raw signals.
+            out_diagnostics["msc"] = {r: v.mean(axis=1) for r, v in sched.items()}
+        for r in net.traveller_routes:
+            tt = np.asarray(tt_by_route[r], dtype=float)
+            if st is SignalType.MSC_SEQUENTIAL:
+                value[r] = np.maximum(sched[r], 0.0)
+            else:  # EXTERNALITY_SEQUENTIAL: E_r = MSC_r - TT_r per bin
+                value[r] = np.maximum(sched[r] - tt[:, None], 0.0)
         return Broadcast(signal_type=st, value=value)
 
     route_queue = route_arrival_queues(queues_by_link, net, sim)

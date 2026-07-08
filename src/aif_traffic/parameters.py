@@ -524,6 +524,22 @@ class SignalType(enum.Enum):
     EXTERNALITY = "externality"   # \hat{E}_r
     MSC = "msc"                   # \widehat{MSC}_r (marginal social cost)
 
+    # Sequential (per-traveller) variants of EXTERNALITY / MSC. Instead of a
+    # single per-route scalar broadcast identically to everyone (which makes the
+    # whole compliant population herd onto the cheaper-looking route and drives
+    # the theta cobweb), these build a per-departure-minute *schedule* over ``M``
+    # increment bins: the marginal social cost is re-computed as demand is
+    # incrementally assigned to the argmin route, so a route's cost rises as it
+    # fills. ``build_broadcast`` returns ``value[route]`` of shape ``(K, M)``, and
+    # each traveller reads the bin at its stable within-minute rank fraction
+    # (:mod:`inference.population`). Early ranks see empty routes (large offset
+    # gap), later ranks see equalised costs (small gap), so the population
+    # *splits* toward the system optimum rather than herding. The per-traveller
+    # heterogeneity of the signal, not any "fill from empty" property, is what
+    # breaks the cobweb.
+    EXTERNALITY_SEQUENTIAL = "externality_sequential"  # per-rank E_r schedule
+    MSC_SEQUENTIAL = "msc_sequential"                  # per-rank MSC_r schedule
+
 
 class BeliefSignal(enum.Enum):
     """What the controller shares from its *own belief* with travellers, for
@@ -603,6 +619,24 @@ class CommunicationSpec:
     ``W`` days damps it. ``1`` (default) means act on yesterday's value only, the
     original un-smoothed behaviour (bit-identical). Only the ``signal_type``
     advisory is smoothed, not the extra-observation or belief channels."""
+
+    sequential_increments: int = 12
+    """Number of increment bins ``M`` for the sequential advisory signals
+    (``EXTERNALITY_SEQUENTIAL`` / ``MSC_SEQUENTIAL``); ignored by every other
+    signal type. The controller redistributes each departure minute's demand in
+    ``M`` equal chunks to the currently-cheaper route, recording the marginal
+    social cost each chunk sees, to produce a per-route schedule of shape
+    ``(K, M)``. Travellers then read the bin at their stable within-minute rank
+    fraction, so the advisory is heterogeneous across the population and the herd
+    that drives the cobweb dissolves. Keep ``M >= 8``: at very small ``M`` the
+    schedule degenerates toward the single-probe raw signal (``M = 1`` is a single
+    empty-load probe, worse than the finite-difference MSC). The demand is
+    redistributed *from empty across the whole day* (all minutes jointly), so the
+    schedule depends only on the split-independent total demand, ``gamma`` and the
+    green splits, not on yesterday's realised route split: that is what makes it a
+    stable day-to-day fixed point rather than a cobweb. Cost is ``M * (2K + 1)``
+    full-day re-rolls per day (roughly ``M`` times the raw MSC), incurred only for
+    the two sequential signals."""
 
 
 # ============================================================================
@@ -760,6 +794,13 @@ class Params:
         ``1`` recovers the original un-smoothed advisory."""
         return replace(self, comm=replace(self.comm,
                                           advisory_smoothing_days=max(1, int(days))))
+
+    def with_sequential_increments(self, m: int) -> "Params":
+        """Set the number of increment bins ``M`` for the sequential advisory
+        signals (``EXTERNALITY_SEQUENTIAL`` / ``MSC_SEQUENTIAL``). Clamped to
+        ``>= 1``; keep ``>= 8`` in practice (see ``sequential_increments``)."""
+        return replace(self, comm=replace(self.comm,
+                                          sequential_increments=max(1, int(m))))
 
     def with_belief_signals(self, *signals: BeliefSignal) -> "Params":
         """Set which parts of the controller's belief are shared for

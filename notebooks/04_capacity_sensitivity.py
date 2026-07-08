@@ -7,13 +7,16 @@ uncongestable spare capacity, so ``theta`` barely moves system cost; throttling
 the bypass turns it into a real bottleneck and gives internalisation something to
 redistribute.
 
-The catch is the **advisory smoothing window ``W``**. The cost-offset advisory is
-built from a day's realised state and acted on the next day; once the bypass is
-congestible this one-day-stale signal drives a day-to-day route-choice **cobweb**
-that sends system cost far above the ``theta=0`` baseline (``theta`` appears to
-backfire). Averaging the advisory over the last ``W`` days damps the cobweb, and
-past a threshold (~25 days here) ``theta`` helps again. The ``W`` slider moves
-between the raw (``W=1``) and stabilised regimes.
+The catch is a route-choice **cobweb**. The cost-offset advisory is built from a
+day's realised state and acted on the next day; once the bypass is congestible
+this one-day-stale signal drives a day-to-day oscillation that sends system cost
+far above the ``theta=0`` baseline (``theta`` appears to backfire). Two levers
+address it: the **advisory smoothing window ``W``** averages the advisory over the
+last ``W`` days (past ~25 days ``theta`` helps again), and the **advisory
+mechanism** dropdown swaps the raw (single, herd-inducing) externality for a
+per-traveller **sequential** externality that assigns demand incrementally so the
+population splits toward the system optimum instead of herding, collapsing the
+cobweb even at ``W=1``.
 """
 
 import marimo
@@ -43,13 +46,25 @@ def _(mo):
         **bypass-capacity scales** (link 5 $\times\,1.0, 0.5, 0.25$), throttling
         the bypass into a genuine bottleneck.
 
-        The **advisory smoothing $W$** slider is the second lever. The cost-offset
-        advisory is one day stale (built today, acted on tomorrow); with the
-        bypass throttled this drives a day-to-day route-choice **cobweb** that
-        makes $\theta$ backfire. Averaging the advisory over the last $W$ days
-        damps it, and past $W\approx25$ days $\theta$ helps again. Move $W$
-        between $1$ (raw) and $25$ (smoothed) and watch the cobweb appear and
-        vanish in the day-series chart.
+        Two levers address the resulting **cobweb**. The cost-offset advisory is
+        one day stale (built today, acted on tomorrow); with the bypass throttled,
+        the **raw** advisory broadcasts one identical per-route value to everyone,
+        so all compliant travellers herd onto the cheaper route and the route
+        share oscillates day to day, making $\theta$ backfire.
+
+        - **Advisory smoothing $W$** (slider): travellers act on the mean advisory
+          over the last $W$ days. Larger $W$ damps the cobweb; past $W\approx25$
+          days $\theta$ helps again. $W=1$ is the raw act-on-yesterday advisory.
+        - **Advisory mechanism** (dropdown): switch from *Raw externality* to
+          *Sequential externality*. The controller incrementally assigns demand to
+          the cheaper route and re-computes the marginal cost as each route fills,
+          handing different travellers different advisories (indexed by rank). The
+          population then splits toward the system optimum instead of herding, so
+          the cobweb collapses even at $W=1$. The **sequential increments $M$**
+          slider sets how finely the schedule is built.
+
+        Move $W$ and the mechanism dropdown and watch the cobweb appear and vanish
+        in the day-series chart.
         """
     )
     return
@@ -124,6 +139,8 @@ def _(mo, nc):
     control_interval = nc.control_interval()
     demand_scale = nc.demand_scale()
     bypass_capacity_scale = nc.bypass_capacity_scale()
+    signal_mechanism = nc.signal_mechanism()
+    sequential_increments = nc.sequential_increments()
     advisory_smoothing = nc.advisory_smoothing()
     learn_noise = nc.learn_noise()
     noise_regime = nc.noise_regime()
@@ -141,6 +158,8 @@ def _(mo, nc):
         noise_regime,
         run_btn,
         seed,
+        sequential_increments,
+        signal_mechanism,
         stationary,
         time_step,
         warmup,
@@ -149,7 +168,8 @@ def _(mo, nc):
 
 @app.cell
 def _(advisory_smoothing, bypass_capacity_scale, control_interval, days,
-      demand_scale, learn_noise, nc, noise_regime, run_btn, seed, stationary,
+      demand_scale, learn_noise, nc, noise_regime, run_btn, seed,
+      sequential_increments, signal_mechanism, stationary,
       time_step, warmup):
     # Window sliders under (and disabled by) the stationary toggle.
     traveller_window = nc.traveller_window(disabled=stationary.value)
@@ -163,6 +183,8 @@ def _(advisory_smoothing, bypass_capacity_scale, control_interval, days,
         "learn_noise": learn_noise, "noise_regime": noise_regime,
         "stationary": stationary, "traveller_window": traveller_window,
         "controller_window": controller_window,
+        "signal_mechanism": signal_mechanism,
+        "sequential_increments": sequential_increments,
         "advisory_smoothing": advisory_smoothing,
     }, run_btn)
     controls
@@ -184,6 +206,8 @@ def _(
     noise_regime,
     replace,
     seed,
+    sequential_increments,
+    signal_mechanism,
     stationary,
     time_step,
     traveller_window,
@@ -191,23 +215,30 @@ def _(
 ):
     # Base params: fixed AIF controller with the externality advisory on at full
     # compliance (so theta acts). theta / bypass scale / advisory-smoothing W are
-    # applied per run in the sweeps below.
+    # applied per run in the sweeps below. The advisory-mechanism dropdown picks
+    # the raw (single, herd-inducing) externality vs the per-traveller sequential
+    # externality (M increment bins); the latter is the cobweb fix.
     _scale = float(demand_scale.value)
     _demand = replace(DemandParams(),
                       d_AB_max=DemandParams().d_AB_max * _scale,
                       d_CD_max=DemandParams().d_CD_max * _scale)
+    _base = replace(
+        Params(),
+        sim=replace(SimParams(), days=int(days.value), seed=int(seed.value),
+                    burn_in=int(warmup.value), dt_min=int(time_step.value)),
+        controller=AIFControllerSpec(
+            control_interval_min=int(control_interval.value),
+            horizon_min=int(control_interval.value),
+            controller_window_size=int(controller_window.value)),
+        demand=_demand,
+    )
+    if signal_mechanism.value == "Sequential externality":
+        _base = (_base.with_comm(SignalType.EXTERNALITY_SEQUENTIAL)
+                 .with_sequential_increments(int(sequential_increments.value)))
+    else:
+        _base = _base.with_comm(SignalType.EXTERNALITY)
     base_params = (
-        replace(
-            Params(),
-            sim=replace(SimParams(), days=int(days.value), seed=int(seed.value),
-                        burn_in=int(warmup.value), dt_min=int(time_step.value)),
-            controller=AIFControllerSpec(
-                control_interval_min=int(control_interval.value),
-                horizon_min=int(control_interval.value),
-                controller_window_size=int(controller_window.value)),
-            demand=_demand,
-        )
-        .with_comm(SignalType.EXTERNALITY)
+        _base
         .with_compliance(1.0)
         .with_window_size(int(traveller_window.value))
         .with_learn_obs_noise(bool(learn_noise.value))
@@ -271,34 +302,48 @@ def _(capacity_theta_summary, results_by_scale_theta, table_block):
 def _(mo):
     mo.md(
         r"""
-        ### The cobweb: raw vs smoothed advisory
+        ### The cobweb and its two fixes
 
         At the bypass scale set by the **bypass capacity scale** slider, this
-        overlays $\theta=1$ under the raw advisory ($W=1$) against the smoothed
-        advisory ($W$ from the slider). Watch the intersection-share panel: the
-        raw advisory oscillates day to day (the cobweb), the smoothed one settles.
+        overlays $\theta=1$ under three advisories: the **raw stale** advisory
+        ($W=1$), the **raw smoothed** advisory ($W$ from the slider), and the
+        **sequential** advisory ($W=1$). Watch the intersection-share panel: the
+        raw stale advisory oscillates day to day (the cobweb); smoothing it settles
+        it after a lag; the sequential advisory settles it immediately, with no
+        smoothing, by handing each traveller a different rank-indexed nudge.
         """
     )
     return
 
 
 @app.cell
-def _(advisory_smoothing, base_params, bypass_capacity_scale, run_btn,
-      run_experiment, seed, sweep_progress_bar):
-    # Raw (W=1) vs smoothed (W from slider) advisory at theta=1, for the single
-    # bypass scale on the slider: the direct before/after of the cobweb fix.
+def _(SignalType, advisory_smoothing, base_params, bypass_capacity_scale,
+      run_btn, run_experiment, seed, sequential_increments, sweep_progress_bar):
+    # The two cobweb fixes side by side at theta=1, for the single bypass scale on
+    # the slider: the raw stale advisory (W=1, the cobweb), the raw advisory
+    # smoothed over W days, and the per-traveller sequential advisory (W=1). This
+    # overlay always builds all three regardless of the dropdown, so both fixes
+    # are visible together.
     if not run_btn.value:
         results_by_advisory = None
     else:
         _s = float(bypass_capacity_scale.value)
         _W = int(advisory_smoothing.value)
-        _variants = {"stale (W=1)": 1, f"smoothed (W={_W})": _W}
+        _M = int(sequential_increments.value)
+        _base = base_params.with_bypass_capacity_scale(_s).with_theta(1.0)
+        _variants = {
+            "raw stale (W=1)": _base.with_comm(SignalType.EXTERNALITY)
+                                    .with_advisory_smoothing(1),
+            f"raw smoothed (W={_W})": _base.with_comm(SignalType.EXTERNALITY)
+                                          .with_advisory_smoothing(_W),
+            "sequential (W=1)": _base.with_comm(SignalType.EXTERNALITY_SEQUENTIAL)
+                                     .with_sequential_increments(_M)
+                                     .with_advisory_smoothing(1),
+        }
         results_by_advisory = {}
         with sweep_progress_bar(len(_variants), base_params.sim,
-                                title="advisory smoothing") as _bar:
-            for _name, _w in _variants.items():
-                _p = (base_params.with_bypass_capacity_scale(_s)
-                      .with_theta(1.0).with_advisory_smoothing(_w))
+                                title="advisory cobweb fixes") as _bar:
+            for _name, _p in _variants.items():
                 results_by_advisory[_name] = run_experiment(
                     _p, seeds=[int(seed.value)], on_step=_bar.update)
     return (results_by_advisory,)
@@ -316,7 +361,8 @@ def _(bypass_capacity_scale, figure_block, figure_placeholder,
         "plot_sweep_metrics", fig_cobweb,
         extra=(f"At bypass scale x{float(bypass_capacity_scale.value):g}, "
                "theta=1. The intersection-share panel shows the raw advisory's "
-               "day-to-day cobweb collapsing under smoothing."),
+               "day-to-day cobweb, and how both smoothing and the sequential "
+               "advisory collapse it."),
     )
     return
 

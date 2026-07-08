@@ -133,6 +133,73 @@ def test_build_broadcast_records_raw_msc_diagnostics():
     assert diag["msc"]["beta"].min() > 0.0
 
 
+def test_build_broadcast_sequential_externality_is_scheduled_and_ordered():
+    """The sequential externality returns a per-minute (K, M) schedule that is
+    non-negative, orders the congested route above the free one, and (unlike the
+    single-value raw advisory) VARIES across increment bins: that per-rank
+    heterogeneity is exactly what lets the population split instead of herd."""
+    net, sim, inflow, queues, tt_route, phi2, phi6 = _congested_alpha_scenario()
+    M = 12
+    bc = build_broadcast(
+        CommunicationSpec(signal_type=SignalType.EXTERNALITY_SEQUENTIAL,
+                          sequential_increments=M),
+        tt_route, queues, net, sim, inflow_by_route=inflow, phi2=phi2, phi6=phi6,
+    )
+    assert bc.signal_type is SignalType.EXTERNALITY_SEQUENTIAL
+    for r in net.traveller_routes:
+        assert bc.value[r].shape == (sim.K, M)
+        assert np.all(bc.value[r] >= 0.0)
+    # The oversaturated A--B approach carries the larger externality throughout.
+    assert bc.value["alpha"].mean() > bc.value["beta"].mean()
+    # At least one route's advisory changes across the increment bins (the
+    # schedule is not a constant broadcast to everyone).
+    variation = max(np.ptp(bc.value[r], axis=1).max() for r in net.traveller_routes)
+    assert variation > 0.0
+
+
+def test_sequential_msc_schedule_rises_as_the_loaded_route_fills():
+    """As demand is incrementally piled onto the route the algorithm keeps
+    choosing, that route's marginal social cost is non-decreasing across bins:
+    the 'a route gets more expensive as it fills' mechanic the cobweb fix relies
+    on. Asserted on the raw MSC (before the externality clip)."""
+    net, sim, inflow, queues, tt_route, phi2, phi6 = _congested_alpha_scenario()
+    M = 12
+    diag: dict = {}
+    build_broadcast(
+        CommunicationSpec(signal_type=SignalType.MSC_SEQUENTIAL,
+                          sequential_increments=M),
+        tt_route, queues, net, sim, inflow_by_route=inflow, phi2=phi2, phi6=phi6,
+        out_diagnostics=diag,
+    )
+    from aif_traffic.communication import _sequential_marginal_social_cost
+    sched = _sequential_marginal_social_cost(inflow, phi2, phi6, net, sim, M)
+    # The cheaper bypass (beta) is the route the increments keep loading; its
+    # per-bin marginal social cost should not fall as it fills (generous
+    # tolerance for the store-and-forward re-integration).
+    for t in range(sim.K):
+        beta_curve = sched["beta"][t]
+        assert np.all(np.diff(beta_curve) >= -1e-6)
+    # The recorded diagnostic collapses the schedule to a length-K summary so the
+    # existing MSC step columns / charts keep working unchanged.
+    assert set(diag["msc"]) == set(net.traveller_routes)
+    for r in net.traveller_routes:
+        assert diag["msc"][r].shape == (sim.K,)
+        assert np.all(np.isfinite(diag["msc"][r]))
+
+
+def test_sequential_increments_inert_for_nonsequential_signals():
+    """The new sequential_increments field only bites for the sequential signals:
+    an EXTERNALITY run is bit-identical regardless of its value, guarding that the
+    change leaves every existing signal untouched."""
+    base = _params(SignalType.EXTERNALITY, theta=0.5, compliance=1.0)
+    res_a = run_experiment(replace(base, comm=replace(base.comm, sequential_increments=8)))
+    res_b = run_experiment(replace(base, comm=replace(base.comm, sequential_increments=24)))
+    assert np.allclose(res_a.step["P_alpha"], res_b.step["P_alpha"])
+    assert np.allclose(
+        res_a.cohort["sigma_beta_post"], res_b.cohort["sigma_beta_post"]
+    )
+
+
 def test_msc_columns_recorded_only_with_msc_signal():
     """MSC_alpha/MSC_beta step columns exist iff the advisory computes MSC."""
     res_ext = run_experiment(_params(SignalType.EXTERNALITY, theta=0.5, compliance=1.0))

@@ -286,16 +286,38 @@ compliance) and sweeps $\theta \in \{0,0.25,0.5,0.75,1.0\}$ across several
 throttling the bypass into a real bottleneck so that diverting onto it carries a
 genuine social cost.
 
-The twist is the **advisory smoothing window $W$**. The cost-offset advisory is
-built from a day's realised state and acted on the *next* day, a one-day-stale
-feedback. Once the bypass is congestible this stale signal drives a violent
-day-to-day **cobweb**: travellers swing en masse between the two routes every
-day, and the alternating overloads send system cost far *above* the $\theta=0$
-baseline, so $\theta$ appears to backfire. Averaging the advisory over the last
-$W$ days damps the cobweb; past a threshold (around $W\approx25$ days here) the
-oscillation collapses and $\theta$ helps again even with the bypass throttled.
-Use the **advisory smoothing $W$** slider (default $25$) to move between the raw
-($W=1$) and stabilised regimes and watch the cobweb appear and vanish.
+The twist is a route-choice **cobweb**. The cost-offset advisory is built from a
+day's realised state and acted on the *next* day, a one-day-stale feedback. The
+**raw** externality broadcasts a *single* per-route value (the marginal social
+cost of one extra vehicle) to the whole population, so once the bypass is
+congestible every compliant traveller reads the same "the other route is cheaper"
+nudge and swings there en masse; the next day that route is overloaded and the
+signal flips. Travellers oscillate between the two routes day to day and the
+alternating overloads send system cost far *above* the $\theta=0$ baseline, so
+$\theta$ appears to backfire. The root cause is that the finite difference
+measures the cost of adding *one* vehicle, while broadcasting it identically in
+effect moves *thousands* onto one route.
+
+Two levers break the cobweb, both selectable in the notebook:
+
+* **Advisory smoothing $W$.** Travellers act on the mean advisory over the last
+  $W$ days rather than only yesterday's. Larger $W$ damps the swing; past a
+  threshold (around $W\approx25$ days here) the oscillation collapses and $\theta$
+  helps again even with the bypass throttled. $W=1$ is the raw act-on-yesterday
+  advisory.
+* **Sequential (per-traveller) advisory.** Instead of one shared value, the
+  controller builds a per-departure-minute *schedule*: it redistributes the whole
+  day's A--B demand *from empty* in $M$ increments, each minute's chunk going to
+  its currently-cheaper route, re-computing the marginal social cost as each route
+  fills. Travellers read the bin at their stable within-minute *rank*, so early
+  ranks are pushed toward the emptier route and later ranks toward the other, and
+  the population *splits* toward the system optimum rather than herding. Filling
+  from empty is what matters: the total A--B demand is independent of how it was
+  split yesterday, so the schedule depends only on that demand, the exogenous
+  $C$--$D$ flow and the green splits, making it a stable day-to-day fixed point
+  rather than a cobweb. It is also heterogeneous across travellers, so the
+  coordinated herd that caused the overshoot is gone; the oscillation collapses
+  even at $W=1$.
 
 A per-chart "how to read" guide is appended automatically below.
 """

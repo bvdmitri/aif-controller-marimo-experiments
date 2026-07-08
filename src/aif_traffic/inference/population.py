@@ -256,6 +256,19 @@ class Population:
         self.last_choice = np.full(self.N, -1, dtype=int)  # 0 = alpha, 1 = beta
         self.last_P_alpha = np.full(self.N, 0.5, dtype=float)
 
+        # Stable within-departure-minute rank fraction in [0, 1), used to index the
+        # sequential advisory schedule (``EXTERNALITY_SEQUENTIAL`` /
+        # ``MSC_SEQUENTIAL``): agents sharing a departure minute are ranked by agent
+        # index and spread uniformly, so each reads a different increment bin and
+        # the advisory becomes heterogeneous across the population (the mechanism
+        # that breaks the theta cobweb). Deterministic and stable across days (no
+        # RNG), so it never perturbs the construction draws and leaves every
+        # non-sequential signal bit-identical.
+        self.rank_fraction = np.zeros(self.N, dtype=float)
+        for t in np.unique(self.departure_time):
+            idx = np.nonzero(self.departure_time == t)[0]
+            self.rank_fraction[idx] = np.arange(idx.size, dtype=float) / idx.size
+
     # ----------------------------------------------------- helper accessors
     @property
     def predictive_moments(self) -> tuple[np.ndarray, np.ndarray]:
@@ -282,7 +295,15 @@ class Population:
     def _broadcast_cost_offset(self, broadcast) -> np.ndarray | None:
         """Per-(agent, route) EFE offset ``theta * compliance * E_r`` from a
         broadcast, sampled at each agent's departure minute. ``None`` when
-        there is no broadcast (recovers the no-information case)."""
+        there is no broadcast (recovers the no-information case).
+
+        For the direct / finite-difference signals ``broadcast.value[route]`` is
+        length-K and every agent departing at minute ``t`` reads the same
+        ``value[route][t]``. For the sequential signals it is a ``(K, M)``
+        schedule and each agent additionally reads its own increment bin, chosen
+        from its stable within-minute ``rank_fraction`` (``bin = min(floor(f*M),
+        M-1)``), so co-departing agents receive different offsets and the
+        population splits instead of herding."""
         if broadcast is None:
             return None
         t_i = self.departure_time
@@ -290,7 +311,12 @@ class Population:
         offset = np.zeros((self.N, 2), dtype=float)
         for j, route in enumerate(self.route_names):
             vals = np.asarray(broadcast.value[route], dtype=float)
-            offset[:, j] = scale * vals[t_i]
+            if vals.ndim == 1:
+                offset[:, j] = scale * vals[t_i]
+            else:  # (K, M) sequential schedule: index each agent's rank bin
+                M = vals.shape[1]
+                bin_i = np.minimum((self.rank_fraction * M).astype(int), M - 1)
+                offset[:, j] = scale * vals[t_i, bin_i]
         return offset
 
     def _append_observation_broadcast(self, obs_broadcast, t_i) -> None:

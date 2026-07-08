@@ -126,6 +126,24 @@ DESCRIPTIONS: dict[str, str] = {
         r"over the last $W$ days; larger $W$ damps the cobweb. $W=1$ is the raw "
         r"act-on-yesterday advisory."
     ),
+    "signal_mechanism": (
+        r"How the externality advisory is computed. **Raw externality** "
+        r"broadcasts one per-route value to everyone: the marginal social cost "
+        r"of a single extra vehicle. Because all compliant travellers see the "
+        r"same nudge they herd onto the cheaper route, driving the cobweb. "
+        r"**Sequential externality** instead builds a per-traveller schedule by "
+        r"incrementally assigning demand to the cheapest route and re-computing "
+        r"the marginal cost as each route fills, so different travellers get "
+        r"different advisories and the population splits toward the system "
+        r"optimum without herding."
+    ),
+    "sequential_increments": (
+        r"Increment bins $M$ for the **sequential** advisory: the departure-minute "
+        r"demand is redistributed in $M$ chunks, each to the currently-cheaper "
+        r"route, and travellers read the bin at their rank. Larger $M$ gives a "
+        r"finer, more stable split; keep $M\ge 8$ (very small $M$ degenerates "
+        r"toward the raw signal). Ignored unless the sequential advisory is on."
+    ),
     "gamma": (
         r"AIF action precision $\gamma^c$. Higher $\to$ a sharper preference for "
         r"the lowest-EFE split (more decisive control)."
@@ -223,6 +241,18 @@ def advisory_smoothing():
     return mo.ui.slider(1, 40, value=25, label="advisory smoothing W [days]")
 
 
+def signal_mechanism():
+    return mo.ui.dropdown(
+        options=["Raw externality", "Sequential externality"],
+        value="Raw externality",
+        label="advisory mechanism",
+    )
+
+
+def sequential_increments():
+    return mo.ui.slider(4, 24, value=12, label="sequential increments M")
+
+
 def gamma():
     return mo.ui.slider(0.5, 20.0, step=0.5, value=4.0, label="AIF gamma")
 
@@ -258,7 +288,8 @@ _GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
         "stationary", "traveller_window", "controller_window",
     )),
     ("Communication / social",
-     ("comm_mechanism", "theta", "compliance", "advisory_smoothing")),
+     ("comm_mechanism", "signal_mechanism", "sequential_increments",
+      "theta", "compliance", "advisory_smoothing")),
     ("AIF controller", ("gamma", "omega", "sigma_pref", "phi_grid", "k_L")),
 )
 
