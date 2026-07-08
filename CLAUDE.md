@@ -6,8 +6,8 @@ controller** on a signalised-intersection network.
 
 The repo holds the network, the reused IWAI traveller model, a pluggable
 controller abstraction with baselines, the **implemented Active Inference
-controller**, the communication + compliance mechanism, and the first
-experiment notebook.
+controller**, the communication + compliance mechanism, and the experiment
+notebooks.
 
 - **The AIF controller is implemented** in `control/aif_controller.py` (numpy)
   as **one big Active-Inference agent**, the macro analogue of the (thousands of)
@@ -15,8 +15,10 @@ experiment notebook.
   of both signalised movements `(L_2(t), L_6(t))_t` (a large state), estimated
   from the per-interval queue observations by a **rolling-window Gaussian
   smoother over the last `controller_window_size` days** (mirroring the
-  travellers' smoother), with a **full covariance** capturing temporal
-  correlations. The smoother is in `control/controller_smoother.py`: a random-walk
+  travellers' smoother; by default `stationary=True`, so the window spans the
+  **whole run** as continuous filtering and `controller_window_size` applies
+  only in the non-stationary variant), with a **full covariance** capturing
+  temporal correlations. The smoother is in `control/controller_smoother.py`: a random-walk
   trajectory prior (tridiagonal precision) + linear identity observations →
   banded `O(M)` solve + `O(M)` marginal variances (a dense reference validates
   it). The controller still **acts** each control interval by minimising the
@@ -158,7 +160,7 @@ the intersection). Each test **prints its reasoning** (what it expected, the
 observed numbers, and a verdict) so the behaviour can be audited, not just
 pass/fail-checked. Read the narration with:
 
-    uv run --extra dev pytest tests/test_behaviour.py -s
+    uv run --extra dev pytest tests/test_behaviour.py -s --runslow
 
 **When you discover or change a non-obvious emergent behaviour, add (or update) a
 verbal behavioural test for it.** The goal is that a future agent can run pytest,
@@ -211,8 +213,9 @@ a human or another agent can read it back):
 
 ## Notebooks
 
-The three experiment notebooks mirror the paper's Experiment section one-to-one
-(explainer IDs in `explainers.py` match the filenames):
+The experiment notebooks mirror the paper's Experiment section (explainer IDs in
+`explainers.py` match the filenames; `04_capacity_sensitivity` is an exploratory
+notebook with no dedicated paper section):
 
 - `00_introduction.py`: markdown landing page (two-layer model, two
   communication channels, the three experiments).
@@ -247,6 +250,12 @@ The three experiment notebooks mirror the paper's Experiment section one-to-one
   `theta` helps again. (Replaced the parked `04_compliance_robustness.py`
   belief-sharing/compliance notebook, which is deferred to a future
   heterogeneity paper.)
+- `05_robustness.py` — **Experiment 5** (paper Section 5.5, Robustness): fix the
+  AIF controller (sequential-from-belief advisory, full compliance) and sweep the
+  peak-demand scale `{0.8, 1.0, 1.2, 1.4}`, one line per scale. Renders
+  `plot_within_day_by_demand` (within-day `Q_alpha`/`Q_beta`/`phi_2`) and
+  `plot_across_day_by_demand` (daily `P_alpha`/`phi_2`/system cost with the
+  controller's cost-belief SD on a right axis).
 
 Heavy per-experiment analysis charts (e.g. Experiment 2's theta×controller grid,
 Experiment 3's route-choice heatmaps) are scaffolded but not all built yet.

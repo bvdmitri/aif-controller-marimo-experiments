@@ -427,8 +427,9 @@ class AIFControllerSpec:
     direction (veh^-2), directly comparable to the isotropic precision
     ``sigma_pref^-2``. With the defaults the balance term dominates, so the
     'low and balanced' preference genuinely shapes the split. See
-    ``aif_controller._build_sigma_pref`` for the convention (and the note that
-    paper Table 2 lists a different, un-normalised convention to be reconciled)."""
+    ``aif_controller._build_sigma_pref`` for the convention (unit-normalised
+    imbalance direction; the paper Appendix hyperparameter table matches this,
+    omega=0.02)."""
 
     # Generative-model noise for the queue belief.
     sigma_obs: float = 5.0

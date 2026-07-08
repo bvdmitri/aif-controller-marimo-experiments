@@ -19,7 +19,7 @@ WHAT THESE PIN DOWN
 HOW TO READ THE OUTPUT
     Run with ``-s`` to see the narration:
 
-        uv run --extra dev pytest tests/test_belief_informing.py -s
+        uv run --extra dev pytest tests/test_belief_informing.py -s --runslow
 """
 
 from __future__ import annotations

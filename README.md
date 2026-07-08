@@ -6,11 +6,10 @@ controller should communicate with the Active Inference travellers, which
 information is most useful to share, and what happens when travellers ignore
 it.
 
-This repository currently provides the **structure**: the network, the
-traveller model (reused from IWAI), a pluggable controller abstraction with
-baseline controllers, the communication + compliance mechanism, and tests. The
-experiment notebooks and the Active Inference controller's internal formulation
-are developed next, in step with the paper's methodology.
+This repository provides the network, the traveller model (reused from IWAI), a
+pluggable controller abstraction with baseline controllers, the **implemented
+Active Inference controller**, the communication + compliance mechanism, the
+experiment notebooks (`notebooks/00`-`05`), and tests.
 
 ## The model
 
@@ -20,13 +19,13 @@ are developed next, in step with the paper's methodology.
   junction. Links 2 (A–B) and 6 (C–D) are signalised; their effective capacity
   is the controller's green-time split.
 * **Micro layer (travellers)** — decentralised AIF agents with a closed-form
-  rolling-window Gaussian belief over `(F, C, L)` per route and Expected Free
-  Energy route choice. `theta` sets social internalisation; `compliance_fraction`
-  sets how many agents read the controller broadcast.
+  rolling-window Gaussian belief over `(F, C, L, phi)` per route (the green-split
+  belief `phi` is active on the signalised route) and Expected Free Energy route
+  choice. `theta` sets social internalisation; `compliance_fraction` sets how
+  many agents read the controller broadcast.
 * **Macro layer (controller)** — a pluggable family behind one interface
   (`src/aif_traffic/control/`): `fixed_time`, `reactive`, `anticipatory`, and
-  `aif` (a placeholder conforming to the interface; its model is the open
-  design question).
+  `aif` (the implemented Active Inference controller; see paper Section 4.2).
 * **Communication** — `src/aif_traffic/communication.py` builds the broadcast;
   travellers fold it into `zeta_r = TT_r + theta * E_r`.
 
@@ -42,7 +41,7 @@ src/aif_traffic/
   communication.py  controller -> traveller broadcast
   simulator.py      coupled two-layer day loop + run_experiment()
   plotting/         pure Figure-returning helpers
-notebooks/          00_introduction (more added later)
+notebooks/          00_introduction + experiment notebooks 01-05
 scripts/            smoke_notebooks.py (headless pipeline smoke)
 tests/              pytest contract tests
 ```

@@ -17,7 +17,7 @@ WHY THESE EXIST
 HOW TO READ THE OUTPUT
     Run with ``-s`` to see the narration on success:
 
-        uv run --extra dev pytest tests/test_behaviour.py -s
+        uv run --extra dev pytest tests/test_behaviour.py -s --runslow
 
     Each test prints what it expected, the observed numbers, and a verdict.
     If an assertion fails, pytest shows the same narration plus the failing
