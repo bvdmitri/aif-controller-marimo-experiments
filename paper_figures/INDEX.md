@@ -26,7 +26,6 @@ Rendered in the `paper` style at the notebook gold defaults (medium measurement 
 | `within_day_queue_controllers.pdf` | Within-day queue by controller  (`plot_within_day_queue_by_controller`) |
 | `green_split_controllers.pdf` | Green split by controller  (`plot_green_split_heatmaps_by_controller`) |
 | `exp2_learned_obs_noise.pdf` | Learned observation noise  (`plot_learned_obs_noise`) |
-| `across_day_communication.pdf` | Sweep metrics  (`plot_sweep_metrics`) |
 | `belief_sd_communication.pdf` | Belief uncertainty by setting  (`plot_belief_sd_sweep`) |
 | `exp3_within_day_by_setting.pdf` | Within-day belief vs reality by setting  (`plot_within_day_by_setting`) |
 | `within_day_communication.pdf` | Within-day realised vs belief by setting  (`plot_within_day_communication`) |
@@ -34,3 +33,4 @@ Rendered in the `paper` style at the notebook gold defaults (medium measurement 
 | `vary_observation_info_b.pdf` | Route-choice heatmaps  (`plot_route_choice_heatmaps`) |
 | `robustness_within_day_demand.pdf` | Within-day adaptation by demand  (`plot_within_day_by_demand`) |
 | `robustness_across_day_demand.pdf` | Across-day learning by demand  (`plot_across_day_by_demand`) |
+| `communication_cost_table.tex` | tab:communication-cost (table) |

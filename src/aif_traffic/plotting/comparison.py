@@ -20,8 +20,10 @@ from .palette import (
     CTRL_ORDER as _CTRL_ORDER,
     controller_colour,
     controller_label,
+    controller_linestyle,
     ordered_controllers,
     route_colour,
+    route_linestyle,
 )
 from .primitives import light_borders, panel_label, text_w
 from .style import active_style
@@ -95,15 +97,16 @@ def plot_controller_metrics(results_by_ctrl: Mapping[str, object]):
         for name, res in items:
             s = fn(res.step)
             ax.plot(s.index.to_numpy(), s.to_numpy(),
-                    color=controller_colour(name), linewidth=lw)
+                    color=controller_colour(name), linewidth=lw,
+                    linestyle=controller_linestyle(name))
         ax.set_ylabel(ylabel)
         ax.grid(alpha=0.25)
     axes[-1].set_xlabel("day")
     light_borders(axes)
 
     handles = [
-        Line2D([0], [0], color=controller_colour(k),
-               linewidth=lw, label=controller_label(k))
+        Line2D([0], [0], color=controller_colour(k), linewidth=lw,
+               linestyle=controller_linestyle(k), label=controller_label(k))
         for k, _ in items
     ]
     fig.legend(handles=handles, loc="upper center", ncol=len(handles),
@@ -127,7 +130,8 @@ def plot_controller_queue_comparison(results_by_ctrl: Mapping[str, object]):
     for name, res in items:
         cost = _daily_cost(res.step)
         axes[0].plot(cost.index.to_numpy(), cost.to_numpy(),
-                     color=controller_colour(name), linewidth=lw)
+                     color=controller_colour(name), linewidth=lw,
+                     linestyle=controller_linestyle(name))
     axes[0].set_ylabel("system cost [veh-min]")
     panel_label(axes[0], "a")
 
@@ -136,7 +140,8 @@ def plot_controller_queue_comparison(results_by_ctrl: Mapping[str, object]):
         mean, lo, hi = _daily_total_queue_band(res.step)
         days = mean.index.to_numpy()
         colour = controller_colour(name)
-        ax.plot(days, mean.to_numpy(), color=colour, linewidth=lw)
+        ax.plot(days, mean.to_numpy(), color=colour, linewidth=lw,
+                linestyle=controller_linestyle(name))
         ax.fill_between(days, lo.to_numpy(), hi.to_numpy(),
                         color=colour, alpha=band_a, linewidth=0)
     ax.set_ylabel(r"total queue $L_2{+}L_5{+}L_6$ [veh]")
@@ -148,8 +153,8 @@ def plot_controller_queue_comparison(results_by_ctrl: Mapping[str, object]):
     light_borders(axes)
 
     handles = [
-        Line2D([0], [0], color=controller_colour(k),
-               linewidth=lw, label=controller_label(k))
+        Line2D([0], [0], color=controller_colour(k), linewidth=lw,
+               linestyle=controller_linestyle(k), label=controller_label(k))
         for k, _ in items
     ]
     fig.legend(handles=handles, loc="upper center", ncol=len(handles),
@@ -175,9 +180,9 @@ def plot_within_day_queue_by_controller(
     n = max(len(items), 1)
     lw = active_style().line_main
     specs = [
-        ("L2", route_colour("alpha"), r"$L_2$"),
-        ("L5", route_colour("beta"), r"$L_5$"),
-        ("L6", route_colour("gamma"), r"$L_6$"),
+        ("L2", route_colour("alpha"), route_linestyle("alpha"), r"$L_2$"),
+        ("L5", route_colour("beta"), route_linestyle("beta"), r"$L_5$"),
+        ("L6", route_colour("gamma"), route_linestyle("gamma"), r"$L_6$"),
     ]
 
     fig, axgrid = plt.subplots(
@@ -193,8 +198,9 @@ def plot_within_day_queue_by_controller(
         d_use = int(step["day"].max()) if day is None else int(day)
         dd = step[step["day"] == d_use].sort_values("tau")
         tau = dd["tau"].to_numpy(dtype=float)
-        for col, colour, _lab in specs:
-            ax.plot(tau, dd[col].to_numpy(), color=colour, linewidth=lw)
+        for col, colour, ls, _lab in specs:
+            ax.plot(tau, dd[col].to_numpy(), color=colour, linewidth=lw,
+                    linestyle=ls)
         ax.set_title(controller_label(name, abbr=True), fontsize=8)
         ax.set_xlabel("time of day [min]")
         ax.grid(alpha=0.25)
@@ -202,8 +208,8 @@ def plot_within_day_queue_by_controller(
     light_borders(axgrid)
 
     handles = [
-        Line2D([0], [0], color=colour, linewidth=lw, label=lab)
-        for _col, colour, lab in specs
+        Line2D([0], [0], color=colour, linewidth=lw, linestyle=ls, label=lab)
+        for _col, colour, ls, lab in specs
     ]
     fig.legend(handles=handles, loc="upper center", ncol=len(handles),
                frameon=False, bbox_to_anchor=(0.5, 1.05), fontsize=7.5)
@@ -218,8 +224,10 @@ def plot_green_split_heatmaps_by_controller(
     on a shared colour scale with a single colorbar."""
     items = _ordered(results_by_ctrl)
     n = len(items)
+    # A short (about half-height) row of heatmaps, so the day x time-of-day green
+    # split maps stay compact rather than the tall aspect used before.
     fig, axes = plt.subplots(
-        1, n, figsize=(text_w(), text_w() * 0.5), sharex=True, sharey=True,
+        1, n, figsize=(text_w(), text_w() * 0.30), sharex=True, sharey=True,
         squeeze=False,
     )
     axes = axes[0]
@@ -341,7 +349,8 @@ def plot_theta_summary(
                 tail = _tail(fn(res.step))
                 ys.append(float(tail.mean() if stat == "mean" else tail.std()))
             ax.plot(thetas, ys, color=controller_colour(c), linewidth=lw,
-                    marker="o", markersize=3, label=controller_label(c))
+                    linestyle=controller_linestyle(c), marker="o", markersize=3,
+                    label=controller_label(c))
         ax.set_ylabel(ylabel)
         ax.grid(alpha=0.25)
     for ax in axes[2:]:

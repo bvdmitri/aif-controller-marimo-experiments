@@ -81,6 +81,7 @@ def _():
         SimParams,
     )
     from aif_traffic.plotting import (
+        communication_cost_table,
         communication_summary_table,
         figure_placeholder,
         plot_belief_sd_sweep,
@@ -102,6 +103,7 @@ def _():
         ObservationSignal,
         Params,
         SimParams,
+        communication_cost_table,
         communication_summary_table,
         explainer_pointer,
         figure_block,
@@ -317,6 +319,18 @@ def _(figure_block, figure_placeholder, plot_belief_sd_sweep,
         else plot_belief_sd_sweep(results_by_setting)
     )
     figure_block("plot_belief_sd_sweep", fig_belief_sd)
+    return
+
+
+@app.cell
+def _(communication_cost_table, results_by_setting, table_block):
+    # System-cost summary per setting (avg / best / worst / std): the numbers
+    # that replace the noisy day-by-day cost chart in the paper figure.
+    comm_cost_df = (
+        None if results_by_setting is None
+        else communication_cost_table(results_by_setting)
+    )
+    table_block("communication_cost_table", comm_cost_df)
     return
 
 

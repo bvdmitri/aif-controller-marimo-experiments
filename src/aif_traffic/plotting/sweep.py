@@ -15,7 +15,13 @@ import numpy as np
 
 from .comparison import _daily_cost, _daily_peak_total_queue
 from .network import _edges
-from .palette import COMM_ORDER, comm_colour, comm_label
+from .palette import (
+    COMM_ORDER,
+    comm_colour,
+    comm_label,
+    comm_linestyle,
+    sweep_linestyle,
+)
 from .primitives import light_borders, text_w
 from .style import active_style
 
@@ -46,6 +52,16 @@ def _colours_for_labels(labels: list) -> list:
     if keys and all(k in COMM_ORDER for k in keys):
         return [comm_colour(k) for k in keys]
     return _colours(len(labels))
+
+
+def _linestyles_for_labels(labels: list) -> list:
+    """Dash pattern per sweep label, so lines stay distinct in greyscale.
+    Communication settings get their fixed dash pattern; any other sweep
+    (theta, demand) falls back to the generic index cycle."""
+    keys = [str(x) for x in labels]
+    if keys and all(k in COMM_ORDER for k in keys):
+        return [comm_linestyle(k) for k in keys]
+    return [sweep_linestyle(i) for i in range(len(labels))]
 
 
 def _is_comm_sweep(items) -> bool:
@@ -107,6 +123,7 @@ def plot_sweep_metrics(
     """
     items = list(results_by_label.items())
     colours = _colours_for_labels([lab for lab, _ in items])
+    styles = _linestyles_for_labels([lab for lab, _ in items])
     lw = active_style().line_main
 
     if panels is None:
@@ -138,10 +155,11 @@ def plot_sweep_metrics(
         rect_top = 0.965
 
     for ax, (ylabel, fn) in zip(axes, chosen):
-        for (label, res), colour in zip(items, colours):
+        for (label, res), colour, ls in zip(items, colours, styles):
             s = fn(res)
             ax.plot(s.index.to_numpy(), s.to_numpy(),
-                    color=colour, linewidth=lw, label=_sweep_label(label))
+                    color=colour, linewidth=lw, linestyle=ls,
+                    label=_sweep_label(label))
         ax.set_ylabel(ylabel)
         ax.grid(alpha=0.25)
     for ax in xlabel_axes:
@@ -171,8 +189,10 @@ def plot_route_choice_heatmaps(
     """
     items = list(results_by_label.items())
     n = len(items)
+    # A short (about half-height) row of heatmaps: the day x time-of-day maps are
+    # legible without the tall aspect that wasted vertical space in the paper.
     fig, axes = plt.subplots(
-        1, n, figsize=(text_w(), text_w() * 0.5), sharex=True, sharey=True,
+        1, n, figsize=(text_w(), text_w() * 0.30), sharex=True, sharey=True,
         squeeze=False,
     )
     axes = axes[0]
@@ -198,7 +218,9 @@ def plot_route_choice_heatmaps(
         days = hm.columns.to_numpy(dtype=float)
         im = ax.pcolormesh(_edges(days), _edges(taus), hm.values,
                            cmap="magma", vmin=vmin, vmax=vmax, shading="flat")
-        ax.set_title(comm_label(str(label)), fontsize=7.5)
+        # Short abbreviation titles (BL/CG/SN/CG+SN) so adjacent columns do not
+        # overlap the way the full setting names did.
+        ax.set_title(str(label), fontsize=8)
         ax.set_xlabel("day")
     axes[0].set_ylabel("time of day [min]")
     label_txt = {
@@ -227,6 +249,7 @@ def plot_belief_sd_sweep(results_by_label: Mapping[str, object]):
     """
     items = list(results_by_label.items())
     colours = _colours_for_labels([lab for lab, _ in items])
+    styles = _linestyles_for_labels([lab for lab, _ in items])
     lw = active_style().line_main
 
     def _trav_alpha_sd(res):
@@ -251,24 +274,28 @@ def plot_belief_sd_sweep(results_by_label: Mapping[str, object]):
         (r"traveller SD on $TT_\alpha$ [min]", _trav_alpha_sd),
         (r"controller SD on $TT^{tot}$ [veh-min]", _ctrl_tot_sd),
     ]
+    # Side-by-side (1x2) so the two SD panels are roughly square rather than
+    # two stacked full-width strips (paper Figure 6 redesign). Each panel has
+    # its own "day" axis since they sit next to one another.
     fig, axes = plt.subplots(
-        len(panels), 1, figsize=(text_w(), text_w() * 0.7), sharex=True,
+        1, len(panels), figsize=(text_w(), text_w() * 0.42),
     )
     for ax, (ylabel, fn) in zip(axes, panels):
-        for (label, res), colour in zip(items, colours):
+        for (label, res), colour, ls in zip(items, colours, styles):
             s = fn(res)
             if s is None:
                 continue
             ax.plot(s.index.to_numpy(), s.to_numpy(),
-                    color=colour, linewidth=lw, label=_sweep_label(label))
+                    color=colour, linewidth=lw, linestyle=ls,
+                    label=_sweep_label(label))
         ax.set_ylabel(ylabel)
+        ax.set_xlabel("day")
         ax.grid(alpha=0.25)
-    axes[-1].set_xlabel("day")
     light_borders(axes)
 
     handles, labels = axes[0].get_legend_handles_labels()
     fig.legend(handles=handles, labels=labels, loc="upper center",
                ncol=_legend_ncol(items), frameon=False,
-               bbox_to_anchor=(0.5, 1.03), fontsize=7.5)
-    fig.tight_layout(rect=(0, 0, 1, 0.93))
+               bbox_to_anchor=(0.5, 1.05), fontsize=7.5)
+    fig.tight_layout(rect=(0, 0, 1, 0.90))
     return fig

@@ -64,6 +64,7 @@ from .sweep import (
 )
 from .tables import (
     capacity_theta_summary,
+    communication_cost_table,
     communication_summary_table,
     run_summary_table,
     theta_summary_table,
@@ -112,6 +113,7 @@ __all__ = [
     "run_summary_table",
     "theta_summary_table",
     "communication_summary_table",
+    "communication_cost_table",
     "capacity_theta_summary",
     "animate_controller_comparison",
     "plot_sweep_metrics",

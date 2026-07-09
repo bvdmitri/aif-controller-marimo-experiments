@@ -911,6 +911,15 @@ TABLE_GUIDE: dict[str, dict] = {
         "`belief_SD_*` means sharper beliefs. Read against the sweep chart to see "
         "which channel helps cost vs which sharpens beliefs.",
     },
+    "communication_cost_table": {
+        "title": "Communication system-cost summary",
+        "what": "One row per information setting (BL/CG/SN/CG+SN): the average, "
+        "best (lowest), worst (highest) and standard deviation of the daily "
+        "system cost over the steady-state window.",
+        "read": "The numbers behind the day-by-day cost curves: lower `mean_SC` is "
+        "cheaper on average, a smaller gap between `best_SC` and `worst_SC` (and a "
+        "smaller `std_SC`) is a steadier day-to-day cost.",
+    },
     "capacity_theta_summary": {
         "title": "Capacity x theta summary",
         "what": "One row per bypass-capacity scale: system cost at theta=0 and "
@@ -928,7 +937,8 @@ TABLE_GUIDE: dict[str, dict] = {
 NOTEBOOK_TABLES: dict[str, tuple[str, ...]] = {
     "social_internalisation": ("run_summary_table", "theta_summary_table"),
     "controller_benchmark": ("controller_summary",),
-    "information_communication": ("communication_summary_table",),
+    "information_communication": ("communication_cost_table",
+                                  "communication_summary_table"),
     "capacity_sensitivity": ("capacity_theta_summary",),
     "robustness": (),
 }

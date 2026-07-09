@@ -19,9 +19,21 @@ TEXT_W = 4.8
 TEXT_W_HALF = 3.3
 
 __all__ = [
-    "TEXT_W", "TEXT_W_HALF", "text_w", "text_w_half",
+    "TEXT_W", "TEXT_W_HALF", "text_w", "text_w_half", "within_day_profile_size",
     "figure_placeholder", "place_legend_above", "panel_label", "light_borders",
 ]
+
+
+def within_day_profile_size() -> tuple[float, float]:
+    """Authored size (inches) of a single-day within-day profile panel.
+
+    The paper's Figure 5 stitches three of these (route flows / travel times /
+    queues) side by side. Authoring all three at this identical size (about a
+    third of the text width, so they sit near 1:1 at ``0.32\\linewidth`` and keep
+    their fonts legible) keeps their aspect ratios matched, so they render at a
+    consistent height in the row.
+    """
+    return (text_w() / 3.0, text_w() * 0.42)
 
 
 def figure_placeholder(

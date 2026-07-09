@@ -126,6 +126,31 @@ def capacity_theta_summary(
     return pd.DataFrame(rows)
 
 
+def communication_cost_table(
+    results_by_label: Mapping[str, object], *, n_last: int = 30,
+) -> pd.DataFrame:
+    """System-cost summary per information-communication setting.
+
+    One row per setting (BL/CG/SN/CG+SN) with the **average**, **best** (lowest),
+    **worst** (highest) and **standard deviation** of the daily system cost over
+    the steady-state window (the last ``n_last`` recorded days, so the initial
+    learning transient does not dominate the best/worst). Replaces the noisy
+    day-by-day system-cost chart in the paper's communication figure with the
+    numbers behind it (SN is the lowest-cost setting).
+    """
+    rows: list[dict] = []
+    for label, res in results_by_label.items():
+        sc = _tail(_daily_cost(res.step), n_last)
+        rows.append({
+            "setting": str(label),
+            "mean_SC": float(sc.mean()),
+            "best_SC": float(sc.min()),
+            "worst_SC": float(sc.max()),
+            "std_SC": float(sc.std()),
+        })
+    return pd.DataFrame(rows)
+
+
 def communication_summary_table(
     results_by_label: Mapping[str, object], *, n_last: int = 15,
 ) -> pd.DataFrame:

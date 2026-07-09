@@ -65,6 +65,33 @@ _COMM_COLOURS_MARIMO: dict[str, str] = {
 }
 
 
+# --- line styles (accessibility) --------------------------------------------
+# Colour tells series apart on screen; a distinct dash pattern tells them apart
+# again in greyscale / black-and-white print, so every figure stays readable
+# when the paper is printed without colour. Applied for both styles (harmless on
+# screen, essential in print). Keyed the same way as the colours above; the most
+# important series in each family gets the solid line.
+_CTRL_LINESTYLES: dict[str, str] = {
+    "fixed_time": ":",       # dotted (non-adaptive baseline)
+    "reactive": "-.",        # dash-dot
+    "anticipatory": "--",    # dashed
+    "aif": "-",              # solid (the proposed controller)
+}
+_COMM_LINESTYLES: dict[str, str] = {
+    "BL": ":",       # dotted (reference)
+    "CG": "--",      # dashed
+    "SN": "-",       # solid (the setting with the lowest cost)
+    "CG+SN": "-.",   # dash-dot
+}
+_ROUTE_LINESTYLES: dict[str, str] = {
+    "alpha": "-",    # solid (A--B intersection)
+    "beta": "--",    # dashed (A--B bypass)
+    "gamma": "-.",   # dash-dot (C--D)
+}
+# Generic dash cycle for keyless sweeps (theta values, demand scales): index in.
+_SWEEP_LINESTYLES: tuple[str, ...] = ("-", "--", "-.", (0, (1, 1)))
+
+
 def _override(kind: str) -> dict[str, str]:
     """Per-style colour overrides, keyed by palette kind. Empty for marimo;
     the future paper style registers print-safe variants here."""
@@ -73,6 +100,24 @@ def _override(kind: str) -> dict[str, str]:
 
 def controller_colour(name: str) -> str:
     return _override("controller").get(name, _CTRL_COLOURS_MARIMO.get(name, "k"))
+
+
+def controller_linestyle(name: str) -> str:
+    return _CTRL_LINESTYLES.get(name, "-")
+
+
+def comm_linestyle(name: str) -> str:
+    return _COMM_LINESTYLES.get(str(name), "-")
+
+
+def route_linestyle(name: str) -> str:
+    return _ROUTE_LINESTYLES.get(name, "-")
+
+
+def sweep_linestyle(i: int):
+    """Dash pattern for the ``i``-th line of a keyless sweep (theta / demand
+    scale), so the overlaid lines stay distinct in greyscale."""
+    return _SWEEP_LINESTYLES[int(i) % len(_SWEEP_LINESTYLES)]
 
 
 def controller_label(name: str, *, abbr: bool = False) -> str:

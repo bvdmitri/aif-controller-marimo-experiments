@@ -17,8 +17,13 @@ from matplotlib.ticker import MaxNLocator
 from .beliefs import _pick_evolution_days, _seed_slice
 from .comparison import _daily_cost
 from .network import _edges
-from .palette import route_colour
-from .primitives import light_borders, panel_label, text_w, text_w_half
+from .palette import route_colour, route_linestyle
+from .primitives import (
+    light_borders,
+    panel_label,
+    text_w,
+    within_day_profile_size,
+)
 from .style import active_style
 
 
@@ -55,23 +60,29 @@ def plot_coupled_within_day(
     lw = active_style().line_main
     has_plan = "phi2_plan" in day_step.columns and day_step["phi2_plan"].notna().any()
     c_alpha, c_beta = route_colour("alpha"), route_colour("beta")
+    ls_alpha, ls_beta = route_linestyle("alpha"), route_linestyle("beta")
 
     ncols = max(len(picked), 1)
-    # One column per day: scale the width to fill the notebook content width
-    # (~2 in per day) instead of the narrow paper text width. A single-day
-    # render (the paper's profile figure) is authored at the half width so it
-    # can sit beside its companion panel without shrinking the fonts.
-    fig_w = max(text_w(), 2.1 * ncols) if ncols > 1 else text_w_half()
+    # One column per day: multi-day (notebook) renders fill the content width
+    # (~2 in per day); a single-day render (the paper's Figure 5 panel) is
+    # authored at the shared within-day-profile size so all three panels of the
+    # paper row match in aspect and keep their fonts legible.
+    if ncols > 1:
+        fig_w, fig_h = max(text_w(), 2.1 * ncols), 3.8
+    else:
+        fig_w, fig_h = within_day_profile_size()
     fig, axes = plt.subplots(
-        2, ncols, figsize=(fig_w, 3.8), sharex=True,
+        2, ncols, figsize=(fig_w, fig_h), sharex=True,
         sharey="row", squeeze=False,
     )
     for col, d in enumerate(picked):
         dd = day_step[day_step["day"] == d].sort_values("tau")
         tau = dd["tau"].to_numpy(dtype=float)
         ax_q, ax_phi = axes[0][col], axes[1][col]
-        ax_q.plot(tau, dd["Q_alpha"].to_numpy(), color=c_alpha, linewidth=lw)
-        ax_q.plot(tau, dd["Q_beta"].to_numpy(), color=c_beta, linewidth=lw)
+        ax_q.plot(tau, dd["Q_alpha"].to_numpy(), color=c_alpha, linewidth=lw,
+                  linestyle=ls_alpha)
+        ax_q.plot(tau, dd["Q_beta"].to_numpy(), color=c_beta, linewidth=lw,
+                  linestyle=ls_beta)
         ax_q.set_title(f"day {int(d)}", fontsize=8)
         ax_q.grid(alpha=0.25)
         ax_phi.plot(tau, dd["phi2"].to_numpy(), color="0.25", linewidth=lw,
@@ -88,8 +99,10 @@ def plot_coupled_within_day(
     fig.align_ylabels(axes[:, 0])
 
     handles = [
-        Line2D([0], [0], color=c_alpha, lw=2, label=r"flow $\alpha$"),
-        Line2D([0], [0], color=c_beta, lw=2, label=r"flow $\beta$"),
+        Line2D([0], [0], color=c_alpha, lw=2, linestyle=ls_alpha,
+               label=r"flow $\alpha$"),
+        Line2D([0], [0], color=c_beta, lw=2, linestyle=ls_beta,
+               label=r"flow $\beta$"),
         Line2D([0], [0], color="0.25", lw=2, label=r"realised $\phi_2$"),
     ]
     if has_plan:
@@ -132,11 +145,11 @@ def plot_co_adaptation(
     # Daily summary.
     cost = _daily_cost(sd)
 
-    # Heatmaps (colourbars on top) in row 1, cost full-width in row 2. Axes are
-    # shared so labels/scales are not repeated: both heatmaps share "time of
-    # day", and the day axis is shared down to the cost panel (drawn once there).
-    fig = plt.figure(figsize=(text_w(), text_w() * 0.72), constrained_layout=True)
-    gs = fig.add_gridspec(2, 2, height_ratios=[2.1, 1.35])
+    # Heatmaps (colourbars on top) in row 1, cost full-width in row 2. Both
+    # heatmaps share "time of day" on the y-axis, and each carries its own "day"
+    # x-axis. The top row is kept short so it does not dominate the figure.
+    fig = plt.figure(figsize=(text_w(), text_w() * 0.60), constrained_layout=True)
+    gs = fig.add_gridspec(2, 2, height_ratios=[1.55, 1.3])
     ax_pa = fig.add_subplot(gs[0, 0])
     ax_ph = fig.add_subplot(gs[0, 1], sharex=ax_pa, sharey=ax_pa)
     ax_cost = fig.add_subplot(gs[1, :], sharex=ax_pa)
@@ -158,9 +171,11 @@ def plot_co_adaptation(
     # More y-ticks so the "time of day" axis is readable (drives ax_ph via
     # shared y); default gave essentially one tick.
     ax_pa.yaxis.set_major_locator(MaxNLocator(nbins=6))
-    # Day axis is shared with the cost panel below. Draw it there only.
-    ax_pa.tick_params(labelbottom=False)
-    ax_ph.tick_params(labelbottom=False, labelleft=False)
+    # Each top heatmap gets its own "day" x-axis (the shared y hides only the
+    # right panel's y tick labels).
+    ax_ph.tick_params(labelleft=False)
+    ax_pa.set_xlabel("day")
+    ax_ph.set_xlabel("day")
     panel_label(ax_pa, "a")
 
     ax = ax_cost

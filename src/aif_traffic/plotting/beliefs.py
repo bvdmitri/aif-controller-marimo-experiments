@@ -20,8 +20,18 @@ import numpy as np
 import pandas as pd
 from matplotlib.lines import Line2D
 
-from .palette import COMM_ORDER, comm_colour, comm_label, route_colour
-from .primitives import light_borders, text_w, text_w_half, panel_label
+from .palette import (
+    COMM_ORDER,
+    comm_colour,
+    comm_label,
+    route_colour,
+)
+from .primitives import (
+    light_borders,
+    panel_label,
+    text_w,
+    within_day_profile_size,
+)
 from .style import active_style
 
 # Realised link that stands in for each traveller route's queue.
@@ -115,14 +125,16 @@ def plot_within_day_tt_vs_belief(
         ).sort_index()
 
     ncols = max(len(picked_days), 1)
-    # One column per day: scale the width so the columns fill the notebook's
-    # content width (~2 in per day) rather than being squeezed into the narrow
-    # paper text width. A single-day render (the paper's profile figure) is
-    # authored at the half width instead, so it can sit beside its companion
-    # panel without shrinking the fonts.
-    fig_w = max(text_w(), 2.1 * ncols) if ncols > 1 else text_w_half()
+    # One column per day: multi-day (notebook) renders fill the content width
+    # (~2 in per day); a single-day render (the paper's Figure 5 panel) uses the
+    # shared within-day-profile size so it matches its companion panels in aspect
+    # and keeps its fonts legible.
+    if ncols > 1:
+        fig_w, fig_h = max(text_w(), 2.1 * ncols), 3.8
+    else:
+        fig_w, fig_h = within_day_profile_size()
     fig, axes = plt.subplots(
-        2, ncols, figsize=(fig_w, 3.8), sharex=True,
+        2, ncols, figsize=(fig_w, fig_h), sharex=True,
         sharey="row", squeeze=False,
     )
     for col, d in enumerate(picked_days):
@@ -343,21 +355,25 @@ def plot_belief_reality_queues(
     tau_max = float(day_step["tau"].max())
     lw = active_style().line_main
 
+    # Short link labels ("$L_2$" etc.): the route annotation is redundant with
+    # the network figure and the paper caption, and the full text overflows the
+    # short within-day-profile panel height.
     all_specs = [
-        ("L2", r"$L_2$ (A--B int.)", route_colour("alpha"), "L2_belief_mu",
+        ("L2", r"$L_2$", route_colour("alpha"), "L2_belief_mu",
          "L2_belief_sd", "alpha"),
-        ("L5", r"$L_5$ (A--B byp.)", route_colour("beta"), None, None, "beta"),
-        ("L6", r"$L_6$ (C--D)", route_colour("gamma"), "L6_belief_mu",
+        ("L5", r"$L_5$", route_colour("beta"), None, None, "beta"),
+        ("L6", r"$L_6$", route_colour("gamma"), "L6_belief_mu",
          "L6_belief_sd", None),
     ]
     specs = [s for s in all_specs if s[0] in links]
     nrow = max(len(specs), 1)
 
     # Paper's within-day-profile panel (c): a single day and the two signalised
-    # movements L2/L6 -> a tall, narrow 2-row figure sized like the companion
-    # panels (a)/(b) so the three subfigures line up in one row.
+    # movements L2/L6 -> a 2-row figure sized at the shared within-day-profile
+    # size so the three subfigures (a)/(b)/(c) match in aspect and line up in one
+    # row.
     if ncol == 1 and nrow == 2:
-        fig_w, height = text_w_half(), 3.8
+        fig_w, height = within_day_profile_size()
     else:
         fig_w, height = text_w(), text_w() * (0.95 if ncol == 1 else 0.8)
     fig, axgrid = plt.subplots(nrow, ncol, figsize=(fig_w, height),
@@ -378,7 +394,9 @@ def plot_belief_reality_queues(
         for ri, (col, label, colour, bmu, bsd, route) in enumerate(specs):
             ax = axgrid[ri][ci]
             # The raw per-interval realised queue at moderate weight: a visible
-            # line that still sits under the smoother beliefs.
+            # (solid) line that still sits under the smoother beliefs. Realised
+            # vs controller belief (black dashed) vs traveller belief (dotted)
+            # already read apart by line style in greyscale.
             ax.plot(tau, d[col].to_numpy(), color=colour, linewidth=0.95,
                     alpha=0.8, label="realised", zorder=4)
             if has_ctrl_belief and bmu is not None and bmu in d.columns:
