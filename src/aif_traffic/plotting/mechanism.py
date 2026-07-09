@@ -14,7 +14,14 @@ import pandas as pd
 from matplotlib.lines import Line2D
 from matplotlib.ticker import MaxNLocator
 
-from .beliefs import _pick_evolution_days, _seed_slice
+from .beliefs import (
+    _ROUTE_MU,
+    _ROUTE_TEX,
+    _ROUTE_TT,
+    _belief_profile_by_minute,
+    _pick_evolution_days,
+    _seed_slice,
+)
 from .comparison import _daily_cost
 from .network import _edges
 from .palette import route_colour, route_linestyle
@@ -112,6 +119,133 @@ def plot_coupled_within_day(
                ncol=len(handles), frameon=False, fontsize=7, columnspacing=1.4)
     light_borders(axes)
     fig.tight_layout(rect=(0, 0, 1, 0.90))
+    return fig
+
+
+def plot_within_day_profile(
+    step_df: pd.DataFrame,
+    snapshots: dict,
+    params,
+    *,
+    day: int | None = None,
+    seed: int | None = None,
+):
+    """Combined within-day coupled-learning figure at one representative day.
+
+    A single 2x3 panel (the paper's Figure 5), so the three columns stay aligned
+    and equally sized rather than being three separate PDFs stitched by LaTeX:
+
+    * column (a): traveller route flows $Q_\\alpha$ / $Q_\\beta$ (top) and the
+      green split $\\phi_2$, realised (line) vs believed (dots) (bottom);
+    * column (b): believed (dots) vs realised (line) travel time for route
+      $\\alpha$ (top) and $\\beta$ (bottom);
+    * column (c): realised queue vs the controller's queue belief ($\\pm$ 1 SD
+      band) on the two signalised movements $L_2$ (top) and $L_6$ (bottom).
+
+    Each column carries its own compact legend and an (a)/(b)/(c) label.
+    ``day`` selects the inspected day (default the last recorded day); ``seed``
+    picks the run when several are present.
+    """
+    day_step, sample_seed = _seed_slice(step_df, seed)
+    all_days = sorted(int(x) for x in day_step["day"].unique())
+    d = all_days[-1] if day is None else int(day)
+    dd = day_step[day_step["day"] == d].sort_values("tau")
+    tau = dd["tau"].to_numpy(dtype=float)
+    dt_min = int(params.sim.dt_min)
+    lw = active_style().line_main
+    c_alpha, c_beta, c_gamma = (route_colour("alpha"), route_colour("beta"),
+                                route_colour("gamma"))
+    ls_alpha, ls_beta = route_linestyle("alpha"), route_linestyle("beta")
+
+    fig, axes = plt.subplots(2, 3, figsize=(text_w(), text_w() * 0.58))
+
+    # -- column (a): route flows (top) + green split realised/believed (bottom).
+    ax_flow, ax_phi = axes[0][0], axes[1][0]
+    ax_flow.plot(tau, dd["Q_alpha"].to_numpy(), color=c_alpha, linewidth=lw,
+                 linestyle=ls_alpha)
+    ax_flow.plot(tau, dd["Q_beta"].to_numpy(), color=c_beta, linewidth=lw,
+                 linestyle=ls_beta)
+    ax_flow.set_ylabel("route flow [veh/h]")
+    has_plan = "phi2_plan" in dd.columns and dd["phi2_plan"].notna().any()
+    ax_phi.plot(tau, dd["phi2"].to_numpy(), color="0.25", linewidth=lw, zorder=4)
+    if has_plan:
+        ax_phi.plot(tau, dd["phi2_plan"].to_numpy(), linestyle="none", marker="o",
+                    markersize=2.0, color="0.25", alpha=0.7, zorder=2)
+    ax_phi.set_ylim(0, 1)
+    ax_phi.set_ylabel(r"green split $\phi_2$")
+    handles_a = [
+        Line2D([0], [0], color=c_alpha, lw=lw, linestyle=ls_alpha,
+               label=r"flow $\alpha$"),
+        Line2D([0], [0], color=c_beta, lw=lw, linestyle=ls_beta,
+               label=r"flow $\beta$"),
+        Line2D([0], [0], color="0.25", lw=lw, label=r"realised $\phi_2$"),
+    ]
+    if has_plan:
+        handles_a.append(Line2D([0], [0], color="0.25", linestyle="none",
+                                marker="o", markersize=3.5,
+                                label=r"believed $\phi_2$"))
+
+    # -- column (b): believed (dots) vs realised (line) travel time.
+    snap = (snapshots or {}).get((sample_seed, d))
+    prof = _belief_profile_by_minute(snap, dt_min) if snap is not None else None
+    for row, r in enumerate(("alpha", "beta")):
+        axb = axes[row][1]
+        rz = day_step.pivot_table(index="day", columns="tau",
+                                  values=_ROUTE_TT[r], aggfunc="mean")
+        taub = rz.columns.to_numpy(dtype=float)
+        axb.plot(taub, rz.loc[d].to_numpy(), color=route_colour(r),
+                 linewidth=0.95, alpha=0.8, zorder=4)
+        if prof is not None:
+            axb.plot(prof.index.to_numpy(), prof[_ROUTE_MU[r]].to_numpy(),
+                     linestyle="none", marker="o", markersize=1.6,
+                     color=route_colour(r), alpha=0.6, zorder=2)
+        axb.set_ylabel(f"TT {_ROUTE_TEX[r]} [min]")
+    handles_b = [
+        Line2D([0], [0], color="grey", linewidth=1.8, label="realised"),
+        Line2D([0], [0], color="grey", linestyle="none", marker="o",
+               markersize=3.5, label="belief (pred. TT)"),
+    ]
+
+    # -- column (c): realised queue vs controller belief on L2 (top) / L6.
+    has_ctrl = "L2_belief_mu" in dd.columns and dd["L2_belief_mu"].notna().any()
+    for row, (col, colour, bmu, bsd, tex) in enumerate([
+        ("L2", c_alpha, "L2_belief_mu", "L2_belief_sd", r"$L_2$"),
+        ("L6", c_gamma, "L6_belief_mu", "L6_belief_sd", r"$L_6$"),
+    ]):
+        axc = axes[row][2]
+        axc.plot(tau, dd[col].to_numpy(), color=colour, linewidth=0.95,
+                 alpha=0.8, zorder=4)
+        if has_ctrl and bmu in dd.columns:
+            mu = dd[bmu].to_numpy()
+            sdv = dd[bsd].to_numpy()
+            axc.plot(tau, mu, color="k", linestyle="--", linewidth=1.0, zorder=3)
+            axc.fill_between(tau, mu - sdv, mu + sdv, color="k", alpha=0.12,
+                             linewidth=0, zorder=1)
+        axc.set_ylabel(f"queue {tex} [veh]")
+    handles_c = [
+        Line2D([0], [0], color="grey", linewidth=1.8, label="realised"),
+        Line2D([0], [0], color="k", linestyle="--", linewidth=1.2,
+               label="controller belief"),
+    ]
+
+    for row in range(2):
+        for cc in range(3):
+            axes[row][cc].grid(alpha=0.25)
+    for cc in range(3):
+        axes[1][cc].set_xlabel("time [min]")
+    panel_label(axes[0][0], "a")
+    panel_label(axes[0][1], "b")
+    panel_label(axes[0][2], "c")
+    light_borders(axes)
+    # Compact per-column legend above each column's top panel (they describe
+    # different things, so one shared legend would be misleading).
+    for cc, handles, ncol in ((0, handles_a, 2), (1, handles_b, 2),
+                              (2, handles_c, 1)):
+        axes[0][cc].legend(handles=handles, loc="lower center",
+                           bbox_to_anchor=(0.5, 1.02), ncol=ncol, frameon=False,
+                           fontsize=6.5, columnspacing=1.0, handlelength=1.6,
+                           handletextpad=0.4)
+    fig.tight_layout(rect=(0, 0, 1, 0.99))
     return fig
 
 

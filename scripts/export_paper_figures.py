@@ -141,19 +141,11 @@ def _build_registry(cfg: dict):
          lambda: pl.plot_within_day_tt_vs_belief(r1.step, r1.snapshots, p1)),
         ("exp1_coupled_within_day", "plot_coupled_within_day",
          lambda: pl.plot_coupled_within_day(r1.step, p1)),
-        # fig:within-day-profile -- panels (a)-(c) at the representative day.
-        ("within_day_profile_a", "plot_coupled_within_day",
-         lambda: pl.plot_coupled_within_day(r1.step, p1, days=[profile_day])),
-        ("within_day_profile_b", "plot_within_day_tt_vs_belief",
-         lambda: pl.plot_within_day_tt_vs_belief(
-             r1.step, r1.snapshots, p1, days=[profile_day])),
-        # fig:within-day-profile (c) -- realised queue vs controller belief on
-        # the two signalised movements L2 (top) / L6 (bottom) at the profile day,
-        # sized tall+narrow so panels (a)-(c) line up in one row.
-        ("within_day_profile_c", "plot_belief_reality_queues",
-         lambda: pl.plot_belief_reality_queues(
-             r1.step, r1.snapshots, p1, days=[profile_day], links=("L2", "L6"),
-             show_traveller_belief=False)),
+        # fig:within-day-profile -- one combined 2x3 figure with columns (a)-(c)
+        # at the representative day (single PDF, so the panels stay aligned).
+        ("within_day_profile", "plot_within_day_profile",
+         lambda: pl.plot_within_day_profile(
+             r1.step, r1.snapshots, p1, day=profile_day)),
         # fig:across-day-profile -- heatmaps + daily profiles + cost & belief SD.
         ("across_day_profile", "plot_co_adaptation",
          lambda: pl.plot_co_adaptation(r1.step, r1.controller)),

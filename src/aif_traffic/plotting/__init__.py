@@ -39,6 +39,7 @@ from .mechanism import (
     plot_coupled_within_day,
     plot_learning_uncertainty,
     plot_msc_tt_by_route,
+    plot_within_day_profile,
 )
 from .network import (
     plot_daily_system_cost,
@@ -124,6 +125,7 @@ __all__ = [
     "plot_within_day_communication",
     "plot_belief_reality_queues",
     "plot_coupled_within_day",
+    "plot_within_day_profile",
     "plot_co_adaptation",
     "plot_learning_uncertainty",
     "plot_msc_tt_by_route",
