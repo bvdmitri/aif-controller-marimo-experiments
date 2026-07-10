@@ -1,4 +1,4 @@
-"""Closed-form EFE: symmetry, limiting cases, and the broadcast cost offset."""
+"""Closed-form EFE: softmax route choice, symmetry, and limiting cases."""
 
 from __future__ import annotations
 
