@@ -6,11 +6,7 @@ and macro-coupling additions across **two distinct controller->traveller
 channels**:
 
 * a per-agent **compliance** mask (drawn once from ``CohortSpec.compliance_fraction``):
-  compliant agents listen to the controller, the rest ignore it;
-* **Cost-offset channel** (Experiment 1, ``theta``): ``begin_day(..., broadcast=...)``
-  turns the cost-offset advisory into the EFE
-  ``cost_offset = theta * compliance * E_r`` per (agent, route). This affects
-  *action selection only*: the smoother (``filter.py``) is untouched by it.
+  compliant agents fuse the controller's shared belief, the rest ignore it;
 * **Extra observations** (Experiment 3 default, CG/SN):
   ``update_beliefs(..., obs_broadcast=...)`` folds the **realised** route queue
   (CG) and/or green split (SN) into the smoother as observations of routes the
@@ -19,7 +15,8 @@ channels**:
   chosen-route observations" property. The gate ``(last_choice != route)`` keeps
   the chosen route's first-hand observation authoritative (no double counting). It
   reaches **all** agents (not gated by compliance) and works with any controller.
-* **Controller-belief fusion** (Experiment 3/4, QB/SP):
+* **Controller-belief fusion** (QB/SP; the parked belief-sharing channel,
+  optional in the Experiment 3 dropdown):
   ``begin_day(..., belief_broadcast=...)`` fuses the controller's forward-predicted
   belief over the intersection queue (QB) and/or its planned green split (SP) into
   a **copy** of the traveller's posterior, *before* the route-choice EFE, for
@@ -142,7 +139,6 @@ class Population:
         self.sigma_obs = _cohort_array(cohorts, "sigma_obs", self.N)
         self.sigma_L_obs = _cohort_array(cohorts, "sigma_L_obs", self.N)
         self.gamma = _cohort_array(cohorts, "gamma", self.N)
-        self.theta = _cohort_array(cohorts, "theta", self.N)
 
         F_prior_mu = np.empty((self.N, 2), dtype=float)
         F_prior_sigma = np.empty((self.N, 2), dtype=float)
@@ -160,7 +156,7 @@ class Population:
         self._mean_revert_days = np.empty(self.N, dtype=float)
         self._n_laplace_iters = max(int(c.n_laplace_iters) for c in cohorts)
 
-        # Per-agent compliance: does this agent read the controller broadcast?
+        # Per-agent compliance: does this agent fuse the controller's shared belief?
         self.complies = np.zeros(self.N, dtype=bool)
 
         starts = np.cumsum([0] + [c.n_agents for c in cohorts])
@@ -256,19 +252,6 @@ class Population:
         self.last_choice = np.full(self.N, -1, dtype=int)  # 0 = alpha, 1 = beta
         self.last_P_alpha = np.full(self.N, 0.5, dtype=float)
 
-        # Stable within-departure-minute rank fraction in [0, 1), used to index the
-        # sequential advisory schedule (``EXTERNALITY_SEQUENTIAL`` /
-        # ``MSC_SEQUENTIAL``): agents sharing a departure minute are ranked by agent
-        # index and spread uniformly, so each reads a different increment bin and
-        # the advisory becomes heterogeneous across the population (the mechanism
-        # that breaks the theta cobweb). Deterministic and stable across days (no
-        # RNG), so it never perturbs the construction draws and leaves every
-        # non-sequential signal bit-identical.
-        self.rank_fraction = np.zeros(self.N, dtype=float)
-        for t in np.unique(self.departure_time):
-            idx = np.nonzero(self.departure_time == t)[0]
-            self.rank_fraction[idx] = np.arange(idx.size, dtype=float) / idx.size
-
     # ----------------------------------------------------- helper accessors
     @property
     def predictive_moments(self) -> tuple[np.ndarray, np.ndarray]:
@@ -291,33 +274,6 @@ class Population:
             "phi_mean": np.asarray(mu[..., PHI_IDX]),
             "phi_sd": np.asarray(marginal_sd[..., PHI_IDX]),
         }
-
-    def _broadcast_cost_offset(self, broadcast) -> np.ndarray | None:
-        """Per-(agent, route) EFE offset ``theta * compliance * E_r`` from a
-        broadcast, sampled at each agent's departure minute. ``None`` when
-        there is no broadcast (recovers the no-information case).
-
-        For the direct / finite-difference signals ``broadcast.value[route]`` is
-        length-K and every agent departing at minute ``t`` reads the same
-        ``value[route][t]``. For the sequential signals it is a ``(K, M)``
-        schedule and each agent additionally reads its own increment bin, chosen
-        from its stable within-minute ``rank_fraction`` (``bin = min(floor(f*M),
-        M-1)``), so co-departing agents receive different offsets and the
-        population splits instead of herding."""
-        if broadcast is None:
-            return None
-        t_i = self.departure_time
-        scale = self.theta * self.complies.astype(float)  # (N,)
-        offset = np.zeros((self.N, 2), dtype=float)
-        for j, route in enumerate(self.route_names):
-            vals = np.asarray(broadcast.value[route], dtype=float)
-            if vals.ndim == 1:
-                offset[:, j] = scale * vals[t_i]
-            else:  # (K, M) sequential schedule: index each agent's rank bin
-                M = vals.shape[1]
-                bin_i = np.minimum((self.rank_fraction * M).astype(int), M - 1)
-                offset[:, j] = scale * vals[t_i, bin_i]
-        return offset
 
     def _append_observation_broadcast(self, obs_broadcast, t_i) -> None:
         """Shift the extra-observation buffers and write today's slot.
@@ -417,22 +373,16 @@ class Population:
         self,
         efe: EFEParams,
         rng: np.random.Generator,
-        broadcast=None,
         belief_broadcast=None,
     ) -> None:
         """Each agent samples a route from the closed-form EFE softmax.
 
-        When ``broadcast`` is given, compliant agents fold the cost-offset
-        advisory into their perceived cost via the EFE ``cost_offset``.
-
         When ``belief_broadcast`` is given (the controller's forward-predicted
-        belief), compliant agents additionally fuse it into a transient copy of
-        their posterior *before* choosing. See :meth:`_fuse_controller_belief`.
-        The fusion never touches ``self.state`` (the smoother stays
-        first-hand-only); with nobody compliant or nothing shared it is skipped.
+        belief), compliant agents fuse it into a transient copy of their
+        posterior *before* choosing. See :meth:`_fuse_controller_belief`. The
+        fusion never touches ``self.state`` (the smoother stays first-hand-only);
+        with nobody compliant or nothing shared it is skipped.
         """
-        cost_offset = self._broadcast_cost_offset(broadcast)
-
         state = self.state
         if (
             belief_broadcast is not None
@@ -449,7 +399,6 @@ class Population:
             risk_weight=efe.risk_weight,
             info_gain_weight=efe.info_gain_weight,
             signalised=self.signalised_route,
-            cost_offset=None if cost_offset is None else jnp.asarray(cost_offset),
             phi_lo=self.phi_lo,
             phi_hi=self.phi_hi,
         )

@@ -4,7 +4,7 @@ This is the plumbing behind the fused sweep progress bar
 (``notebook_io.sweep_progress_bar``): a sweep creates one bar and passes its
 ``.update`` as ``on_step`` so the bar advances per simulated day across every
 experiment. The marimo bar rendering itself is a UI concern; here we pin the
-contract headlessly -- the callback fires exactly once per simulated day (every
+contract headlessly: the callback fires exactly once per simulated day (every
 seed, burn-in included), and omitting it is a no-op.
 """
 

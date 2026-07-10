@@ -25,12 +25,7 @@ from .comparison import (
     controller_summary,
     plot_controller_metrics,
     plot_controller_queue_comparison,
-    plot_controller_theta_grid,
-    plot_cost_vs_theta_by_capacity,
     plot_green_split_heatmaps_by_controller,
-    plot_msc_vs_theta,
-    plot_theta_route_choice,
-    plot_theta_summary,
     plot_within_day_queue_by_controller,
 )
 from .demand import plot_demand_profile
@@ -38,7 +33,6 @@ from .mechanism import (
     plot_co_adaptation,
     plot_coupled_within_day,
     plot_learning_uncertainty,
-    plot_msc_tt_by_route,
     plot_within_day_profile,
 )
 from .network import (
@@ -65,11 +59,9 @@ from .sweep import (
     plot_sweep_metrics,
 )
 from .tables import (
-    capacity_theta_summary,
     communication_cost_table,
     communication_summary_table,
     run_summary_table,
-    theta_summary_table,
 )
 
 
@@ -107,16 +99,10 @@ __all__ = [
     "plot_controller_queue_comparison",
     "plot_within_day_queue_by_controller",
     "plot_green_split_heatmaps_by_controller",
-    "plot_controller_theta_grid",
-    "plot_theta_summary",
-    "plot_theta_route_choice",
-    "plot_cost_vs_theta_by_capacity",
     "controller_summary",
     "run_summary_table",
-    "theta_summary_table",
     "communication_summary_table",
     "communication_cost_table",
-    "capacity_theta_summary",
     "animate_controller_comparison",
     "plot_sweep_metrics",
     "plot_belief_sd_sweep",
@@ -130,8 +116,6 @@ __all__ = [
     "plot_within_day_profile",
     "plot_co_adaptation",
     "plot_learning_uncertainty",
-    "plot_msc_tt_by_route",
-    "plot_msc_vs_theta",
     "plot_within_day_by_demand",
     "plot_across_day_by_demand",
 ]

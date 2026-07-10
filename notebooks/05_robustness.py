@@ -1,12 +1,12 @@
 """Robustness of the coupled two-layer system to traffic demand.
 
-Fixes the AIF signal controller (sequential-from-belief externality advisory on,
-full compliance) and re-runs the coupled system at several **traffic-demand
-scales**, multiplying the peak A--B and C--D demand by {0.8, 1.0, 1.2, 1.4}. It
-asks whether travellers and the controller keep coordinating as the network fills
-up rather than relying on a single fixed operating point: within one day the
-route flows and green split should shift together with the load, and across days
-each load should re-settle to its own stable route split and signal policy.
+Fixes the AIF signal controller and re-runs the coupled system at several
+**traffic-demand scales**, multiplying the peak A--B and C--D demand by
+{0.8, 1.0, 1.2, 1.4}. It asks whether travellers and the controller keep
+coordinating as the network fills up rather than relying on a single fixed
+operating point: within one day the route flows and green split should shift
+together with the load, and across days each load should re-settle to its own
+stable route split and signal policy.
 """
 
 import marimo
@@ -26,12 +26,11 @@ def _():
 def _(mo):
     mo.md(
         r"""
-        # Experiment 5 — Robustness to traffic demand
+        # Experiment 5: Robustness to traffic demand
 
         Does the coupled two-layer Active Inference framework keep coordinating as
         the network load changes, or does it rely on a single fixed operating
-        point? Here the AIF controller is fixed (sequential-from-belief
-        externality advisory on, full compliance) and the coupled system is re-run
+        point? Here the AIF controller is fixed and the coupled system is re-run
         at several **traffic-demand scales**, multiplying the peak A--B and C--D
         demand by $\{0.8, 1.0, 1.2, 1.4\}$; one coloured line per scale.
 
@@ -61,7 +60,6 @@ def _():
         AIFControllerSpec,
         DemandParams,
         Params,
-        SignalType,
         SimParams,
     )
     from aif_traffic.plotting import (
@@ -77,7 +75,6 @@ def _():
         AIFControllerSpec,
         DemandParams,
         Params,
-        SignalType,
         SimParams,
         explainer_pointer,
         figure_block,
@@ -102,18 +99,11 @@ def _(explainer_pointer, mo):
 def _(mo, nc):
     # All controls come from aif_traffic.notebook_controls (shared across the
     # experiments; see CLAUDE.md). Traffic demand is swept (hard-coded list
-    # below), so it is not a panel slider; compliance is fixed at 1.0 so the
-    # advisory acts. The advisory mechanism / seed default to the sequential
-    # externality seeded from belief (the good default; the raw single-value
-    # externality herds and is a poor baseline).
+    # below), so it is not a panel slider; no controller->traveller signal is used.
     days = nc.days()
     warmup = nc.warmup()
     seed = nc.seed()
     control_interval = nc.control_interval()
-    signal_mechanism = nc.signal_mechanism()
-    sequential_increments = nc.sequential_increments()
-    sequential_seed = nc.sequential_seed()
-    advisory_smoothing = nc.advisory_smoothing()
     learn_noise = nc.learn_noise()
     noise_regime = nc.noise_regime()
     stationary = nc.stationary()
@@ -121,16 +111,12 @@ def _(mo, nc):
 
     run_btn = mo.ui.run_button(label="Run the demand-robustness sweep")
     return (
-        advisory_smoothing,
         control_interval,
         days,
         learn_noise,
         noise_regime,
         run_btn,
         seed,
-        sequential_increments,
-        sequential_seed,
-        signal_mechanism,
         stationary,
         time_step,
         warmup,
@@ -138,9 +124,8 @@ def _(mo, nc):
 
 
 @app.cell
-def _(advisory_smoothing, control_interval, days, learn_noise, nc,
-      noise_regime, run_btn, seed, sequential_increments, sequential_seed,
-      signal_mechanism, stationary, time_step, warmup):
+def _(control_interval, days, learn_noise, nc,
+      noise_regime, run_btn, seed, stationary, time_step, warmup):
     # Window sliders under (and disabled by) the stationary toggle.
     traveller_window = nc.traveller_window(disabled=stationary.value)
     controller_window = nc.controller_window(disabled=stationary.value)
@@ -151,10 +136,6 @@ def _(advisory_smoothing, control_interval, days, learn_noise, nc,
         "learn_noise": learn_noise, "noise_regime": noise_regime,
         "stationary": stationary, "traveller_window": traveller_window,
         "controller_window": controller_window,
-        "signal_mechanism": signal_mechanism,
-        "sequential_increments": sequential_increments,
-        "sequential_seed": sequential_seed,
-        "advisory_smoothing": advisory_smoothing,
     }, run_btn)
     controls
     return controller_window, traveller_window
@@ -164,9 +145,7 @@ def _(advisory_smoothing, control_interval, days, learn_noise, nc,
 def _(
     AIFControllerSpec,
     Params,
-    SignalType,
     SimParams,
-    advisory_smoothing,
     control_interval,
     controller_window,
     days,
@@ -174,19 +153,13 @@ def _(
     noise_regime,
     replace,
     seed,
-    sequential_increments,
-    sequential_seed,
-    signal_mechanism,
     stationary,
     time_step,
     traveller_window,
     warmup,
 ):
-    # Base params: fixed AIF controller with the externality advisory on at full
-    # compliance. The advisory-mechanism dropdown picks the raw (single, herd-
-    # inducing) externality vs the per-traveller sequential externality (the good
-    # default, seeded from belief); traffic demand is scaled per run in the sweep
-    # below.
+    # Base params: fixed AIF controller, no controller->traveller signal; traffic
+    # demand is scaled per run in the sweep below.
     _base = replace(
         Params(),
         sim=replace(SimParams(), days=int(days.value), seed=int(seed.value),
@@ -196,17 +169,8 @@ def _(
             horizon_min=int(control_interval.value),
             controller_window_size=int(controller_window.value)),
     )
-    if signal_mechanism.value == "Sequential externality":
-        _seed = "belief" if sequential_seed.value == "From belief" else "empty"
-        _base = (_base.with_comm(SignalType.EXTERNALITY_SEQUENTIAL)
-                 .with_sequential_increments(int(sequential_increments.value))
-                 .with_sequential_seed(_seed))
-    else:
-        _base = _base.with_comm(SignalType.EXTERNALITY)
     base_params = (
         _base
-        .with_compliance(1.0)
-        .with_advisory_smoothing(int(advisory_smoothing.value))
         .with_window_size(int(traveller_window.value))
         .with_learn_obs_noise(bool(learn_noise.value))
         .with_stationary(bool(stationary.value))

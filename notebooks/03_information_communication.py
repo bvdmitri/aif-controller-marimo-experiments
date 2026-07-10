@@ -1,21 +1,21 @@
-"""Experiment 3 -- System information communication.
+"""Experiment 3: System information communication.
 
 Fixes the signal controller and a single traveller population, and varies only
 **what information travellers receive about the network** before/after they
 choose. The ``communication mechanism`` dropdown selects which channel is swept:
 
-* **Extra observations** (default) -- travellers natively see only the route
+* **Extra observations** (default): travellers natively see only the route
   they took; the controller relays the *true realised* route congestion (**CG**,
   queue ``L_r``) and/or signal green split (**SN**, ``phi_r``) of the routes they
   did *not* take, folded into their end-of-day belief update. Settings
   BL/CG/SN/CG+SN. Works with any controller and reaches every traveller.
-* **Belief sharing** -- the AIF controller shares its own forward-predicted
+* **Belief sharing**: the AIF controller shares its own forward-predicted
   belief: its queue belief (**QB**, ``N(L_hat, var)``) and/or planned green split
   (**SP**). A compliant traveller fuses that Gaussian into its posterior at
   decision time (transient, never entering the smoother). Settings BL/QB/SP/QB+SP,
   run at full compliance.
-* **Both** -- each channel alone and combined (BL/CG+SN/QB+SP/CG+SN+QB+SP).
-* **Disable** -- the no-information baseline only.
+* **Both**: each channel alone and combined (BL/CG+SN/QB+SP/CG+SN+QB+SP).
+* **Disable**: the no-information baseline only.
 
 The notebook runs the selected settings and overlays the outcomes.
 """
@@ -37,7 +37,7 @@ def _():
 def _(mo):
     mo.md(
         r"""
-        # Experiment 3 — System information communication
+        # Experiment 3: System information communication
 
         The controller and the traveller population are fixed; we vary only
         **what information travellers receive about the network**. Pick the
@@ -137,8 +137,8 @@ def _(mo, nc):
     # All controls come from aif_traffic.notebook_controls (shared across the
     # experiments; see CLAUDE.md). The comm_mechanism dropdown selects which
     # information channel is swept. compliance gates the belief-sharing channel
-    # only (extra observations reach everyone); theta (the externality channel)
-    # and the AIF-tuning knobs are not used here.
+    # only (extra observations reach everyone); the AIF-tuning knobs are not used
+    # here.
     comm_mechanism = nc.comm_mechanism()
     days = nc.days()
     warmup = nc.warmup()
@@ -174,7 +174,7 @@ def _(mo, nc):
 def _(bypass_capacity_scale, comm_mechanism, compliance, control_interval, days,
       demand_scale, learn_noise, nc, noise_regime, run_btn, seed, stationary,
       time_step, warmup):
-    # Window sliders under (and disabled by) the stationary toggle -- see the
+    # Window sliders under (and disabled by) the stationary toggle; see the
     # note in Experiment 1's control panel.
     traveller_window = nc.traveller_window(disabled=stationary.value)
     controller_window = nc.controller_window(disabled=stationary.value)
@@ -232,9 +232,8 @@ def _(
             d_AB_max=base_d.d_AB_max * _scale,
             d_CD_max=base_d.d_CD_max * _scale,
         )
-        # theta stays at its default 0 (the externality channel is not used
-        # here). compliance gates the belief-sharing channel only; extra
-        # observations reach every traveller regardless.
+        # compliance gates the belief-sharing channel only; extra observations
+        # reach every traveller regardless.
         _base = replace(
             Params(),
             sim=replace(SimParams(), days=int(days.value), seed=int(seed.value),

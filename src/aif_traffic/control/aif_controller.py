@@ -433,7 +433,8 @@ class AIFController(BaseController):
     # forecast (belief broadcast for decision-time fusion) -------------
     def forecast(self, context: Mapping) -> QueueForecast:
         """Broadcast the controller's belief over the upcoming day for
-        decision-time fusion (Experiment 3 / 4).
+        decision-time fusion (the parked belief-sharing channel, optional in
+        the Experiment 3 dropdown).
 
         This is the **rolling-window smoother posterior** over the within-day
         queue trajectory (built in :meth:`observe` by injecting the realised

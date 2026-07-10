@@ -5,7 +5,7 @@ forward-predicts the upcoming day's queue belief (QB) and its planned green
 split (SP) and broadcasts them *before* travellers choose. A **compliant**
 traveller fuses the controller's Gaussian into its own posterior at decision
 time; a non-compliant traveller ignores it. Crucially the fusion is
-**transient** -- it informs the route choice but never enters the smoother, so
+**transient**: it informs the route choice but never enters the smoother, so
 the traveller's first-hand belief is untouched.
 
 WHAT THESE PIN DOWN
@@ -81,7 +81,7 @@ def test_qb_shifts_route_choice(runs):
         "QB (queue belief) shifts route choice vs baseline",
         [
             f"max |P_alpha(QB) - P_alpha(BL)| = {d:.4f}",
-            "Expectation: clearly non-zero -- compliant travellers fold the",
+            "Expectation: clearly non-zero; compliant travellers fold the",
             "controller's predicted intersection queue into their decision.",
             f"Verdict: {'PASS' if d > 1e-3 else 'FAIL'}.",
         ],
@@ -91,7 +91,7 @@ def test_qb_shifts_route_choice(runs):
 
 def test_sp_shifts_route_choice(runs):
     """Broadcasting the planned green split (SP) measurably changes route
-    choice vs. the baseline -- travellers anticipate the intersection's
+    choice vs. the baseline; travellers anticipate the intersection's
     effective capacity they could not otherwise observe."""
     d = _max_abs_dP(runs["SP"], runs["BL"])
     _narrate(
@@ -150,7 +150,7 @@ def test_fusion_is_transient_smoother_state_untouched():
         mu_L=np.full(K, 60.0), var_L=np.full(K, 9.0),
         phi=np.full(K, 0.3), var_phi=0.0004,
     )
-    pop.begin_day(p.efe, np.random.default_rng(1), broadcast=None, belief_broadcast=bb)
+    pop.begin_day(p.efe, np.random.default_rng(1), belief_broadcast=bb)
 
     same_mu = np.array_equal(before_mu, np.asarray(pop.state.mu))
     same_tril = np.array_equal(before_tril, np.asarray(pop.state.scale_tril))

@@ -27,14 +27,14 @@ NOTEBOOKS = sorted(
 
 
 def _nb_id(path: Path) -> str:
-    """Map a notebook filename (``01_social_internalisation.py``) to its
-    explainer id (``social_internalisation``)."""
+    """Map a notebook filename (``01_coordination_mechanism.py``) to its
+    explainer id (``coordination_mechanism``)."""
     return re.sub(r"^\d+_", "", path.stem)
 
 
 def _charts_called(src: str) -> set[str]:
     """The CHART_GUIDE plotting functions actually *called* in a notebook (a call
-    is ``name(`` -- import lines and return tuples use ``name,``)."""
+    is ``name(``; import lines and return tuples use ``name,``)."""
     return {
         cid for cid in ex.CHART_GUIDE
         if re.search(rf"\b{re.escape(cid)}\(", src)
@@ -119,7 +119,7 @@ def test_every_called_chart_is_captioned_and_matches_registry(nb: Path):
     # every chart actually called is rendered through figure_block (captioned)
     missing = called - set(block_ids)
     assert not missing, (
-        f"{nb.name} calls {sorted(missing)} without figure_block(...) -- every "
+        f"{nb.name} calls {sorted(missing)} without figure_block(...); every "
         "figure must be displayed via notebook_io.figure_block so it is captioned."
     )
 

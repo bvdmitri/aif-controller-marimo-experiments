@@ -18,10 +18,10 @@ Two timescales, two layers:
   controller can be dropped in and compared. The AIF controller's internal
   model is deliberately left open for now.
 
-Communication: the controller broadcasts an information signal that travellers
-may fold into their perceived route cost ``zeta_r = TT_r + theta * E_r``. A
-per-cohort ``compliance_fraction`` controls how many travellers actually read
-the broadcast (the rest ignore it).
+Communication: the controller can relay extra observations of the non-chosen
+routes into the travellers' belief update, and can share its own belief for
+decision-time fusion. A per-cohort ``compliance_fraction`` controls how many
+travellers actually fuse the shared belief (the rest ignore it).
 
 Nothing here commits to a particular AIF-controller formulation; that is
 developed later against this structure.
@@ -197,20 +197,16 @@ class CohortSpec:
     intersection route ``alpha`` and index 1 is the bypass route ``beta`` (the
     smoother is route-agnostic; only the prior labels change).
 
-    New macro-coupling knobs:
+    New macro-coupling knob:
 
-    * ``theta``: social internalisation in ``[0, 1]``: the
-      fraction of the broadcast congestion externality folded into the
-      perceived route cost ``zeta_r = TT_r + theta * E_r``.
-    * ``compliance_fraction``: fraction of the cohort that actually reads the
-      controller broadcast. The rest ignore it (fall back to private TT).
+    * ``compliance_fraction``: fraction of the cohort that actually fuses the
+      controller's shared belief. The rest ignore it (fall back to private TT).
     """
 
     n_agents: int = 2000
     label: str = "default"
 
-    # Social / communication coupling.
-    theta: float = 0.0
+    # Communication coupling.
     compliance_fraction: float = 1.0
 
     # EFE preference: p_tilde_r(y) = N(mu_F_r, sigma_pref^2).
@@ -506,49 +502,14 @@ ControllerSpecLike = (
 # ============================================================================
 #  Communication
 # ============================================================================
-class SignalType(enum.Enum):
-    """What the controller broadcasts to travellers as a *cost-offset advisory*.
-
-    All variants are folded into the perceived route cost via a per-route
-    externality-like offset ``zeta_r = TT_r + theta * value_r``;
-    ``build_broadcast`` converts each into that common form. This channel
-    affects *action selection only* (the EFE risk term), never the belief
-    update. It carries the theta social-internalisation of Experiment 1.
-
-    This is distinct from the belief-informing channel (:class:`BeliefSignal`),
-    which feeds observations into the smoother.
-    """
-
-    NONE = "none"
-    TRAVEL_TIME = "travel_time"   # \hat{TT}_r
-    CONGESTION = "congestion"     # \hat{L}_r (queue)
-    EXTERNALITY = "externality"   # \hat{E}_r
-    MSC = "msc"                   # \widehat{MSC}_r (marginal social cost)
-
-    # Sequential (per-traveller) variants of EXTERNALITY / MSC. Instead of a
-    # single per-route scalar broadcast identically to everyone (which makes the
-    # whole compliant population herd onto the cheaper-looking route and drives
-    # the theta cobweb), these build a per-departure-minute *schedule* over ``M``
-    # increment bins: the marginal social cost is re-computed as demand is
-    # incrementally assigned to the argmin route, so a route's cost rises as it
-    # fills. ``build_broadcast`` returns ``value[route]`` of shape ``(K, M)``, and
-    # each traveller reads the bin at its stable within-minute rank fraction
-    # (:mod:`inference.population`). Early ranks see empty routes (large offset
-    # gap), later ranks see equalised costs (small gap), so the population
-    # *splits* toward the system optimum rather than herding. The per-traveller
-    # heterogeneity of the signal, not any "fill from empty" property, is what
-    # breaks the cobweb.
-    EXTERNALITY_SEQUENTIAL = "externality_sequential"  # per-rank E_r schedule
-    MSC_SEQUENTIAL = "msc_sequential"                  # per-rank MSC_r schedule
-
-
 class BeliefSignal(enum.Enum):
     """What the controller shares from its *own belief* with travellers, for
     decision-time fusion (paper Experiment 3 settings BL/QB/SP/QB+SP).
 
-    Unlike :class:`SignalType` (a cost-offset that shifts the perceived cost),
-    these are the controller's forward-predicted belief about the upcoming day:
-    a **distribution**, not a realised reading. Before travellers choose, a
+    Unlike :class:`ObservationSignal` (a realised reading relayed into the
+    smoother), these are the controller's forward-predicted belief about the
+    upcoming day: a **distribution**, not a realised reading. Before travellers
+    choose, a
     *compliant* traveller fuses the controller's Gaussian into its own posterior
     (precision-weighted) for the route-choice decision only; the fusion is
     **transient**: it never enters the traveller's smoother (see
@@ -599,9 +560,8 @@ class ObservationSignal(enum.Enum):
 class CommunicationSpec:
     """How the controller communicates with travellers.
 
-    Three orthogonal channels that can be combined:
+    Two orthogonal channels that can be combined:
 
-    * ``signal_type``: the cost-offset advisory (Experiment 1, theta);
     * ``obs_signals``: **extra observations** of the non-chosen routes relayed
       into the traveller's belief update (Experiment 3 default, BL/CG/SN/CG+SN);
     * ``belief_signals``: the controller's own belief shared for decision-time
@@ -609,53 +569,8 @@ class CommunicationSpec:
       (nothing shared).
     """
 
-    signal_type: SignalType = SignalType.NONE
     obs_signals: frozenset[ObservationSignal] = frozenset()
     belief_signals: frozenset[BeliefSignal] = frozenset()
-    advisory_smoothing_days: int = 1
-    """Trailing window (days) over which the cost-offset advisory (``signal_type``)
-    is averaged before travellers act on it. The advisory is built from a day's
-    realised state and acted on the next day, a one-day-stale feedback that can
-    drive a day-to-day cobweb oscillation in route choice; averaging the last
-    ``W`` days damps it. ``1`` (default) means act on yesterday's value only, the
-    original un-smoothed behaviour (bit-identical). Only the ``signal_type``
-    advisory is smoothed, not the extra-observation or belief channels."""
-
-    sequential_increments: int = 12
-    """Number of increment bins ``M`` for the sequential advisory signals
-    (``EXTERNALITY_SEQUENTIAL`` / ``MSC_SEQUENTIAL``); ignored by every other
-    signal type. The controller redistributes each departure minute's demand in
-    ``M`` equal chunks to the currently-cheaper route, recording the marginal
-    social cost each chunk sees, to produce a per-route schedule of shape
-    ``(K, M)``. Travellers then read the bin at their stable within-minute rank
-    fraction, so the advisory is heterogeneous across the population and the herd
-    that drives the cobweb dissolves. Keep ``M >= 8``: at very small ``M`` the
-    schedule degenerates toward the single-probe raw signal (``M = 1`` is a single
-    empty-load probe, worse than the finite-difference MSC). The demand is
-    redistributed *from empty across the whole day* (all minutes jointly), so the
-    schedule depends only on the split-independent total demand, ``gamma`` and the
-    green splits, not on yesterday's realised route split: that is what makes it a
-    stable day-to-day fixed point rather than a cobweb. Cost is ``M * (2K + 1)``
-    full-day re-rolls per day (roughly ``M`` times the raw MSC), incurred only for
-    the two sequential signals. See ``sequential_seed`` for the alternative
-    (belief-seeded) construction."""
-
-    sequential_seed: str = "empty"
-    """Starting point for the sequential advisory's incremental assignment
-    (``EXTERNALITY_SEQUENTIAL`` / ``MSC_SEQUENTIAL``); ignored by other signals.
-
-    * ``"empty"`` (default): fill the whole day's A--B demand from zero, jointly
-      across minutes. The schedule then depends only on the split-independent
-      total demand, ``gamma`` and the green splits, so it is a stable day-to-day
-      fixed point (no cobweb) by construction.
-    * ``"belief"``: start from the controller's believed split (the most recent
-      realised inflow) and *reassign* travellers rank by rank, each moved to the
-      currently-cheaper route with the running state updated after each move (a
-      Gauss--Seidel rebalancing sweep). This is the posterior-as-prior version:
-      it keeps the current knowledge and makes the minimal redistribution toward
-      the balanced split, rather than re-solving from scratch. It targets the same
-      balanced split as ``"empty"``; because the schedule now depends on the
-      believed split its stability is not automatic and is validated empirically."""
 
 
 # ============================================================================
@@ -699,11 +614,6 @@ class Params:
 
     def with_cohorts(self, cohorts: tuple[CohortSpec, ...]) -> "Params":
         return replace(self, population=replace(self.population, cohorts=tuple(cohorts)))
-
-    def with_theta(self, theta: float) -> "Params":
-        """Set the same social-internalisation theta on every cohort."""
-        cohorts = tuple(replace(c, theta=theta) for c in self.population.cohorts)
-        return self.with_cohorts(cohorts)
 
     def with_compliance(self, fraction: float) -> "Params":
         """Set the same compliance fraction on every cohort."""
@@ -803,32 +713,6 @@ class Params:
             for ls in net.links
         )
         return replace(self, network=replace(net, links=links))
-
-    def with_comm(self, signal_type: SignalType) -> "Params":
-        return replace(self, comm=replace(self.comm, signal_type=signal_type))
-
-    def with_advisory_smoothing(self, days: int) -> "Params":
-        """Average the cost-offset advisory over the last ``days`` days before
-        travellers act on it, to damp the one-day-stale cobweb oscillation.
-        ``1`` recovers the original un-smoothed advisory."""
-        return replace(self, comm=replace(self.comm,
-                                          advisory_smoothing_days=max(1, int(days))))
-
-    def with_sequential_increments(self, m: int) -> "Params":
-        """Set the number of increment bins ``M`` for the sequential advisory
-        signals (``EXTERNALITY_SEQUENTIAL`` / ``MSC_SEQUENTIAL``). Clamped to
-        ``>= 1``; keep ``>= 8`` in practice (see ``sequential_increments``)."""
-        return replace(self, comm=replace(self.comm,
-                                          sequential_increments=max(1, int(m))))
-
-    def with_sequential_seed(self, seed: str) -> "Params":
-        """Choose the sequential advisory's starting point: ``"empty"`` (fill the
-        day from zero, the stable default) or ``"belief"`` (start from the believed
-        split and reassign, posterior-as-prior). See ``sequential_seed``."""
-        seed = str(seed).lower()
-        if seed not in ("empty", "belief"):
-            raise ValueError(f"sequential_seed must be 'empty' or 'belief', got {seed!r}.")
-        return replace(self, comm=replace(self.comm, sequential_seed=seed))
 
     def with_belief_signals(self, *signals: BeliefSignal) -> "Params":
         """Set which parts of the controller's belief are shared for

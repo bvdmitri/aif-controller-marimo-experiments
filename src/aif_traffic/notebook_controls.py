@@ -1,6 +1,6 @@
 """Single source of truth for the experiment notebooks' parameter controls.
 
-Every experiment notebook (``notebooks/0{1..4}_*.py``) builds its parameter panel
+Every experiment notebook (``notebooks/0[1-5]_*.py``) builds its parameter panel
 from this module instead of hand-defining ``mo.ui`` widgets inline, so the
 controls stay **consistent across experiments**: the same control always has the
 same range, default, label and one-line description, and the panel always renders
@@ -23,11 +23,10 @@ Each control is created as a named global in the cell (so downstream cells read
 whichever subset was passed.
 
 Convention (see CLAUDE.md): do **not** hand-define ``mo.ui`` sliders/checkboxes for
-the parameter panel in a notebook: add or change a control here. ``theta`` is
-only meaningful where the externality cost-offset is broadcast (Experiments 1, 2);
-``compliance`` only where a controller->traveller channel is gated (Experiments
-1-3; swept in Experiment 4). The per-notebook ``day_sel`` / ``tod_sel`` day-
-inspection sliders are *not* parameter controls and are exempt.
+the parameter panel in a notebook: add or change a control here. ``compliance`` is
+only meaningful where a controller->traveller channel is gated (the belief-sharing
+option of Experiment 3). The per-notebook ``day_sel`` / ``tod_sel`` day-inspection
+sliders are *not* parameter controls and are exempt.
 """
 
 from __future__ import annotations
@@ -107,50 +106,9 @@ DESCRIPTIONS: dict[str, str] = {
         "decision-time fusion (compliant travellers only). **Both** runs each "
         "channel alone and combined; **Disable** is the no-information baseline."
     ),
-    "theta": (
-        r"Social internalisation $\theta$: how much travellers fold the congestion "
-        r"externality $E_r$ into their perceived cost $\zeta_r = TT_r + \theta E_r$. "
-        r"$0$ = selfish (user equilibrium), $1$ = fully cooperative (system "
-        r"optimum). Only bites when the externality is broadcast (Experiments 1, 2)."
-    ),
     "compliance": (
-        "Fraction of travellers that act on the controller's broadcast (the "
-        "externality advisory and/or the shared belief). At $0$ the broadcast is "
-        "ignored and the setting collapses onto the baseline."
-    ),
-    "advisory_smoothing": (
-        r"Advisory smoothing window $W$ (days): the cost-offset advisory is "
-        r"built from a day's realised state and acted on the next day, a "
-        r"one-day-stale feedback that can drive a day-to-day route-choice "
-        r"**cobweb** oscillation. Travellers instead act on the mean advisory "
-        r"over the last $W$ days; larger $W$ damps the cobweb. $W=1$ is the raw "
-        r"act-on-yesterday advisory."
-    ),
-    "signal_mechanism": (
-        r"How the externality advisory is computed. **Raw externality** "
-        r"broadcasts one per-route value to everyone: the marginal social cost "
-        r"of a single extra vehicle. Because all compliant travellers see the "
-        r"same nudge they herd onto the cheaper route, driving the cobweb. "
-        r"**Sequential externality** instead builds a per-traveller schedule by "
-        r"incrementally assigning demand to the cheapest route and re-computing "
-        r"the marginal cost as each route fills, so different travellers get "
-        r"different advisories and the population splits toward the system "
-        r"optimum without herding."
-    ),
-    "sequential_increments": (
-        r"Increment bins $M$ for the **sequential** advisory: the departure-minute "
-        r"demand is redistributed in $M$ chunks, each to the currently-cheaper "
-        r"route, and travellers read the bin at their rank. Larger $M$ gives a "
-        r"finer, more stable split; keep $M\ge 8$ (very small $M$ degenerates "
-        r"toward the raw signal). Ignored unless the sequential advisory is on."
-    ),
-    "sequential_seed": (
-        r"Starting point for the **sequential** advisory. **From empty** rebuilds "
-        r"the split from zero each day (depends only on the split-independent "
-        r"demand, so stable by construction). **From belief** starts from the "
-        r"controller's believed split and reassigns travellers toward the balanced "
-        r"split (posterior-as-prior: keeps current knowledge, minimal move). "
-        r"Ignored unless the sequential advisory is on."
+        "Fraction of travellers that fuse the controller's shared belief. At $0$ "
+        "the shared belief is ignored and the setting collapses onto the baseline."
     ),
     "gamma": (
         r"AIF action precision $\gamma^c$. Higher $\to$ a sharper preference for "
@@ -237,42 +195,8 @@ def comm_mechanism():
     )
 
 
-def theta():
-    return mo.ui.slider(0.0, 1.0, step=0.05, value=0.0, label="theta")
-
-
 def compliance():
     return mo.ui.slider(0.0, 1.0, step=0.05, value=1.0, label="compliance")
-
-
-def advisory_smoothing():
-    return mo.ui.slider(1, 40, value=25, label="advisory smoothing W [days]")
-
-
-def signal_mechanism():
-    # Default to the per-traveller SEQUENTIAL externality: the raw single-value
-    # externality herds the population and is a poor baseline, so the sequential
-    # advisory (which splits toward the system optimum) is the good default.
-    return mo.ui.dropdown(
-        options=["Raw externality", "Sequential externality"],
-        value="Sequential externality",
-        label="advisory mechanism",
-    )
-
-
-def sequential_increments():
-    return mo.ui.slider(4, 24, value=12, label="sequential increments M")
-
-
-def sequential_seed():
-    # Default to seeding the sequential schedule FROM BELIEF (posterior-as-prior:
-    # reassign the marginal travellers from the controller's believed split, the
-    # minimal, least-disruptive move to the balanced split).
-    return mo.ui.dropdown(
-        options=["From empty", "From belief"],
-        value="From belief",
-        label="sequential seed",
-    )
 
 
 def gamma():
@@ -309,9 +233,7 @@ _GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
         # toggle; they only bite in the rolling-window (non-stationary) mode.
         "stationary", "traveller_window", "controller_window",
     )),
-    ("Communication / social",
-     ("comm_mechanism", "signal_mechanism", "sequential_increments",
-      "sequential_seed", "theta", "compliance", "advisory_smoothing")),
+    ("Communication", ("comm_mechanism", "compliance")),
     ("AIF controller", ("gamma", "omega", "sigma_pref", "phi_grid", "k_L")),
 )
 

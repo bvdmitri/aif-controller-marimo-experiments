@@ -104,7 +104,7 @@ def test_stationary_tightens_and_reduces_window_spike():
         LOWER under stationary (evidence accumulates instead of being forgotten);
       * the day-to-day system-cost churn around day == window (where the rolling
         window first drops its oldest, cold-start day) is SMALLER under
-        stationary -- the "forgetting spike" the mode is designed to remove.
+        stationary: the "forgetting spike" the mode is designed to remove.
     The controller's within-day queue-belief SD is only checked to be *comparable*
     between modes: the controller refits a fresh per-day trajectory posterior that
     fills within its window either way, so this quantity is not the place the

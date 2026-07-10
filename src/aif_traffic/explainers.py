@@ -26,10 +26,9 @@ Per-chart "how to read" guidance lives in one place too (CLAUDE.md hard rule):
 from __future__ import annotations
 
 NOTEBOOK_IDS: tuple[str, ...] = (
-    "social_internalisation",
+    "coordination_mechanism",
     "controller_benchmark",
     "information_communication",
-    "capacity_sensitivity",
     "robustness",
 )
 
@@ -52,13 +51,11 @@ in two stages.
 
 1. **Route choice (once per day).** Every A--B traveller is an Active Inference
    agent that picks the intersection route $\alpha$ or the bypass $\beta$ by
-   minimising expected free energy. The outcome it has preferences about is the
-   **perceived generalized cost** $\zeta_r = TT_r + \theta\,E_r$ (its predicted
-   travel time plus the internalised externality; $\theta=0$ makes it the
-   private travel time). The pragmatic term is the divergence of that predicted
-   cost from a preference centred on the free-flow ideal; the epistemic term
-   rewards resolving uncertainty in the belief (the IWAI rolling-window Gaussian
-   smoother) and is independent of $\theta$. Each route's latent is
+   minimising expected free energy. The outcome it has preferences about is its
+   predicted travel time $TT_r$. The pragmatic term is the divergence of that
+   predicted travel time from a preference centred on the free-flow ideal; the
+   epistemic term rewards resolving uncertainty in the belief (the IWAI
+   rolling-window Gaussian smoother). Each route's latent is
    $(F, C, L, \phi)$: free-flow time, capacity, queue, and, extending the IWAI
    model, the **expected green split** $\phi$. On the signalised intersection
    route $C$ is the saturation flow and the effective capacity is $\phi\,C$, so
@@ -99,17 +96,8 @@ identical demand each day) for clean, reproducible convergence; it is off by
 default (a realistic run is noisy).
 
 **Controller$\to$traveller communication channels.** The controller has a
-network-wide view and can share it in three distinct ways.
+network-wide view and can share it in two distinct ways.
 
-- *Cost-offset advisory* ($\theta$): a per-route signal (e.g. the congestion
-  externality $E_r$) enters the traveller's **preference** as the internalised
-  term of its outcome, the perceived generalized cost
-  $\zeta_r = TT_r + \theta\,E_r$, where $\theta\in[0,1]$ is the traveller's
-  social internalisation ($0$ = purely selfish / user equilibrium, $1$ = fully
-  cooperative / system optimum). It is a *goal* term (it shapes what the agent
-  prefers, via the pragmatic EFE term), **not** a distortion of its belief about
-  its own trip: it shifts route *choice* only and never enters the belief update
-  or the epistemic term.
 - *Extra observations* (CG / SN): travellers natively observe only the route
   they took. The controller relays the **true realised** route congestion
   $L_r$ (**CG**) and/or signal green split $\phi_r$ (**SN**) of the routes they
@@ -196,26 +184,23 @@ stability ($\mathrm{std}$ of daily cost), mean signal variation, and mean peak
 queue. A per-chart "how to read" guide is appended automatically below.
 """
 
-_SOCIAL = r"""
-### Sweeping social internalisation $\theta$
+_COORDINATION = r"""
+### Understanding the coordination mechanism
 
-This experiment fixes the AIF controller and varies how cooperative the
-travellers are. At $\theta=0$ (the default, the user equilibrium) the within-day
-and day-to-day charts above show the coupled traveller--controller adaptation.
-Sweeping
-$\theta\in\{0,0.25,0.5,0.75,1\}$ then traces the spectrum from the **user
-equilibrium** ($\theta=0$, travellers minimise only their own travel time) to
-the **system optimum** ($\theta=1$, travellers fully internalise the congestion
-externality $E_r$ they impose). The summary panels compare route shares, travel
-times, queue imbalance, and total system cost across $\theta$: higher $\theta$
-is expected to spread demand more evenly between the intersection and bypass,
-especially at the demand peak, and lower the total system cost.
+This experiment fixes the AIF controller and a single traveller population and
+shows how the two layers **co-adapt** through the shared network, with no
+external coordination signal. The within-day charts follow a representative day
+after learning has converged: as demand rises the controller infers growing
+queues on the signalised movements and reallocates green time, while travellers
+shift between the intersection route $\alpha$ and the bypass $\beta$ in
+response. The across-day charts trace the same coupling over the run: route
+shares and the controller's green-split policy change rapidly during early
+learning, then stabilise as both agent types build accurate beliefs, and the
+total system cost and the controller's posterior uncertainty fall together.
 
-Note that $\theta$ enters the perceived cost as $\zeta_r = TT_r + \theta E_r$,
-so it only changes behaviour when the externality $E_r$ is actually communicated
-(otherwise the offset is $\theta \times 0$ and every $\theta$ coincides). This
-experiment therefore broadcasts the externality at full compliance; the
-belief-informing CG/SN broadcasts of Experiment 3 are not used here.
+Read the two views as one story: coordinated behaviour emerges from repeated
+Active Inference belief updates between the travellers and the controller, not
+from any centralised optimisation.
 """
 
 _COMMUNICATION = r"""
@@ -267,71 +252,17 @@ slider.
 
 A caveat the model makes explicit: both channels sharpen each traveller's
 *private* travel-time anticipation, which drives behaviour toward the **user
-equilibrium**; neither carries an externality/social term, so (unlike the
-cost-offset $\theta\,E_r$ channel of Experiment 1) there is no guarantee
-that fuller information alone reaches the lowest *system* cost. Better
+equilibrium**; neither carries an externality/social term, so there is no
+guarantee that fuller information alone reaches the lowest *system* cost. Better
 anticipation can still help by reducing over-/under-reaction; read the
 value-of-information question as empirical, not assumed.
-"""
-
-_CAPACITY = r"""
-### Does internalisation help when the bypass is a bottleneck?
-
-Sweeping social internalisation $\theta$ barely moves system cost at the default
-network, because the bypass route $\beta$ is high-capacity spare: diverting off
-the intersection is nearly free, so the congestion externality that $\theta$ acts
-on lives almost entirely on the intersection and there is little to redistribute.
-This experiment fixes the AIF controller (externality advisory on, full
-compliance) and sweeps $\theta \in \{0,0.25,0.5,0.75,1.0\}$ across several
-**bypass-capacity scales** (link 5 saturation flow $\times\,1.0, 0.5, 0.25$),
-throttling the bypass into a real bottleneck so that diverting onto it carries a
-genuine social cost.
-
-The twist is a route-choice **cobweb**. The cost-offset advisory is built from a
-day's realised state and acted on the *next* day, a one-day-stale feedback. The
-**raw** externality broadcasts a *single* per-route value (the marginal social
-cost of one extra vehicle) to the whole population, so once the bypass is
-congestible every compliant traveller reads the same "the other route is cheaper"
-nudge and swings there en masse; the next day that route is overloaded and the
-signal flips. Travellers oscillate between the two routes day to day and the
-alternating overloads send system cost far *above* the $\theta=0$ baseline, so
-$\theta$ appears to backfire. The root cause is that the finite difference
-measures the cost of adding *one* vehicle, while broadcasting it identically in
-effect moves *thousands* onto one route.
-
-Two levers break the cobweb, both selectable in the notebook:
-
-* **Advisory smoothing $W$.** Travellers act on the mean advisory over the last
-  $W$ days rather than only yesterday's. Larger $W$ damps the swing; past a
-  threshold (around $W\approx25$ days here) the oscillation collapses and $\theta$
-  helps again even with the bypass throttled. $W=1$ is the raw act-on-yesterday
-  advisory.
-* **Sequential (per-traveller) advisory.** Instead of one shared value, the
-  controller builds a per-departure-minute *schedule*: it redistributes the whole
-  day's A--B demand *from empty* in $M$ increments, each minute's chunk going to
-  its currently-cheaper route, re-computing the marginal social cost as each route
-  fills. Travellers read the bin at their stable within-minute *rank*, so early
-  ranks are pushed toward the emptier route and later ranks toward the other, and
-  the population *splits* toward the system optimum rather than herding. Filling
-  from empty is what matters: the total A--B demand is independent of how it was
-  split yesterday, so the schedule depends only on that demand, the exogenous
-  $C$--$D$ flow and the green splits, making it a stable day-to-day fixed point
-  rather than a cobweb. It is also heterogeneous across travellers, so the
-  coordinated herd that caused the overshoot is gone; the oscillation collapses
-  even at $W=1$. The **sequential seed** selects the starting point: *from empty*
-  (rebuild from zero, stable by construction) or *from belief* (start from the
-  controller's believed split and reassign the marginal travellers toward the
-  balance, posterior-as-prior); both reach the same balanced split, with the
-  belief seed making the minimal, least-disruptive move.
-
-A per-chart "how to read" guide is appended automatically below.
 """
 
 _ROBUSTNESS = r"""
 ### How do the coupled agents behave under different traffic demand?
 
-This experiment fixes the AIF controller (externality advisory on, full
-compliance) and re-runs the coupled system at several **traffic-demand scales**,
+This experiment fixes the AIF controller and re-runs the coupled system at
+several **traffic-demand scales**,
 multiplying the peak A--B and C--D demand by $\{0.8, 1.0, 1.2, 1.4\}$. It asks
 whether the two-layer Active Inference framework keeps coordinating rather than
 relying on a single fixed operating point as the network fills up.
@@ -352,10 +283,9 @@ A per-chart "how to read" guide is appended automatically below.
 """
 
 _ADDENDA: dict[str, str] = {
-    "social_internalisation": _CONTROLLER + "\n" + _SOCIAL,
+    "coordination_mechanism": _CONTROLLER + "\n" + _COORDINATION,
     "controller_benchmark": _COMPARISON,
     "information_communication": _CONTROLLER + "\n" + _COMMUNICATION,
-    "capacity_sensitivity": _CONTROLLER + "\n" + _CAPACITY,
     "robustness": _CONTROLLER + "\n" + _ROBUSTNESS,
 }
 
@@ -504,28 +434,6 @@ CHART_GUIDE: dict[str, dict] = {
         "read": "Columns are controllers, so the policies can be read side by side; "
         "within each, X = day and Y = minute. The shared scale makes intensities "
         "comparable between controllers.",
-    },
-    "plot_controller_theta_grid": {
-        "title": "theta x controller cost grid",
-        "slider": None,
-        "what": "Heatmap of steady-state mean system cost over (theta x "
-        "controller), each cell annotated with its value.",
-        "read": "Rows are the social-internalisation theta, columns the controllers, "
-        "on a shared colour scale (lighter = cheaper). Read down a column for one "
-        "controller across theta, along a row to compare controllers at one theta.",
-    },
-    "plot_cost_vs_theta_by_capacity": {
-        "title": "Cost vs theta, by bypass capacity",
-        "slider": None,
-        "what": "Steady-state total system cost against social internalisation "
-        "theta, one line per bypass-capacity scale (link 5 saturation flow "
-        "x1.0/0.5/0.25). Left panel: absolute cost; right panel: cost relative to "
-        "that scale's theta=0, so every line starts at 1.0.",
-        "read": "On the right panel a line bending BELOW 1.0 means theta lowers "
-        "system cost at that capacity; bending ABOVE 1.0 means it backfires (the "
-        "advisory cobweb). At full capacity the line is nearly flat (theta "
-        "near-inert); throttling with a raw advisory bends it up, a smoothed "
-        "advisory (larger W) bends it back down.",
     },
     "plot_sweep_metrics": {
         "title": "Sweep metrics",
@@ -737,17 +645,6 @@ CHART_GUIDE: dict[str, dict] = {
         "traveller uncertainty, the bottom controller uncertainty; compare how fast "
         "each layer's confidence grows over the run.",
     },
-    "plot_theta_summary": {
-        "title": "theta-sweep performance summary",
-        "slider": None,
-        "what": "Four panels: mean and SD of daily system cost, and mean and SD of "
-        "the daily peak queue L_2+L_5+L_6, against social internalisation theta, one "
-        "line per controller (canonical colour), over the last days of each run.",
-        "read": "Read each controller's line across theta: a flat line means theta "
-        "barely changes that metric for that controller. Comparing controllers "
-        "shows whether an adaptive controller absorbs the effect of theta that a "
-        "fixed one would expose.",
-    },
     "plot_within_day_by_setting": {
         "title": "Within-day belief vs reality by setting",
         "slider": None,
@@ -759,45 +656,6 @@ CHART_GUIDE: dict[str, dict] = {
         "realised line is the one that best resolves travellers' uncertainty about "
         "what they will actually face. Darker (later) days should track the line "
         "more tightly as learning proceeds.",
-    },
-    "plot_msc_tt_by_route": {
-        "title": "Route cost decomposition: TT, MSC, externality",
-        "slider": None,
-        "what": "Three stacked day-series, one line per traveller route (alpha "
-        "intersection, beta bypass): daily mean travel time TT_r, daily mean "
-        "marginal social cost MSC_r (finite-difference cost of one extra "
-        "vehicle, recorded while the externality advisory is broadcast), and "
-        "the raw externality E_r = MSC_r - TT_r (unclipped; the broadcast "
-        "clips it at zero).",
-        "read": "Compare the two routes within each panel: where the curves "
-        "coincide, user equilibrium and system optimum coincide and theta has "
-        "no lever; a gap between the routes' MSC or externality is exactly "
-        "what the theta advisory can act on. The zero line in the bottom "
-        "panel separates routes that impose congestion on others (above) from "
-        "ones that do not (below).",
-    },
-    "plot_msc_vs_theta": {
-        "title": "MSC & travel time vs theta",
-        "slider": None,
-        "what": "A 2x2 grid, one line per controller: columns are the traveller "
-        "routes alpha and beta, the top row the steady-state mean daily "
-        "marginal social cost MSC_r, the bottom row the mean daily travel time "
-        "TT_r, each against social internalisation theta.",
-        "read": "Read each controller's line across theta: a flat line means "
-        "theta does not move that route's cost for that controller. Comparing "
-        "the alpha and beta columns shows whether the two routes' costs "
-        "differ at all; if they are alike, UE and SO coincide and the theta "
-        "channel has nothing to redistribute.",
-    },
-    "plot_theta_route_choice": {
-        "title": "theta behavioural mechanism",
-        "slider": None,
-        "what": "Grouped box plots of the daily intersection share P_alpha at each "
-        "theta, one box per controller within each theta group (canonical colour), "
-        "over the last days of each run.",
-        "read": "If the boxes shift as theta grows, route choice responds to social "
-        "internalisation; if they barely move, the behavioural response is small. "
-        "Compare controllers to see whether the signal policy masks that response.",
     },
     "plot_within_day_by_demand": {
         "title": "Within-day adaptation by demand",
@@ -829,7 +687,7 @@ CHART_GUIDE: dict[str, dict] = {
 # Which charts each notebook shows, in display order. Drives both the generated
 # end-of-notebook guide and the enforcing test (tests/test_chart_captions.py).
 NOTEBOOK_CHARTS: dict[str, tuple[str, ...]] = {
-    "social_internalisation": (
+    "coordination_mechanism": (
         "plot_demand_profile",
         "plot_day_overview_grid",
         "plot_within_day_tt_vs_belief",
@@ -845,14 +703,9 @@ NOTEBOOK_CHARTS: dict[str, tuple[str, ...]] = {
         "plot_daily_system_cost",
         "plot_route_share_over_days",
         "plot_co_adaptation",
-        "plot_msc_tt_by_route",
-        "plot_msc_vs_theta",
         "animate_days",
         "animate_route_flows",
         "animate_network_state",
-        "plot_sweep_metrics",
-        "plot_theta_summary",
-        "plot_theta_route_choice",
     ),
     "controller_benchmark": (
         "plot_controller_metrics",
@@ -861,7 +714,6 @@ NOTEBOOK_CHARTS: dict[str, tuple[str, ...]] = {
         "plot_learned_obs_noise",
         "plot_green_split_heatmaps_by_controller",
         "animate_controller_comparison",
-        "plot_controller_theta_grid",
     ),
     "information_communication": (
         "plot_sweep_metrics",
@@ -872,10 +724,6 @@ NOTEBOOK_CHARTS: dict[str, tuple[str, ...]] = {
         "plot_day_overview_grid",
         "plot_queue_belief_day",
         "plot_route_choice_heatmaps",
-    ),
-    "capacity_sensitivity": (
-        "plot_cost_vs_theta_by_capacity",
-        "plot_sweep_metrics",
     ),
     "robustness": (
         "plot_within_day_by_demand",
@@ -908,16 +756,6 @@ TABLE_GUIDE: dict[str, dict] = {
         "lower `*_signal_variation` is a steadier signal, lower peak-queue "
         "columns mean less congestion. Pairs with the controller-metrics chart.",
     },
-    "theta_summary_table": {
-        "title": "theta x controller summary",
-        "what": "One row per (controller, theta): mean/std of daily system cost, "
-        "mean/std of the peak queue L_2+L_5+L_6, and mean/std of the intersection "
-        "share P_alpha, over the last recorded days.",
-        "read": "Read a controller's rows down theta: if the metrics barely move "
-        "with theta, that controller is 'absorbing' the social-internalisation "
-        "effect; compare controllers to see which expose it. Pairs with the "
-        "theta-sweep charts.",
-    },
     "communication_summary_table": {
         "title": "Communication summary",
         "what": "One row per information setting (BL/CG/SN/CG+SN): mean system "
@@ -936,26 +774,15 @@ TABLE_GUIDE: dict[str, dict] = {
         "cheaper on average, a smaller gap between `best_SC` and `worst_SC` (and a "
         "smaller `std_SC`) is a steadier day-to-day cost.",
     },
-    "capacity_theta_summary": {
-        "title": "Capacity x theta summary",
-        "what": "One row per bypass-capacity scale: system cost at theta=0 and "
-        "theta=1 and the change (%), the best theta in the sweep and its cost, and "
-        "the day-to-day route-share oscillation (P_alpha std) at theta=1.",
-        "read": "A large positive `dSC_pct` alongside a large `Palpha_std_theta1` "
-        "is the advisory cobweb (theta backfiring); smoothing the advisory shrinks "
-        "both and can turn `dSC_pct` negative (theta helps). `best_theta` is where "
-        "cost is lowest for that capacity.",
-    },
 }
 
 # Which tables each notebook renders, in display order (drives the table test
 # and the end-of-notebook guide).
 NOTEBOOK_TABLES: dict[str, tuple[str, ...]] = {
-    "social_internalisation": ("run_summary_table", "theta_summary_table"),
+    "coordination_mechanism": ("run_summary_table",),
     "controller_benchmark": ("controller_summary",),
     "information_communication": ("communication_cost_table",
                                   "communication_summary_table"),
-    "capacity_sensitivity": ("capacity_theta_summary",),
     "robustness": (),
 }
 

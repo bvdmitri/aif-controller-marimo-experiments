@@ -96,7 +96,7 @@ _ROUTE_LINESTYLES: dict[str, str] = {
     "beta": "--",    # dashed (A--B bypass)
     "gamma": "-.",   # dash-dot (C--D)
 }
-# Generic dash cycle for keyless sweeps (theta values, demand scales): index in.
+# Generic dash cycle for keyless sweeps (demand scales, compliance): index in.
 _SWEEP_LINESTYLES: tuple[str, ...] = ("-", "--", "-.", (0, (1, 1)))
 
 
@@ -123,8 +123,8 @@ def route_linestyle(name: str) -> str:
 
 
 def sweep_linestyle(i: int):
-    """Dash pattern for the ``i``-th line of a keyless sweep (theta / demand
-    scale), so the overlaid lines stay distinct in greyscale."""
+    """Dash pattern for the ``i``-th line of a keyless sweep (demand scale /
+    compliance), so the overlaid lines stay distinct in greyscale."""
     return _SWEEP_LINESTYLES[int(i) % len(_SWEEP_LINESTYLES)]
 
 

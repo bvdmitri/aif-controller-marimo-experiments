@@ -7,7 +7,7 @@ travellers' window smoother). These tests pin:
 
   1. the banded O(M) solver equals a dense reference (mean and variance);
   2. the posterior covariance is FULL (non-diagonal) with temporal correlation
-     that decays with lag -- the correlations the design requires;
+     that decays with lag (the correlations the design requires);
   3. the posterior variance shrinks as more days are observed / the window grows;
   4. identity observations with tiny noise recover the observed trajectory;
   5. the controller's broadcast forecast IS the smoother posterior (not a

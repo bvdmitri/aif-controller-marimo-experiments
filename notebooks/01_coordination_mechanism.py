@@ -1,15 +1,12 @@
-"""Experiment 1 -- Traveller social internalisation.
+"""Experiment 1: Understanding the coordination mechanism.
 
-Fixes the **AIF signal controller** and varies how cooperative the travellers
-are. The single run (default ``theta = 0``, the user equilibrium) shows the coupled
-traveller/controller adaptation within a day and across days; the sweep section
-then runs ``theta in {0, 0.25, 0.5, 0.75, 1}`` -- the spectrum from the user
-equilibrium to the system optimum -- and overlays the resulting route shares,
-system cost, queues, and belief uncertainty. The congestion externality ``E_r``
-is communicated so ``theta`` can act on it (perceived cost
-``zeta_r = TT_r + theta * E_r``); the belief-informing CG/SN broadcasts of
-Experiment 3 are not used here. This establishes the behavioural baseline for
-Experiments 2 and 3.
+Fixes the **AIF signal controller** and a single traveller population, and shows
+how the two layers **co-adapt** through the shared network with no external
+coordination signal. The single run shows the coupled traveller/controller
+adaptation within a day (route flows, believed vs realised travel time and queue,
+green split) and across days (route shares, green-split policy, system cost and
+belief uncertainty converging together). This establishes the behavioural
+baseline for Experiments 2 and 3.
 """
 
 import marimo
@@ -29,26 +26,16 @@ def _():
 def _(mo):
     mo.md(
         r"""
-        # Experiment 1 — Traveller social internalisation
+        # Experiment 1: Understanding the coordination mechanism
 
-        The AIF signal controller is fixed; we vary how cooperative the
-        travellers are through their **social internalisation** $\theta$. A
-        traveller perceives a route as $\zeta_r = TT_r + \theta\,E_r$, where
-        $E_r$ is the congestion externality it imposes: $\theta=0$ is the user
-        equilibrium (purely selfish), $\theta=1$ the system optimum (fully
-        cooperative).
+        The AIF signal controller and a single traveller population are fixed;
+        this experiment shows how the two layers **co-adapt** through the shared
+        network, with no external coordination signal.
 
-        The single run below shows the coupled adaptation at a chosen $\theta$
-        (default $0.5$). The **sweep** section then runs
-        $\theta\in\{0,0.25,0.5,0.75,1\}$ and overlays the outcomes. The
-        externality $E_r$ is communicated so $\theta$ can act on it; the
-        belief-informing broadcasts (CG/SN) of Experiment 3 are *not* used here.
-
-        The **advisory mechanism** dropdown chooses how $E_r$ is computed: the
-        *raw* externality (one value broadcast to everyone) or the per-traveller
-        *sequential* externality (a rank-indexed schedule, seeded from empty or
-        from the controller's belief) that splits the population instead of
-        letting it herd.
+        The single run below shows the coupled adaptation within a day (route
+        flows, believed vs realised travel time and queue, the green split) and
+        across days (route shares and the controller's green-split policy
+        stabilising as system cost and belief uncertainty fall together).
 
         Set the parameters, click **Run**, and read the charts below.
         """
@@ -67,17 +54,12 @@ def _():
         figure_block,
         is_deployed,
         outputs_dir,
-        sweep_progress_bar,
         table_block,
     )
     from aif_traffic.parameters import (
         AIFControllerSpec,
-        AnticipatoryControllerSpec,
         DemandParams,
-        FixedTimeControllerSpec,
         Params,
-        ReactiveControllerSpec,
-        SignalType,
         SimParams,
     )
     from aif_traffic.plotting import (
@@ -94,33 +76,23 @@ def _():
         plot_green_split_heatmap,
         plot_learned_obs_noise,
         plot_learning_uncertainty,
-        plot_msc_tt_by_route,
-        plot_msc_vs_theta,
         plot_network_state,
         plot_queue_belief_day,
         plot_route_flows,
         plot_route_share_over_days,
         plot_signal_day,
-        plot_sweep_metrics,
-        plot_theta_route_choice,
-        plot_theta_summary,
         plot_within_day_tt_vs_belief,
         run_summary_table,
         setup_style,
-        theta_summary_table,
     )
     from aif_traffic.simulator import run_experiment
 
     setup_style()
     return (
         AIFControllerSpec,
-        AnticipatoryControllerSpec,
         DemandParams,
-        FixedTimeControllerSpec,
         Params,
         Path,
-        ReactiveControllerSpec,
-        SignalType,
         SimParams,
         animate_days,
         animate_network_state,
@@ -141,23 +113,16 @@ def _():
         plot_green_split_heatmap,
         plot_learned_obs_noise,
         plot_learning_uncertainty,
-        plot_msc_tt_by_route,
-        plot_msc_vs_theta,
         plot_network_state,
         plot_queue_belief_day,
         plot_route_flows,
         plot_route_share_over_days,
         plot_signal_day,
-        plot_sweep_metrics,
-        plot_theta_route_choice,
-        plot_theta_summary,
         plot_within_day_tt_vs_belief,
         replace,
         run_experiment,
         run_summary_table,
-        sweep_progress_bar,
         table_block,
-        theta_summary_table,
     )
 
 
@@ -170,9 +135,9 @@ def _(explainer_pointer, mo):
 @app.cell
 def _(mo, nc):
     # All controls come from aif_traffic.notebook_controls (shared across the
-    # experiments; see CLAUDE.md). Experiment 1 exposes the full set: the social
-    # knobs theta + compliance (the externality is broadcast, so they bite) and
-    # the AIF-controller knobs.
+    # experiments; see CLAUDE.md). This coordination-mechanism notebook exposes
+    # the simulation and AIF-controller knobs (no controller->traveller signal is
+    # used here, so no communication controls).
     days = nc.days()
     warmup = nc.warmup()
     seed = nc.seed()
@@ -181,11 +146,6 @@ def _(mo, nc):
     learn_noise = nc.learn_noise()
     noise_regime = nc.noise_regime()
     stationary = nc.stationary()
-    signal_mechanism = nc.signal_mechanism()
-    sequential_increments = nc.sequential_increments()
-    sequential_seed = nc.sequential_seed()
-    theta = nc.theta()
-    compliance = nc.compliance()
     gamma = nc.gamma()
     omega = nc.omega()
     sigma_pref = nc.sigma_pref()
@@ -196,7 +156,6 @@ def _(mo, nc):
     run_btn = mo.ui.run_button(label="Run experiment")
     return (
         bypass_capacity_scale,
-        compliance,
         control_interval,
         days,
         demand_scale,
@@ -207,22 +166,17 @@ def _(mo, nc):
         phi_grid,
         run_btn,
         seed,
-        sequential_increments,
-        sequential_seed,
         sigma_pref,
-        signal_mechanism,
         stationary,
-        theta,
         time_step,
         warmup,
     )
 
 
 @app.cell
-def _(bypass_capacity_scale, compliance, control_interval, days, demand_scale,
+def _(bypass_capacity_scale, control_interval, days, demand_scale,
       gamma, learn_noise, nc, noise_regime, omega, phi_grid, run_btn, seed,
-      sequential_increments, sequential_seed, sigma_pref, signal_mechanism,
-      stationary, theta, time_step, warmup):
+      sigma_pref, stationary, time_step, warmup):
     # The rolling-window sliders live under (and are disabled by) the stationary
     # toggle: they only bite in the non-stationary mode. Defined here, downstream
     # of `stationary`, so toggling it re-renders them (updating `disabled`)
@@ -238,10 +192,6 @@ def _(bypass_capacity_scale, compliance, control_interval, days, demand_scale,
         "learn_noise": learn_noise, "noise_regime": noise_regime,
         "stationary": stationary, "traveller_window": traveller_window,
         "controller_window": controller_window,
-        "signal_mechanism": signal_mechanism,
-        "sequential_increments": sequential_increments,
-        "sequential_seed": sequential_seed,
-        "theta": theta, "compliance": compliance,
         "gamma": gamma, "omega": omega, "sigma_pref": sigma_pref,
         "phi_grid": phi_grid,
     }, run_btn)
@@ -256,7 +206,6 @@ def _(
     Params,
     SimParams,
     bypass_capacity_scale,
-    compliance,
     control_interval,
     controller_window,
     days,
@@ -271,13 +220,8 @@ def _(
     run_btn,
     run_experiment,
     seed,
-    sequential_increments,
-    sequential_seed,
     sigma_pref,
-    signal_mechanism,
-    SignalType,
     stationary,
-    theta,
     time_step,
     traveller_window,
     warmup,
@@ -302,35 +246,19 @@ def _(
             d_AB_max=base_d.d_AB_max * scale,
             d_CD_max=base_d.d_CD_max * scale,
         )
-        # theta enters the perceived cost as zeta_r = TT_r + theta * E_r, so it
-        # only changes behaviour when the externality E_r is communicated. We
-        # broadcast the externality at full compliance; with no such signal theta
-        # multiplies a zero offset and every theta gives an identical result. The
-        # advisory-mechanism dropdown picks the raw (single, herd-inducing)
-        # externality vs the per-traveller sequential externality (M bins, seeded
-        # from empty or from the controller's belief).
+        # The controller and travellers co-adapt through the shared network with
+        # no controller->traveller signal here (that is Experiment 3).
         params = replace(
             Params(),
             sim=replace(SimParams(), days=int(days.value), seed=int(seed.value),
                         burn_in=int(warmup.value), dt_min=int(time_step.value)),
             controller=spec,
             demand=demand,
-        ).with_compliance(
-            float(compliance.value)
-        ).with_theta(
-            float(theta.value)
         ).with_window_size(int(traveller_window.value)).with_learn_obs_noise(
             bool(learn_noise.value)
         ).with_stationary(bool(stationary.value)).with_noise_regime(
             noise_regime.value
         ).with_bypass_capacity_scale(float(bypass_capacity_scale.value))
-        if signal_mechanism.value == "Sequential externality":
-            _seed = "belief" if sequential_seed.value == "From belief" else "empty"
-            params = (params.with_comm(SignalType.EXTERNALITY_SEQUENTIAL)
-                      .with_sequential_increments(int(sequential_increments.value))
-                      .with_sequential_seed(_seed))
-        else:
-            params = params.with_comm(SignalType.EXTERNALITY)
         # Snapshot every day so the belief-vs-realised charts have the per-agent
         # posterior on the days they overlay.
         results = run_experiment(
@@ -591,20 +519,6 @@ def _(figure_block, figure_placeholder, plot_co_adaptation, results):
 
 
 @app.cell
-def _(figure_block, figure_placeholder, plot_msc_tt_by_route, results):
-    # Per-route TT / MSC / externality over days (Xue's UE-vs-SO question).
-    # MSC columns exist only while the externality/MSC advisory is broadcast.
-    fig_msc_tt = (
-        plot_msc_tt_by_route(results.step)
-        if results is not None and "MSC_alpha" in results.step.columns
-        else figure_placeholder(
-            "Route cost decomposition (needs the externality broadcast)")
-    )
-    figure_block("plot_msc_tt_by_route", fig_msc_tt)
-    return
-
-
-@app.cell
 def _(results, run_summary_table, table_block):
     # The steady-state numbers behind the day-series charts for this single run.
     run_df = None if results is None else run_summary_table(results)
@@ -654,168 +568,8 @@ def _(animate_route_flows, figure_block, is_deployed, make_flow_gif, mo,
 
 
 @app.cell
-def _(mo):
-    mo.md(
-        r"""
-        ## Sweep social internalisation $\theta$
-
-        Re-runs the same network and AIF controller for
-        $\theta\in\{0,0.25,0.5,0.75,1\}$ and overlays the day-to-day outcomes.
-        Higher $\theta$ is expected to spread demand more evenly and lower the
-        system cost. Each run broadcasts the externality at full compliance (so
-        $\theta$ actually bites — see the note on the $\theta$ slider); with no
-        externality channel every curve would coincide. This is heavy (five
-        full experiments, each re-rolling the day per minute), so it is gated
-        behind its own button.
-        """
-    )
-    return
-
-
-@app.cell
-def _(mo):
-    sweep_btn = mo.ui.run_button(label="Run theta sweep")
-    sweep_btn
-    return (sweep_btn,)
-
-
-@app.cell
-def _(figure_block, mo, params, plot_sweep_metrics, run_experiment,
-      sweep_btn, sweep_progress_bar):
-    if not sweep_btn.value or params is None:
-        fig_sweep = mo.md(
-            "_Run the single experiment above, then click **Run theta sweep**._"
-        )
-    else:
-        _thetas = [0.0, 0.25, 0.5, 0.75, 1.0]
-        _results_by_theta = {}
-        with sweep_progress_bar(
-            len(_thetas), params.sim, title="theta sweep"
-        ) as _bar:
-            for _th in _thetas:
-                _results_by_theta[f"theta={_th:g}"] = run_experiment(
-                    params.with_theta(_th), seeds=[params.sim.seed],
-                    on_step=_bar.update,
-                )
-        fig_sweep = figure_block(
-            "plot_sweep_metrics", plot_sweep_metrics(_results_by_theta)
-        )
-    fig_sweep
-    return
-
-
-@app.cell
-def _(mo):
-    mo.md(
-        r"""
-        ## Does the controller absorb $\theta$? (controller $\times\,\theta$)
-
-        Re-runs the sweep for **all four controllers** at each
-        $\theta\in\{0,0.25,0.5,0.75,1\}$ so the summary can show whether an
-        adaptive controller "absorbs" the effect of social internalisation that
-        a fixed policy would expose. This is the heaviest run in the notebook
-        (four controllers $\times$ five $\theta$), so it is gated behind its own
-        button.
-        """
-    )
-    return
-
-
-@app.cell
-def _(mo):
-    ctrl_theta_btn = mo.ui.run_button(label="Run controller x theta sweep")
-    ctrl_theta_btn
-    return (ctrl_theta_btn,)
-
-
-@app.cell
-def _(AIFControllerSpec, AnticipatoryControllerSpec, FixedTimeControllerSpec,
-      ReactiveControllerSpec, ctrl_theta_btn, params, run_experiment,
-      sweep_progress_bar):
-    if not ctrl_theta_btn.value or params is None:
-        theta_ctrl_results = None
-    else:
-        _thetas = [0.0, 0.25, 0.5, 0.75, 1.0]
-        _ctrls = {
-            "fixed_time": FixedTimeControllerSpec(),
-            "reactive": ReactiveControllerSpec(),
-            "anticipatory": AnticipatoryControllerSpec(),
-            "aif": params.controller,
-        }
-        theta_ctrl_results = {}
-        with sweep_progress_bar(
-            len(_ctrls) * len(_thetas), params.sim, title="controller x theta"
-        ) as _bar:
-            for _name, _spec in _ctrls.items():
-                theta_ctrl_results[_name] = {}
-                for _th in _thetas:
-                    theta_ctrl_results[_name][_th] = run_experiment(
-                        params.with_controller(_spec).with_theta(_th),
-                        seeds=[params.sim.seed], on_step=_bar.update,
-                    )
-    return (theta_ctrl_results,)
-
-
-@app.cell
-def _(figure_block, mo, plot_theta_summary, theta_ctrl_results):
-    if theta_ctrl_results is None:
-        fig_theta_sum = mo.md(
-            "_Run the single experiment above, then click **Run controller x "
-            "theta sweep**._"
-        )
-    else:
-        fig_theta_sum = figure_block(
-            "plot_theta_summary", plot_theta_summary(theta_ctrl_results)
-        )
-    fig_theta_sum
-    return
-
-
-@app.cell
-def _(figure_block, mo, plot_msc_vs_theta, theta_ctrl_results):
-    if theta_ctrl_results is None:
-        fig_msc_theta = mo.md(
-            "_Run the controller x theta sweep above to see how theta moves "
-            "the routes' marginal social costs._"
-        )
-    else:
-        fig_msc_theta = figure_block(
-            "plot_msc_vs_theta", plot_msc_vs_theta(theta_ctrl_results)
-        )
-    fig_msc_theta
-    return
-
-
-@app.cell
-def _(figure_block, mo, plot_theta_route_choice, theta_ctrl_results):
-    if theta_ctrl_results is None:
-        fig_theta_pa = mo.md(
-            "_Run the controller x theta sweep above to see the behavioural "
-            "mechanism._"
-        )
-    else:
-        fig_theta_pa = figure_block(
-            "plot_theta_route_choice", plot_theta_route_choice(theta_ctrl_results)
-        )
-    fig_theta_pa
-    return
-
-
-@app.cell
-def _(table_block, theta_ctrl_results, theta_summary_table):
-    # The numbers behind the theta-sweep charts: mean/std cost, peak queue and
-    # route share per (controller, theta).
-    theta_df = (
-        None if theta_ctrl_results is None
-        else theta_summary_table(theta_ctrl_results)
-    )
-    table_block("theta_summary_table", theta_df)
-    return
-
-
-@app.cell
 def _(mo, notebook_explainer):
-    mo.md(notebook_explainer("social_internalisation"))
+    mo.md(notebook_explainer("coordination_mechanism"))
     return
 
 

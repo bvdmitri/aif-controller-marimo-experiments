@@ -13,21 +13,23 @@ experiment notebooks (`notebooks/00`-`05`), and tests.
 
 ## The model
 
-* **Network** — a signalised intersection with a bypass (links 1–7). A–B
+* **Network**: a signalised intersection with a bypass (links 1–7). A–B
   travellers choose between the intersection route `alpha` (1-2-3-4) and the
   bypass `beta` (1-5-4); a competing C–D stream `gamma` (6-7) shares the
   junction. Links 2 (A–B) and 6 (C–D) are signalised; their effective capacity
   is the controller's green-time split.
-* **Micro layer (travellers)** — decentralised AIF agents with a closed-form
+* **Micro layer (travellers)**: decentralised AIF agents with a closed-form
   rolling-window Gaussian belief over `(F, C, L, phi)` per route (the green-split
   belief `phi` is active on the signalised route) and Expected Free Energy route
-  choice. `theta` sets social internalisation; `compliance_fraction` sets how
-  many agents read the controller broadcast.
-* **Macro layer (controller)** — a pluggable family behind one interface
+  choice over predicted travel time. `compliance_fraction` sets how many agents
+  fuse the controller's shared belief.
+* **Macro layer (controller)**: a pluggable family behind one interface
   (`src/aif_traffic/control/`): `fixed_time`, `reactive`, `anticipatory`, and
   `aif` (the implemented Active Inference controller; see paper Section 4.2).
-* **Communication** — `src/aif_traffic/communication.py` builds the broadcast;
-  travellers fold it into `zeta_r = TT_r + theta * E_r`.
+* **Communication**: `src/aif_traffic/communication.py` builds the two
+  controller-to-traveller channels: extra observations of the non-chosen routes
+  (folded into the smoother) and the controller's shared belief (fused at
+  decision time).
 
 ## Layout
 
@@ -66,9 +68,9 @@ Plotting has two styles, switched centrally via
 `aif_traffic.plotting.apply_style(name)` (the single style seam in
 `plotting/style.py`):
 
-- **`"marimo"`** (default) — the on-screen notebook look (sans fonts, figures
+- **`"marimo"`** (default): the on-screen notebook look (sans fonts, figures
   widened to the notebook content column).
-- **`"paper"`** — publication style for the manuscript (Elsevier `elsarticle`
+- **`"paper"`**: publication style for the manuscript (Elsevier `elsarticle`
   3p, Times/serif, ~6.72 in text width, vector PDF, colourblind/greyscale-safe
   palette). The same chart functions render in either style with no per-chart
   edits (widths come from the active style; colours from a style-aware palette).
@@ -90,5 +92,5 @@ smoke only. One heavier workflow runs off the critical path:
   paper figures and uploads `paper_figures/` as a **downloadable artifact**.
 
 The full-scale behavioural characterization + narrative tests
-(`pytest --runslow`, `@pytest.mark.slow`) are not run in CI — run them locally
+(`pytest --runslow`, `@pytest.mark.slow`) are not run in CI; run them locally
 on demand with `uv run --extra dev pytest --runslow`.

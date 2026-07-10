@@ -47,8 +47,8 @@ def test_softmax_returns_per_route_distribution():
 
 def test_jit_matches_eager_efe():
     """The JIT-compiled choice step computes the same probabilities as the eager
-    function (the speedup does not change the math), with and without a broadcast
-    cost offset. Tight tolerance -- only XLA float reassociation may differ."""
+    function (the speedup does not change the math). Tight tolerance; only XLA
+    float reassociation may differ."""
     import numpy as np
 
     N = 16
@@ -59,15 +59,9 @@ def test_jit_matches_eager_efe():
         gamma=jnp.full(N, 3.0), risk_weight=1.0, info_gain_weight=1.0,
         signalised=sig,
     )
-    # No cost offset.
     eager = efe_route_probabilities(**common)
     jit = efe_route_probabilities_jit(**common)
     assert np.allclose(np.asarray(eager), np.asarray(jit), rtol=1e-4, atol=1e-6)
-    # With a cost offset (the other pytree structure of cost_offset).
-    offset = jnp.asarray([[2.0, 0.0]] * N)
-    eager_o = efe_route_probabilities(cost_offset=offset, **common)
-    jit_o = efe_route_probabilities_jit(cost_offset=offset, **common)
-    assert np.allclose(np.asarray(eager_o), np.asarray(jit_o), rtol=1e-4, atol=1e-6)
 
 
 def test_symmetric_priors_give_p_a_half():
@@ -92,27 +86,3 @@ def test_congested_route_penalised():
         signalised=SIGNALISED,
     )
     assert float(jnp.mean(P[:, 0])) > 0.95
-
-
-def test_cost_offset_none_reproduces_baseline():
-    """cost_offset=None is identical to an explicit all-zero offset."""
-    N = 16
-    state = _state(N=N)
-    kw = dict(sigma_obs=jnp.full(N, 5.0), sigma_pref=jnp.full(N, 4.0),
-              gamma=jnp.full(N, 1.0), risk_weight=1.0, info_gain_weight=1.0,
-              signalised=SIGNALISED)
-    P_none = efe_route_probabilities(state=state, cost_offset=None, **kw)
-    P_zero = efe_route_probabilities(state=state, cost_offset=jnp.zeros((N, 2)), **kw)
-    assert jnp.allclose(P_none, P_zero, atol=1e-7)
-
-
-def test_positive_externality_offset_on_beta_shifts_to_alpha():
-    """A positive perceived-cost offset on route beta (index 1) raises P_alpha."""
-    N = 32
-    state = _state(N=N)  # symmetric -> P_alpha = 0.5 without offset
-    kw = dict(sigma_obs=jnp.full(N, 3.0), sigma_pref=jnp.full(N, 3.0),
-              gamma=jnp.full(N, 2.0), risk_weight=1.0, info_gain_weight=1.0,
-              signalised=SIGNALISED)
-    offset = jnp.stack([jnp.zeros(N), jnp.full(N, 5.0)], axis=-1)  # penalise beta
-    P = efe_route_probabilities(state=state, cost_offset=offset, **kw)
-    assert float(jnp.mean(P[:, 0])) > 0.5

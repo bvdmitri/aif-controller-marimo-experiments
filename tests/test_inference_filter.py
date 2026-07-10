@@ -97,7 +97,7 @@ def _fill_window(route, y_tt, sigma_tt, y_L, sigma_L, mask, slot,
 
 def test_vb_recovers_per_agent_L_observation_noise():
     """With observation-noise learning on, the per-agent Gamma posterior over the
-    queue-channel precision recovers the SD the data were generated with -- moving
+    queue-channel precision recovers the SD the data were generated with; moving
     from the prior centre (30) toward the injected 15, despite only W per-agent
     observations (the shared weakly-informative prior gives shrinkage)."""
     import numpy as np
@@ -130,7 +130,7 @@ def test_vb_recovers_per_agent_L_observation_noise():
 
 def test_learn_obs_noise_off_is_identical_to_default():
     """With ``learn_obs_noise=False`` the smoother is bit-identical to not passing
-    the flag at all -- the opt-in path never perturbs the default model."""
+    the flag at all; the opt-in path never perturbs the default model."""
     N, W = 4, W_DEFAULT
     state, priors = _init_state(N=N)
     route, y_tt, sigma_tt, y_L, sigma_L, mask = _empty_window(N, W)
@@ -198,7 +198,7 @@ def test_extra_obs_informs_the_unchosen_route():
 
 def _full_window_kwargs(N=4, W=W_DEFAULT, *, learn_obs_noise):
     """A representative window exercising TT/L/phi folds, extra-obs relays, and
-    (optionally) VB noise-learning -- used to compare eager vs JIT."""
+    (optionally) VB noise-learning; used to compare eager vs JIT."""
     priors = _cohort_priors(N=N)
     state = init_variational_state(cohort_priors=priors)
     route, y_tt, sigma_tt, y_L, sigma_L, mask = _empty_window(N, W)
@@ -225,7 +225,7 @@ def _full_window_kwargs(N=4, W=W_DEFAULT, *, learn_obs_noise):
 @pytest.mark.parametrize("learn", [False, True])
 def test_jit_smoother_matches_eager(learn):
     """The JIT-compiled smoother matches the eager ``window_step`` (the speedup
-    does not change the math). Tight tolerance -- only XLA float reassociation
+    does not change the math). Tight tolerance; only XLA float reassociation
     may differ from eager. Covers TT/L/phi + extra-obs folds and VB on/off."""
     import numpy as np
 
@@ -481,7 +481,7 @@ def test_iterated_laplace_converges():
 
 
 def test_per_agent_independence_under_different_observations():
-    """Two agents start identical; feed them different (TT, L) -- posteriors diverge."""
+    """Two agents start identical; feed them different (TT, L); posteriors diverge."""
     N = 2
     W = W_DEFAULT
     state, priors = _init_state(N=N)
@@ -586,7 +586,7 @@ def test_perturbing_one_agent_does_not_affect_others():
         state_a.scale_tril[1:], state_b.scale_tril[1:], atol=1e-5,
     )
 
-# NOTE: the smoother is first-hand-only (IWAI-verbatim) -- it folds in
+# NOTE: the smoother is first-hand-only (IWAI-verbatim); it folds in
 # observations of the chosen route alone. The controller's belief is fused
 # transiently at route-choice time (see tests/test_belief_informing.py and
 # inference/population.py), never into this smoother, so there are no

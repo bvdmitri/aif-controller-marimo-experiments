@@ -4,21 +4,21 @@ These are the *non-directional* sibling of the behavioural tests in
 ``test_behaviour.py`` / ``test_belief_informing.py``. Those pin a qualitative
 fact and assert its direction. These, instead, run each experiment, **print**
 whether the paper's claim holds, and assert only *sanity* (every number finite,
-in range, not NaN). The direction is deliberately NOT asserted -- the point is
+in range, not NaN). The direction is deliberately NOT asserted; the point is
 to surface a discrepancy, not to bake one in.
 
 This is the classic *characterization / golden-master* testing idea (Michael
 Feathers): describe what the code actually does so a human or another agent can
 read it back. Here the "golden master" is the paper text, and each test reports
 ``PAPER CLAIMS ... / OBSERVED ... / consistent | MISMATCH`` so a reader can say
-"the text says theta lowers cost, but it does not here -- worth checking".
+"the text says SN is cheapest, but it is not here; worth checking".
 
 Run with ``-s`` to read the narration:
 
     uv run --extra dev pytest tests/test_narrative_reports.py -s
 
 If a verdict reads MISMATCH, that is a FINDING to report against the paper, not
-a test to tighten -- see the module docstring of ``test_behaviour.py``.
+a test to tighten; see the module docstring of ``test_behaviour.py``.
 """
 
 from __future__ import annotations
@@ -33,7 +33,6 @@ from aif_traffic.parameters import (
     ObservationSignal,
     Params,
     ReactiveControllerSpec,
-    SignalType,
 )
 from aif_traffic.plotting import controller_summary
 from aif_traffic.simulator import run_experiment
@@ -48,7 +47,7 @@ N_LAST = 15      # steady-state window: mean over the last N recorded days
 def _full_base() -> Params:
     """The FULL default experiment: 90 recorded days, 30 burn-in, the default
     2000-traveller population, and the full 300-min within-day horizon. These
-    reports run the real experiment, not a reduced stand-in -- they are slow on
+    reports run the real experiment, not a reduced stand-in; they are slow on
     purpose, so the verdicts reflect the model as actually configured."""
     return Params.default().with_seed(SEED)
 
@@ -66,7 +65,7 @@ def _verdict(claim: str, observed: str, holds: bool) -> list[str]:
     mark = (
         "consistent with the paper"
         if holds
-        else "MISMATCH -- worth checking the paper text"
+        else "MISMATCH; worth checking the paper text"
     )
     return [
         "",
@@ -89,86 +88,12 @@ def _steady_belief_sd(res, n_last: int = N_LAST) -> float:
     return float(res.cohort[res.cohort["day"].isin(last)]["sigma_alpha_post"].mean())
 
 
-def _steady_mean_share(res, n_last: int = N_LAST) -> float:
-    """Mean intersection-route share over the last ``n_last`` recorded days
-    (all within-day intervals) -- a proxy for how the load is split."""
-    step = res.step
-    last = sorted(step["day"].unique())[-n_last:]
-    return float(step[step["day"].isin(last)]["P_alpha"].mean())
-
-
 def _finite(*xs) -> bool:
     return all(math.isfinite(x) for x in xs)
 
 
 # ---------------------------------------------------------------------------
-# Report 1 -- Experiment 1: traveller social internalisation (theta)
-# ---------------------------------------------------------------------------
-def test_report_theta_effect_on_system_cost():
-    """How does social internalisation theta affect total system cost? The
-    paper's Experiment-1 finding is *nuanced*: higher theta does NOT clearly
-    lower cost, and as theta -> 1 performance variability tends to increase --
-    the adaptive AIF controller "absorbs" much of theta's effect. We report the
-    cost-by-theta profile so that can be read off; the direction is not asserted.
-
-    Note on faithfulness: theta enters the perceived cost as
-    ``zeta_r = TT_r + theta * E_r``, so it can only bite if the externality
-    ``E_r`` is actually communicated. We therefore broadcast EXTERNALITY with
-    full compliance here -- the paper's "no broadcast" wording for Experiment 1
-    is itself worth a look, since without an E_r channel theta is inert in the
-    code. The externality re-rolls the day per (route, minute) on the full
-    300-min horizon, which is why this report is slow (~minutes).
-    """
-    base = (
-        _full_base()
-        .with_comm(SignalType.EXTERNALITY)
-        .with_compliance(1.0)
-    )
-    thetas = [0.0, 0.25, 0.5, 0.75, 1.0]
-    cost, share = {}, {}
-    for th in thetas:
-        res = run_experiment(base.with_theta(th), seeds=[SEED])
-        cost[th] = _steady_cost(res)
-        share[th] = _steady_mean_share(res)
-
-    cost_ue, cost_so = cost[0.0], cost[1.0]
-    rel = (cost_ue - cost_so) / cost_ue if cost_ue else float("nan")
-    # "Monotone non-increasing" with a small tolerance for emergent noise.
-    seq = [cost[t] for t in thetas]
-    monotone = all(b <= a * 1.02 for a, b in zip(seq, seq[1:]))
-    theta_does_anything = abs(cost_so - cost_ue) > 1e-6
-
-    lines = [
-        "Cost-offset channel: EXTERNALITY (so theta has an E_r to act on).",
-        "Steady-state system cost and mean intersection share by theta:",
-        *[
-            f"   theta={t:<4}  cost={cost[t]:9.1f} veh-min   mean P_alpha={share[t]:.2f}"
-            for t in thetas
-        ],
-        "",
-        f"User equilibrium (theta=0) cost:  {cost_ue:9.1f}",
-        f"System optimum  (theta=1) cost:  {cost_so:9.1f}",
-        f"Relative change UE -> SO:         {rel:+.1%}",
-        f"Monotone non-increasing in theta: {monotone}",
-        f"theta changes the outcome at all:  {theta_does_anything}",
-        *_verdict(
-            "higher theta does not clearly lower total system cost; the "
-            "controller absorbs much of theta's effect",
-            f"theta=1 cost is {rel:+.1%} vs theta=0; monotone={monotone}; "
-            f"theta-has-effect={theta_does_anything}",
-            holds=(not monotone or abs(rel) < 0.05),
-        ),
-    ]
-    _narrate("REPORT: effect of social internalisation theta", lines)
-
-    # Sanity only -- no direction asserted.
-    assert _finite(*cost.values()), cost
-    assert all(c > 0 for c in cost.values()), cost
-    assert all(0.0 <= s <= 1.0 for s in share.values()), share
-
-
-# ---------------------------------------------------------------------------
-# Report 2 -- Experiment 3: value of information communication
+# Report 1 (Experiment 3): value of information communication
 # ---------------------------------------------------------------------------
 def test_report_communication_value():
     """Experiment 3 ("extra observations"): travellers natively see only the
@@ -229,12 +154,12 @@ def test_report_communication_value():
 
 
 # ---------------------------------------------------------------------------
-# Report 3 -- Experiment 2: controller benchmark
+# Report 3 (Experiment 2): controller benchmark
 # ---------------------------------------------------------------------------
 def test_report_controller_benchmark():
     """The paper's Experiment-2 claim is that the AIF controller reaches a system
     cost *comparable* to the anticipatory controller (AC) while driving a *more
-    stable* green split -- not that it is strictly the cheapest. We report both
+    stable* green split, not that it is strictly the cheapest. We report both
     the cost ranking and the green-split variation so that can be read off."""
     base = _full_base()
     controllers = {
@@ -268,7 +193,7 @@ def test_report_controller_benchmark():
     comparable_cost = math.isfinite(cost_gap) and abs(cost_gap) <= 0.10
     # "More stable splits": the paper's claim is specifically that the AIF
     # controller keeps a smoother green split than the *anticipatory* (predictive)
-    # controller it generalises -- not that it is the smoothest of all (the
+    # controller it generalises, not that it is the smoothest of all (the
     # reactive controller makes small frequent adjustments).
     aif_smoother_than_ac = (
         bool(aif_row) and bool(ac_row)

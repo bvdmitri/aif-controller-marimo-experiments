@@ -29,13 +29,11 @@ notebooks.
   low-and-balanced goal lives inside `Sigma_pref` (extra precision `omega` along
   the unit capacity-normalised imbalance direction), not in a hand-built cost.
   Keep it EFE-based; do not reintroduce a hand-crafted scalar cost.
-- **Three communication channels.** `communication.py` carries three distinct
-  controller→traveller channels (paper Sections 4.3 / Experiment 3):
-  - **Cost-offset advisory** (`SignalType`, `build_broadcast`, `Broadcast`):
-    a per-route signal folded into the *perceived cost* `zeta_r = TT_r + theta*E_r`.
-    Affects route choice only (`begin_day`), never the belief update. Carries the
-    `theta` social-internalisation (Experiment 1). MSC/externality use the
-    finite-difference re-roll; travel-time/congestion are direct proxies.
+- **Two communication channels.** `communication.py` carries two distinct
+  controller→traveller channels (paper Sections 4.3 / Experiment 3). (A former
+  cost-offset advisory channel carrying `theta` / the marginal-social-cost
+  externality has been removed; it is preserved on the `before-msc-removal`
+  branch.)
   - **Extra observations** (`ObservationSignal` = `ROUTE_CONGESTION` / `SIGNAL_CONTROL`,
     `build_observation_broadcast`, `ObservationBroadcast`; settings BL/CG/SN/CG+SN,
     the **Experiment 3 default story**): travellers natively observe only the route
@@ -66,7 +64,7 @@ notebooks.
     via the `nc.comm_mechanism()` dropdown (Disable / Extra observations [default] /
     Belief sharing / Both); the **extra-observations** channel is the paper's
     Experiment-3 story, belief sharing is the off-by-default exploratory option
-    (run at compliance=1).
+    (run at compliance=1). `compliance` gates the belief-sharing channel only.
 
 ## Conventions
 
@@ -85,9 +83,9 @@ notebooks.
   the `Controller` protocol in `control/interface.py` and is built via
   `control/build_controller`. The simulator never special-cases a controller.
 - **The traveller smoother (`inference/filter.py`) follows IWAI** and is
-  route-agnostic. `theta` / broadcast affect only action selection
-  (`inference/efe.py`, `population.begin_day`), never the belief update. The one
-  belief-update extension is the optional per-agent VB observation-noise learning
+  route-agnostic. The route-choice EFE (`inference/efe.py`,
+  `population.begin_day`) is action selection only and never touches the belief
+  update. The one belief-update extension is the optional per-agent VB observation-noise learning
   (`learn_obs_noise`, on by default); with it `False` the smoother is the
   IWAI-verbatim fixed-noise filter (and deterministic, bit-identical).
 - **Determinism.** Inference is closed-form; with noise knobs at 0 the pipeline
@@ -102,17 +100,16 @@ notebooks.
   instead of once per finished experiment.
 - **HARD RULE: experiment controls come from `notebook_controls.py`.** Every
   experiment notebook builds its parameter panel from `aif_traffic.notebook_controls`
-  (`nc.days()`, `nc.theta()`, … as named globals) and renders it with
+  (`nc.days()`, `nc.compliance()`, … as named globals) and renders it with
   `nc.standard_panel({...}, run_btn)`, which fixes the canonical order, grouping,
   labels and one-line descriptions. **Never hand-define an `mo.ui` slider/checkbox
   for the parameter panel inline**; add or change a control (its range/default/
-  label/description) once in `notebook_controls.py`, so all four experiments stay
+  label/description) once in `notebook_controls.py`, so all experiments stay
   consistent. A notebook shows only the subset it needs, but each shown control is
-  identical across experiments. Placement: `theta` only where the externality
-  cost-offset is broadcast (Exp 1, 2); `compliance` where a controller→traveller
-  channel is gated (Exp 1–3; the swept variable in Exp 4). The per-notebook
-  `day_sel` / `tod_sel` day-inspection sliders are *not* parameter controls and are
-  exempt. (Enforced by `tests/test_notebook_controls.py`.)
+  identical across experiments. Placement: `compliance` only where a
+  controller→traveller channel is gated (the belief-sharing option of Exp 3). The
+  per-notebook `day_sel` / `tod_sel` day-inspection sliders are *not* parameter
+  controls and are exempt. (Enforced by `tests/test_notebook_controls.py`.)
 - **Observation-noise learning (VB) is ON by default** (`CohortSpec.learn_obs_noise`
   / `AIFControllerSpec.learn_obs_noise` default `True`): both smoothers learn their
   observation-noise SD via a conjugate-Gamma variational update. Set `False` (e.g.
@@ -180,8 +177,8 @@ understanding of how the model behaves. Guidelines:
   prefer the deterministic (noise-free) path to keep them tractable.
 - The **full-scale behavioural characterization modules** themselves
   (`tests/test_behaviour.py`, `tests/test_belief_informing.py`) are now marked
-  `@pytest.mark.slow` (module-level `pytestmark`), together with the externality
-  re-roll, multi-run sweeps, and the narrative reports. All `slow` tests are
+  `@pytest.mark.slow` (module-level `pytestmark`), together with the multi-run
+  sweeps and the narrative reports. All `slow` tests are
   **skipped unless** you pass `--runslow` (see `tests/conftest.py`), so the fast
   `pytest tests/` and the per-push CI stay quick. Run the heavy tier locally on
   demand with `uv run --extra dev pytest --runslow`; it is deliberately not
@@ -214,16 +211,18 @@ a human or another agent can read it back):
 ## Notebooks
 
 The experiment notebooks mirror the paper's Experiment section (explainer IDs in
-`explainers.py` match the filenames; `04_capacity_sensitivity` is an exploratory
-notebook with no dedicated paper section):
+`explainers.py` match the filenames):
 
 - `00_introduction.py`: markdown landing page (two-layer model, two
-  communication channels, the three experiments).
-- `01_social_internalisation.py`: **Experiment 1**: fix the AIF controller,
-  sweep `theta in {0,0.25,0.5,0.75,1}`. A single-run section (within-day and
-  day-to-day charts: `plot_signal_day`, `plot_green_split_heatmap`,
-  `plot_daily_system_cost`, `plot_route_share_over_days`, optional `animate_days`)
-  plus a `theta`-sweep overlay (`plot_sweep_metrics`).
+  communication channels, the experiments).
+- `01_coordination_mechanism.py`: **Experiment 1** (paper Section 5.2,
+  Understanding the Coordination Mechanism): fix the AIF controller and a single
+  traveller population; a single run shows the coupled traveller/controller
+  co-adaptation within a day and across days (within-day and day-to-day charts:
+  `plot_coupled_within_day`, `plot_within_day_tt_vs_belief`, `plot_co_adaptation`,
+  `plot_signal_day`, `plot_green_split_heatmap`, `plot_daily_system_cost`,
+  `plot_route_share_over_days`, optional `animate_days`). No controller→traveller
+  signal is used.
 - `02_controller_benchmark.py`: **Experiment 2**: runs all four controllers and
   compares them (`plotting/comparison.py`): scalar day-series overlaid
   (`plot_controller_metrics`: system cost, peak queue, green-split variation),
@@ -237,28 +236,15 @@ notebook with no dedicated paper section):
   (`plot_sweep_metrics`) plus per-day route-choice heatmaps
   (`plot_route_choice_heatmaps`). The dropdown can also run the parked
   belief-sharing channel (QB/SP) for exploration.
-- `04_capacity_sensitivity.py` — **Experiment 4**: fix the AIF controller
-  (externality advisory on, full compliance) and sweep `theta` across bypass
-  (link 5) capacity scales `{1.0, 0.5, 0.25}`, throttling the bypass into a
-  bottleneck so internalisation has a real externality to redistribute. Renders
-  `plot_cost_vs_theta_by_capacity` (cost vs theta, one line per scale) + the
-  `capacity_theta_summary` table, plus a raw-vs-smoothed advisory overlay
-  (`plot_sweep_metrics`). Surfaces the advisory **cobweb**: with the bypass
-  throttled a one-day-stale advisory makes `theta` backfire, and the
-  **advisory-smoothing window** `W` (`with_advisory_smoothing`,
-  `CommParams.advisory_smoothing_days`, notebook slider default 25) damps it so
-  `theta` helps again. (Replaced the parked `04_compliance_robustness.py`
-  belief-sharing/compliance notebook, which is deferred to a future
-  heterogeneity paper.)
-- `05_robustness.py` — **Experiment 5** (paper Section 5.5, Robustness): fix the
-  AIF controller (sequential-from-belief advisory, full compliance) and sweep the
-  peak-demand scale `{0.8, 1.0, 1.2, 1.4}`, one line per scale. Renders
-  `plot_within_day_by_demand` (within-day `Q_alpha`/`Q_beta`/`phi_2`) and
-  `plot_across_day_by_demand` (daily `P_alpha`/`phi_2`/system cost with the
-  controller's cost-belief SD on a right axis).
+- `05_robustness.py`: **Experiment 5** (paper Section 5.4, Robustness): fix the
+  AIF controller and sweep the peak-demand scale `{0.8, 1.0, 1.2, 1.4}`, one line
+  per scale. Renders `plot_within_day_by_demand` (within-day
+  `Q_alpha`/`Q_beta`/`phi_2`) and `plot_across_day_by_demand` (daily
+  `P_alpha`/`phi_2`/system cost with the controller's cost-belief SD on a right
+  axis).
 
-Heavy per-experiment analysis charts (e.g. Experiment 2's theta×controller grid,
-Experiment 3's route-choice heatmaps) are scaffolded but not all built yet.
+Heavy per-experiment analysis charts (e.g. Experiment 3's route-choice heatmaps)
+are scaffolded but not all built yet.
 
 ## Scope reminders
 

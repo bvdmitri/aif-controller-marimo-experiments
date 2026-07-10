@@ -1,4 +1,4 @@
-"""Experiment 2 -- Controller benchmark comparison.
+"""Experiment 2: Controller benchmark comparison.
 
 Runs the same network and demand under all four signal controllers
 (fixed-time, reactive, anticipatory, and the Active Inference controller) and
@@ -26,7 +26,7 @@ def _():
 def _(mo):
     mo.md(
         r"""
-        # Experiment 2 — Controller benchmark comparison
+        # Experiment 2: Controller benchmark comparison
 
         Four controllers, same network and demand, swapping only the control
         strategy: **fixed-time**, **reactive** (SCOOT-like), **anticipatory**
@@ -62,7 +62,6 @@ def _():
         FixedTimeControllerSpec,
         Params,
         ReactiveControllerSpec,
-        SignalType,
         SimParams,
     )
     from aif_traffic.plotting import (
@@ -71,7 +70,6 @@ def _():
         figure_placeholder,
         plot_controller_metrics,
         plot_controller_queue_comparison,
-        plot_controller_theta_grid,
         plot_green_split_heatmaps_by_controller,
         plot_learned_obs_noise,
         plot_within_day_queue_by_controller,
@@ -87,7 +85,6 @@ def _():
         Params,
         Path,
         ReactiveControllerSpec,
-        SignalType,
         SimParams,
         animate_controller_comparison,
         controller_summary,
@@ -100,7 +97,6 @@ def _():
         outputs_dir,
         plot_controller_metrics,
         plot_controller_queue_comparison,
-        plot_controller_theta_grid,
         plot_green_split_heatmaps_by_controller,
         plot_learned_obs_noise,
         plot_within_day_queue_by_controller,
@@ -120,9 +116,8 @@ def _(explainer_pointer, mo):
 @app.cell
 def _(mo, nc):
     # All controls come from aif_traffic.notebook_controls (shared across the
-    # experiments; see CLAUDE.md). theta + compliance are live here because the
-    # benchmark broadcasts the externality advisory (so the controllers are
-    # compared at a chosen social-internalisation level, matching the theta-grid).
+    # experiments; see CLAUDE.md). No controller->traveller signal is used in the
+    # benchmark, so there are no communication controls.
     days = nc.days()
     warmup = nc.warmup()
     seed = nc.seed()
@@ -131,8 +126,6 @@ def _(mo, nc):
     learn_noise = nc.learn_noise()
     noise_regime = nc.noise_regime()
     stationary = nc.stationary()
-    theta = nc.theta()
-    compliance = nc.compliance()
     gamma = nc.gamma()
     omega = nc.omega()
     sigma_pref = nc.sigma_pref()
@@ -144,7 +137,6 @@ def _(mo, nc):
     run_btn = mo.ui.run_button(label="Run experiment")
     return (
         bypass_capacity_scale,
-        compliance,
         control_interval,
         days,
         demand_scale,
@@ -158,16 +150,15 @@ def _(mo, nc):
         seed,
         sigma_pref,
         stationary,
-        theta,
         time_step,
         warmup,
     )
 
 
 @app.cell
-def _(bypass_capacity_scale, compliance, control_interval, days, demand_scale,
+def _(bypass_capacity_scale, control_interval, days, demand_scale,
       gamma, k_L, learn_noise, nc, noise_regime, omega, phi_grid, run_btn, seed,
-      sigma_pref, stationary, theta, time_step, warmup):
+      sigma_pref, stationary, time_step, warmup):
     # Window sliders under (and disabled by) the stationary toggle.
     traveller_window = nc.traveller_window(disabled=stationary.value)
     controller_window = nc.controller_window(disabled=stationary.value)
@@ -180,7 +171,6 @@ def _(bypass_capacity_scale, compliance, control_interval, days, demand_scale,
         "learn_noise": learn_noise, "noise_regime": noise_regime,
         "stationary": stationary, "traveller_window": traveller_window,
         "controller_window": controller_window,
-        "theta": theta, "compliance": compliance,
         "gamma": gamma, "omega": omega, "sigma_pref": sigma_pref,
         "phi_grid": phi_grid, "k_L": k_L,
     }, run_btn)
@@ -195,10 +185,8 @@ def _(
     FixedTimeControllerSpec,
     Params,
     ReactiveControllerSpec,
-    SignalType,
     SimParams,
     bypass_capacity_scale,
-    compliance,
     control_interval,
     controller_window,
     days,
@@ -217,7 +205,6 @@ def _(
     seed,
     sigma_pref,
     sweep_progress_bar,
-    theta,
     time_step,
     traveller_window,
 ):
@@ -249,17 +236,14 @@ def _(
                        burn_in=int(warmup.value), dt_min=int(time_step.value))
         with sweep_progress_bar(len(specs), _sim, title="controllers") as _bar:
             for _name, _spec in specs.items():
-                # Broadcast the externality advisory at the chosen theta/compliance
-                # so the controllers are compared at a chosen social-internalisation
-                # level (theta is inert without it); learn-noise per the checkbox.
+                # Each controller is compared on the same coupled network; no
+                # controller->traveller signal is used. Learn-noise per checkbox.
                 _p = replace(
                     base,
                     sim=_sim,
                     controller=_spec,
                     demand=demand,
-                ).with_comm(SignalType.EXTERNALITY).with_compliance(
-                    float(compliance.value)
-                ).with_theta(float(theta.value)).with_window_size(
+                ).with_window_size(
                     int(traveller_window.value)
                 ).with_learn_obs_noise(bool(learn_noise.value)).with_stationary(
                     bool(stationary.value)).with_noise_regime(
@@ -372,124 +356,6 @@ def _(
         gif_view = figure_block("animate_controller_comparison",
                                 mo.image(str(gif_path)))
     gif_view
-    return
-
-
-@app.cell
-def _(mo):
-    mo.md(
-        r"""
-        ## Sensitivity to social internalisation $\theta$
-
-        The comparison above fixes the travellers' behaviour. This grid asks a
-        sharper question: does the AIF controller's advantage survive across the
-        whole user-equilibrium-to-system-optimum spectrum? It re-runs **every
-        controller at every** $\theta\in\{0,0.25,0.5,0.75,1\}$ and reports the
-        steady-state system cost as a heatmap (lower = better).
-
-        This is **20 full runs**, so it has its own button.
-        """
-    )
-    return
-
-
-@app.cell
-def _(mo):
-    grid_btn = mo.ui.run_button(label="Run theta x controller grid (20 runs)")
-    grid_btn
-    return (grid_btn,)
-
-
-@app.cell
-def _(
-    AIFControllerSpec,
-    AnticipatoryControllerSpec,
-    FixedTimeControllerSpec,
-    Params,
-    ReactiveControllerSpec,
-    SignalType,
-    SimParams,
-    bypass_capacity_scale,
-    compliance,
-    control_interval,
-    controller_window,
-    days,
-    demand_scale,
-    gamma,
-    grid_btn,
-    k_L,
-    learn_noise,
-    noise_regime,
-    stationary,
-    omega,
-    warmup,
-    replace,
-    run_experiment,
-    seed,
-    sigma_pref,
-    sweep_progress_bar,
-    time_step,
-    traveller_window,
-):
-    if not grid_btn.value:
-        results_by_ctrl_theta = None
-    else:
-        _ci = int(control_interval.value)
-        _specs = {
-            "fixed_time": FixedTimeControllerSpec(control_interval_min=_ci),
-            "reactive": ReactiveControllerSpec(
-                control_interval_min=_ci, k_L=float(k_L.value)),
-            "anticipatory": AnticipatoryControllerSpec(control_interval_min=_ci),
-            "aif": AIFControllerSpec(
-                control_interval_min=_ci, horizon_min=_ci,
-                gamma=float(gamma.value), omega=float(omega.value),
-                sigma_pref=float(sigma_pref.value),
-                controller_window_size=int(controller_window.value)),
-        }
-        _base = Params()
-        _scale = float(demand_scale.value)
-        _demand = replace(
-            _base.demand,
-            d_AB_max=_base.demand.d_AB_max * _scale,
-            d_CD_max=_base.demand.d_CD_max * _scale,
-        )
-        _thetas = [0.0, 0.25, 0.5, 0.75, 1.0]
-        _cells = [(n, s, t) for n, s in _specs.items() for t in _thetas]
-        results_by_ctrl_theta = {n: {} for n in _specs}
-        _sim = replace(SimParams(), days=int(days.value), seed=int(seed.value),
-                       burn_in=int(warmup.value), dt_min=int(time_step.value))
-        with sweep_progress_bar(
-            len(_cells), _sim, title="theta x controller",
-        ) as _bar:
-            for _name, _spec, _theta in _cells:
-                _p = replace(
-                    _base,
-                    sim=_sim,
-                    controller=_spec,
-                    demand=_demand,
-                ).with_comm(SignalType.EXTERNALITY).with_compliance(
-                    float(compliance.value)
-                ).with_theta(_theta).with_window_size(
-                    int(traveller_window.value)
-                ).with_learn_obs_noise(bool(learn_noise.value)).with_stationary(
-                    bool(stationary.value)).with_noise_regime(
-                    noise_regime.value
-                ).with_bypass_capacity_scale(float(bypass_capacity_scale.value))
-                results_by_ctrl_theta[_name][_theta] = run_experiment(
-                    _p, seeds=[int(seed.value)], on_step=_bar.update,
-                )
-    return (results_by_ctrl_theta,)
-
-
-@app.cell
-def _(figure_block, figure_placeholder, plot_controller_theta_grid,
-      results_by_ctrl_theta):
-    fig_theta_grid = (
-        figure_placeholder("System cost over theta x controller")
-        if results_by_ctrl_theta is None
-        else plot_controller_theta_grid(results_by_ctrl_theta)
-    )
-    figure_block("plot_controller_theta_grid", fig_theta_grid)
     return
 
 

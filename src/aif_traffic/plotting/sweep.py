@@ -1,7 +1,6 @@
 """Generic sweep-overlay plots: one coloured line per experiment variant.
 
-Used by the social-internalisation sweep (Experiment 1, variants = theta
-values) and the information-communication sweep (Experiment 3, variants =
+Used by the information-communication sweep (Experiment 3, variants =
 BL/CG/SN/CG+SN). Each helper takes an ordered mapping ``{label: ExperimentResult}``
 and overlays a daily series, one line per label. Pure ``Figure``-returning.
 """
@@ -46,7 +45,7 @@ def _colours(n: int) -> list:
 def _colours_for_labels(labels: list) -> list:
     """Colour per sweep label. Communication settings (BL/CG/SN/CG+SN) get
     their fixed palette colours so a setting keeps one colour across every
-    figure; any other sweep (theta, compliance) falls back to the viridis
+    figure; any other sweep (demand, compliance) falls back to the viridis
     ramp in insertion order."""
     keys = [str(x) for x in labels]
     if keys and all(k in COMM_ORDER for k in keys):
@@ -57,7 +56,7 @@ def _colours_for_labels(labels: list) -> list:
 def _linestyles_for_labels(labels: list) -> list:
     """Dash pattern per sweep label, so lines stay distinct in greyscale.
     Communication settings get their fixed dash pattern; any other sweep
-    (theta, demand) falls back to the generic index cycle."""
+    (demand, compliance) falls back to the generic index cycle."""
     keys = [str(x) for x in labels]
     if keys and all(k in COMM_ORDER for k in keys):
         return [comm_linestyle(k) for k in keys]
@@ -118,7 +117,7 @@ def plot_sweep_metrics(
     per-setting colours for BL/CG/SN/CG+SN, else a viridis ramp).
 
     ``layout``: ``"stacked"`` (default) is the tall Nx1 column used by the
-    theta / compliance sweeps; ``"grid"`` is the two-column arrangement Xue
+    demand / compliance sweeps; ``"grid"`` is the two-column arrangement Xue
     asks for in the information-communication experiment.
     """
     items = list(results_by_label.items())

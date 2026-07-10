@@ -2,16 +2,17 @@
 
 Each day interleaves:
 
-1. **Travellers choose** routes (alpha/beta) via EFE, folding in yesterday's
-   controller broadcast (compliant agents only).
+1. **Travellers choose** routes (alpha/beta) via EFE, fusing in yesterday's
+   controller belief broadcast (compliant agents only).
 2. **Within-day physics + control**: queues evolve while the controller sets
    the green-time split between links 2 (A--B) and 6 (C--D) each control
    interval. See :func:`network.run_within_day`.
 3. **System cost** over all routes (including the competing C--D stream).
-4. **Broadcast** for the next day is assembled from the realised state.
-5. **Belief updates**: travellers update from realised route travel time and a
-   route-level queue reading; the controller gets an end-of-day ``observe``
-   hook.
+4. **Belief updates**: travellers update from realised route travel time and a
+   route-level queue reading (plus any relayed extra observations of the
+   non-chosen routes); the controller gets an end-of-day ``observe`` hook.
+5. **Belief broadcast** for the next day is forward-predicted by the controller
+   (when belief sharing is on).
 
 With both noise knobs at 0 the whole pipeline is deterministic and the AIF
 controller is a placeholder, so the structure can be validated before the real
@@ -26,12 +27,9 @@ import numpy as np
 import pandas as pd
 
 from .communication import (
-    average_broadcasts,
     build_belief_broadcast,
-    build_broadcast,
     build_observation_broadcast,
     empty_belief_broadcast,
-    empty_broadcast,
     empty_observation_broadcast,
 )
 from .control import build_controller
@@ -72,17 +70,15 @@ def simulate_one_day(
     demand: DemandProfile,
     rng_choice: np.random.Generator,
     rng_obs: np.random.Generator | None,
-    broadcast_prev,
     belief_broadcast_prev=None,
     demand_factor: np.ndarray | None = None,
 ) -> dict:
-    """Run one coupled day; return per-step arrays and the next-day broadcasts."""
+    """Run one coupled day; return per-step arrays and the next-day broadcast."""
     net, sim, signal = params.network, params.sim, params.signal
     prior_state = _prior_predictive_summary(population)
 
     population.begin_day(
         params.efe, rng_choice,
-        broadcast=broadcast_prev,
         belief_broadcast=belief_broadcast_prev,
     )
     P_alpha = population.aggregate_route_share(
@@ -170,15 +166,6 @@ def simulate_one_day(
         obs_broadcast=obs_broadcast,
     )
 
-    # When the EXTERNALITY / MSC advisory is on, the broadcast build already
-    # re-rolls the day for the finite-difference marginal social cost; capture
-    # the raw per-route MSC so it can be recorded (None otherwise).
-    comm_diag: dict = {}
-    broadcast_next = build_broadcast(
-        params.comm, tt_route, queues, net, sim,
-        inflow_by_route=inflow_by_route, phi2=phi2, phi6=phi6,
-        out_diagnostics=comm_diag,
-    )
     controller.observe({
         "day": day_index, "queues": queues, "tt_route": tt_route,
         "phi2": phi2, "phi6": phi6, "SC": SC,
@@ -200,8 +187,8 @@ def simulate_one_day(
     # Controller-belief broadcast for the NEXT day's route choice (Experiment
     # 3/4): the controller forward-predicts tomorrow's queue belief + planned
     # split using today's realised inflows as a persistence forecast, and shares
-    # it (one-day lag, mirroring the cost-offset advisory). Skip the (costly)
-    # forecast entirely when no belief is being shared.
+    # it (one-day lag). Skip the (costly) forecast entirely when no belief is
+    # being shared.
     if params.comm.belief_signals:
         forecast = controller.forecast(
             {"inflow_by_route": inflow_by_route, "net": net, "sim": sim}
@@ -228,20 +215,16 @@ def simulate_one_day(
         "phi6": phi6,
         "SC": SC,
         "prior": prior_state,
-        "broadcast_next": broadcast_next,
         "belief_broadcast_next": belief_broadcast_next,
         # (mu, sd) each (2, K) for movements (L_2, L_6), or None.
         "belief_trajectory": belief,
         # Planned/believed green split phi_2 over the day (length K), or None.
         "phi2_plan": phi2_plan,
-        # Raw per-route marginal social cost {route: length-K}, or None when
-        # the EXTERNALITY/MSC advisory is off (it is only computed then).
-        "msc": comm_diag.get("msc"),
     }
 
 
 def _cohort_record(seed: int, day_index: int, population: Population,
-                   prior_state: dict, controller_signal: str) -> list[dict]:
+                   prior_state: dict) -> list[dict]:
     records = []
     mu_y, var_y = population.predictive_moments
     sigma_y = np.sqrt(var_y)
@@ -256,7 +239,6 @@ def _cohort_record(seed: int, day_index: int, population: Population,
             "day": day_index,
             "cohort_id": cid,
             "cohort_label": c.label,
-            "theta": c.theta,
             "compliance_fraction": c.compliance_fraction,
             "n_agents": int(mask.sum()),
             "mu_alpha_prior": float(prior_state["mu_alpha"][mask].mean()),
@@ -348,14 +330,7 @@ def run_experiment(
             _draw_demand_factors(total_days, sim.K, cv, demand_rng) if cv > 0 else None
         )
 
-        broadcast_prev = empty_broadcast(net, sim)
         belief_broadcast_prev = empty_belief_broadcast()
-        signal_name = params_seed.comm.signal_type.value
-        # Trailing window over which the cost-offset advisory is averaged before
-        # travellers act on it (damps the one-day-stale cobweb). W=1 is the
-        # original behaviour (act on yesterday only).
-        smooth_w = max(1, int(getattr(params_seed.comm, "advisory_smoothing_days", 1)))
-        advisory_history: list = []
 
         all_iter = range(total_days)
         if callable(progress):
@@ -367,17 +342,9 @@ def run_experiment(
             out = simulate_one_day(
                 population, controller, d, params_seed, demand,
                 rng_choice=choice_rng, rng_obs=obs_rng,
-                broadcast_prev=broadcast_prev,
                 belief_broadcast_prev=belief_broadcast_prev,
                 demand_factor=factor,
             )
-            # Feed the (optionally smoothed) advisory to the next day: average the
-            # last ``smooth_w`` raw daily advisories. W=1 -> yesterday's raw value.
-            advisory_history.append(out["broadcast_next"])
-            if smooth_w > 1:
-                broadcast_prev = average_broadcasts(advisory_history[-smooth_w:])
-            else:
-                broadcast_prev = out["broadcast_next"]
             belief_broadcast_prev = out["belief_broadcast_next"]
 
             if on_step is not None:
@@ -388,7 +355,6 @@ def run_experiment(
 
             belief = out["belief_trajectory"]
             phi2_plan = out["phi2_plan"]
-            msc = out["msc"]
             for k, tau in enumerate(sim.time):
                 rec = {
                     "seed": seed, "day": d, "tau": int(tau),
@@ -418,14 +384,9 @@ def run_experiment(
                 # Controller's planned/believed green split (realised is phi2).
                 if phi2_plan is not None:
                     rec["phi2_plan"] = float(phi2_plan[k])
-                # Raw marginal social cost per traveller route; only present
-                # when the EXTERNALITY/MSC advisory computed it for this day.
-                if msc is not None:
-                    rec["MSC_alpha"] = float(msc["alpha"][k])
-                    rec["MSC_beta"] = float(msc["beta"][k])
                 step_records.append(rec)
             cohort_records.extend(
-                _cohort_record(seed, d, population, out["prior"], signal_name)
+                _cohort_record(seed, d, population, out["prior"])
             )
             snap = controller.snapshot()
             controller_records.append({"seed": seed, "day": d, **snap})

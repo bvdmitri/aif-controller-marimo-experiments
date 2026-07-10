@@ -1,6 +1,7 @@
-"""Behavioural characterization of traveller compliance (paper Experiment 4).
+"""Behavioural characterization of traveller compliance (the parked
+belief-sharing channel; deferred to a future paper, not a paper experiment).
 
-The controller shares its full belief (QB+SP -- its forward-predicted queue
+The controller shares its full belief (QB+SP: its forward-predicted queue
 belief and its planned green split) before travellers choose. A compliant
 traveller fuses that belief into its decision; a non-compliant one ignores it.
 This module varies the **compliance fraction** to characterise how the
@@ -8,7 +9,7 @@ coordination effect of shared anticipation changes as fewer travellers listen.
 
 Report-style (see CLAUDE.md): it runs the real sweep and PRINTS whether the
 "degrades gracefully" claim holds (cost changing smoothly, no cliff), asserting
-only sanity -- the direction of the value-of-information effect is deliberately
+only sanity; the direction of the value-of-information effect is deliberately
 surfaced, not enforced (the belief channel carries no social term, so it need
 not lower system cost; see tests/test_belief_informing.py for the mechanism).
 
@@ -50,7 +51,7 @@ def _verdict(claim: str, observed: str, holds: bool) -> list[str]:
     mark = (
         "consistent with the paper"
         if holds
-        else "MISMATCH -- worth checking the paper text"
+        else "MISMATCH; worth checking the paper text"
     )
     return ["", f"PAPER CLAIMS: {claim}", f"OBSERVED:     {observed}",
             f"VERDICT:      {mark}"]
@@ -79,8 +80,8 @@ def sweep():
 
 
 def test_report_compliance_graceful_degradation(sweep):
-    """Does the coordination effect change GRACEFULLY as compliance varies --
-    smoothly, with no cliff -- as Experiment 4 / the Conclusion claims?
+    """Does the coordination effect change GRACEFULLY as compliance varies
+    (smoothly, with no cliff), as the belief-sharing story would claim?
     Reported, not asserted (direction-wise)."""
     cost = sweep
     seq = [cost[f] for f in FRACTIONS]  # ordered low -> high compliance
@@ -114,6 +115,6 @@ def test_report_compliance_graceful_degradation(sweep):
     ]
     _narrate("REPORT: compliance and graceful degradation", lines)
 
-    # Sanity only -- direction not asserted.
+    # Sanity only; direction not asserted.
     assert all(math.isfinite(c) for c in cost.values()), cost
     assert all(c > 0 for c in cost.values()), cost

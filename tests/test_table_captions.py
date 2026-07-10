@@ -108,12 +108,11 @@ def _small(**kw):
 
 
 def test_table_functions_return_expected_columns():
-    from aif_traffic.parameters import FixedTimeControllerSpec, ObservationSignal
+    from aif_traffic.parameters import ObservationSignal
     from aif_traffic.plotting import (
         communication_summary_table,
         controller_summary,
         run_summary_table,
-        theta_summary_table,
     )
     from aif_traffic.simulator import run_experiment
 
@@ -124,16 +123,6 @@ def test_table_functions_return_expected_columns():
 
     cs = controller_summary({"aif": res})
     assert {"mean_SC", "std_signal_variation", "mean_peak_L6"} <= set(cs.columns)
-
-    nested = {
-        "aif": {0.0: res},
-        "fixed_time": {0.0: run_experiment(
-            _small(controller=FixedTimeControllerSpec()), seeds=[3])},
-    }
-    tt = theta_summary_table(nested, n_last=3)
-    assert not tt.empty
-    assert {"controller", "theta", "mean_SC", "mean_peak_queue",
-            "mean_P_alpha"} <= set(tt.columns)
 
     _CG = ObservationSignal.ROUTE_CONGESTION
     base = _small()

@@ -103,7 +103,7 @@ def test_phi_learned_when_intersection_chosen():
 
 def test_phi_not_updated_when_bypass_chosen():
     """Always choosing the bypass leaves the alpha green-split belief at its
-    (mean-reverted) prior -- the green split is observed only on the intersection."""
+    (mean-reverted) prior; the green split is observed only on the intersection."""
     N, W = 3, 6
     priors = _priors(N=N, phi_alpha=0.45)
     state = init_variational_state(priors)

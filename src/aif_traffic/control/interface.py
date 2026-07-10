@@ -30,7 +30,8 @@ import numpy as np
 
 class QueueForecast(NamedTuple):
     """A controller's belief over an upcoming day, broadcast to travellers for
-    decision-time fusion (paper Experiment 3 / 4).
+    decision-time fusion (the parked belief-sharing channel, optional in the
+    Experiment 3 dropdown).
 
     For the AIF controller this is its **rolling-window smoother posterior** over
     the within-day queue trajectory (built by injecting the realised per-interval

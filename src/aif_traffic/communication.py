@@ -1,27 +1,7 @@
-"""Inter-layer communication: the controller's broadcast to travellers.
+"""Inter-layer communication: the controller's channels to travellers.
 
-The controller has a network-wide view and may broadcast an information signal
-that travellers fold into their perceived route cost
-``zeta_r = TT_r + theta * E_r`` (paper Eq. for the perceived cost). This module
-defines the broadcast payload and assembles it from the realised day. The
-candidate signal types (travel time, congestion, externality, marginal social
-cost) are all reduced to a common per-route *advisory* the traveller treats as
-an externality-like offset, scaled per agent by ``theta`` and compliance in
-:mod:`inference.population`.
-
-The ``TRAVEL_TIME`` and ``CONGESTION`` signals are direct readings of the
-realised day (the controller simply relays what it measured). The
-``EXTERNALITY`` and ``MSC`` signals are the paper-faithful quantities: the
-marginal social cost ``MSC_r`` is computed by finite-difference re-rolling of
-the store-and-forward queue model (insert one extra vehicle on route ``r`` in
-interval ``t``, re-integrate the day under the *realised* green splits, and
-measure the increase in system cost), and the externality is
-``E_r = MSC_r - TT_r``. This is performance-heavy, it re-rolls the network
-once per (traveller route, minute), so it only runs when one of those two
-signals is actually broadcast.
-
-Two further controller -> traveller channels are defined here, both orthogonal
-to the cost-offset advisory above (which only shifts the *perceived cost*):
+The controller has a network-wide view and offers two orthogonal
+controller -> traveller channels, both assembled here from the realised day:
 
 * **Extra observations** (:class:`ObservationBroadcast`, paper Experiment 3
   default, BL/CG/SN/CG+SN). Travellers natively observe only the route they
@@ -29,8 +9,8 @@ to the cost-offset advisory above (which only shifts the *perceived cost*):
   green split ``phi_r`` (SN) of the routes they did *not* take, fed straight into
   the traveller's smoother as *observations* (see :mod:`inference.population` /
   :mod:`inference.filter`). It reaches all travellers and works with any
-  controller. The values are raw readings (not clipped, unlike the cost
-  advisory): the smoother treats them as noisy readings of the latent ``L``/``phi``.
+  controller. The values are raw readings: the smoother treats them as noisy
+  readings of the latent ``L``/``phi``.
 * **Belief sharing** (:class:`BeliefBroadcast`, paper Experiment 3 optional,
   BL/QB/SP/QB+SP). The AIF controller shares its own forward-predicted belief
   (queue belief QB, planned split SP) *before* travellers choose; a compliant
@@ -45,320 +25,14 @@ from typing import Mapping
 
 import numpy as np
 
-from .network import (
-    effective_capacities,
-    link_and_route_travel_times,
-    link_inflows,
-    route_arrival_queues,
-)
+from .network import route_arrival_queues
 from .parameters import (
     BeliefSignal,
     CommunicationSpec,
     NetworkParams,
     ObservationSignal,
-    SignalType,
     SimParams,
 )
-from .utils import daily_system_cost
-
-
-@dataclass(frozen=True)
-class Broadcast:
-    """Per-traveller-route advisory over departure minutes.
-
-    ``value[route]`` is a length-``K`` array for the direct / finite-difference
-    signals; a traveller departing at minute ``t`` on route ``r`` reads
-    ``value[r][t]``. For the sequential signals (``EXTERNALITY_SEQUENTIAL`` /
-    ``MSC_SEQUENTIAL``) it is instead a ``(K, M)`` schedule: a per-departure-minute
-    marginal-social-cost curve over ``M`` increment bins, and the traveller reads
-    ``value[r][t, bin]`` at its stable within-minute rank bin (see
-    :meth:`inference.population.Population._broadcast_cost_offset`). Higher values
-    discourage the route once folded into the perceived cost. ``signal_type``
-    records which information was broadcast. :func:`average_broadcasts` is
-    shape-agnostic and handles both.
-    """
-
-    signal_type: SignalType
-    value: Mapping[str, np.ndarray]
-
-
-def empty_broadcast(net: NetworkParams, sim: SimParams) -> Broadcast:
-    """A no-information broadcast (all zeros): travellers use private cost only."""
-    K = sim.K
-    return Broadcast(
-        signal_type=SignalType.NONE,
-        value={r: np.zeros(K) for r in net.traveller_routes},
-    )
-
-
-def average_broadcasts(broadcasts: "list[Broadcast]") -> Broadcast:
-    """Elementwise mean of a trailing window of cost-offset advisories.
-
-    Used to smooth the advisory over the last few days (damping the one-day
-    cobweb): a traveller reads the mean of ``value[r]`` over the window rather
-    than only yesterday's. ``signal_type`` is taken from the most recent
-    broadcast. A single-element window returns that broadcast's values
-    unchanged (a no-op, so smoothing over one day is bit-identical)."""
-    latest = broadcasts[-1]
-    if len(broadcasts) == 1:
-        return latest
-    routes = latest.value.keys()
-    value = {
-        r: np.mean([np.asarray(b.value[r], dtype=float) for b in broadcasts], axis=0)
-        for r in routes
-    }
-    return Broadcast(signal_type=latest.signal_type, value=value)
-
-
-def _marginal_social_cost(
-    inflow_by_route: Mapping[str, np.ndarray],
-    phi2: np.ndarray,
-    phi6: np.ndarray,
-    net: NetworkParams,
-    sim: SimParams,
-) -> dict[str, np.ndarray]:
-    """Per-route, per-minute marginal social cost by finite difference.
-
-    ``MSC_r(t) = SC(d; Q_r(t) + dQ) - SC(d)`` where ``dQ = 60/dt`` is one extra
-    vehicle in the interval. The day is re-integrated under the *realised* green
-    splits ``(phi2, phi6)`` for each perturbation, so the measured cost increase
-    reflects both the extra vehicle and the congestion it imposes on others.
-
-    Cost: one full-day re-roll per (traveller route, minute). Computed only for
-    the EXTERNALITY / MSC signals.
-    """
-    from .network import _integrate_queues  # local: heavy path only
-
-    K = sim.K
-    dt_h = sim.dt_h
-    dQ = 60.0 / sim.dt_min  # one vehicle within a dt-minute interval, in veh/h
-    caps = effective_capacities(phi2, phi6, net)
-
-    def _system_cost(infl: Mapping[str, np.ndarray]) -> float:
-        Q_link = link_inflows(infl, net)
-        queues = _integrate_queues(Q_link, caps, net, sim)
-        _, tt_route = link_and_route_travel_times(queues, caps, net, sim)
-        return daily_system_cost(infl, tt_route, dt_h)
-
-    base_infl = {r: np.asarray(q, dtype=float) for r, q in inflow_by_route.items()}
-    sc_base = _system_cost(base_infl)
-
-    msc: dict[str, np.ndarray] = {}
-    for r in net.traveller_routes:
-        out = np.zeros(K)
-        for t in range(K):
-            perturbed = dict(base_infl)
-            qr = base_infl[r].copy()
-            qr[t] += dQ
-            perturbed[r] = qr
-            out[t] = _system_cost(perturbed) - sc_base
-        msc[r] = out
-    return msc
-
-
-def _sequential_marginal_social_cost(
-    inflow_by_route: Mapping[str, np.ndarray],
-    phi2: np.ndarray,
-    phi6: np.ndarray,
-    net: NetworkParams,
-    sim: SimParams,
-    M: int,
-    seed: str = "empty",
-) -> dict[str, np.ndarray]:
-    """Per-route, per-minute, per-increment marginal social cost schedule.
-
-    The whole day's A--B demand is assigned over ``M`` rank increments, jointly
-    across all departure minutes. ``gamma`` (the exogenous C--D demand) and the
-    realised green splits ``(phi2, phi6)`` are held fixed. Each increment probes,
-    per minute, the per-vehicle marginal social cost of putting one chunk on each
-    route against the shared running assignment, records the pair, and assigns the
-    chunk to the argmin route (so a route's cost rises as it fills). The per-minute
-    chunk is ``d_ab(t) / M`` with ``d_ab(t) = alpha(t) + beta(t)`` the realised
-    total AB demand at ``t``.
-
-    ``seed`` sets the starting assignment:
-
-    * ``"empty"`` (default): start from zero AB inflow everywhere and *load* the
-      demand from empty. Filling from empty is what makes the schedule a stable
-      day-to-day fixed point: ``d_ab(t)`` is the *split-independent* exogenous
-      demand, so the schedule depends only on that demand, ``gamma`` and the green
-      splits, not on yesterday's realised route split. (An earlier per-minute
-      variant that held the other minutes at yesterday's realised inflow inherited
-      yesterday's herd and failed to damp the cobweb.)
-    * ``"belief"``: start from the believed split (``inflow_by_route``) and
-      *reassign* rank by rank. Each increment removes its slice from the route it
-      is believed to sit on, probes both routes, and moves it to the cheaper one,
-      updating the running state (a Gauss--Seidel rebalancing sweep). This keeps
-      the current knowledge and makes the minimal move toward the balanced split.
-      It targets the same balanced split as ``"empty"``; its stability is not
-      guaranteed a priori because the schedule now depends on the believed split.
-
-    Returns ``{route: (K, M)}`` raw (unclipped) marginal social cost. Cost is
-    ``M * (2K + 1)`` full-day re-rolls.
-    """
-    from .network import _integrate_queues  # local: heavy path only
-
-    K = sim.K
-    dt_h = sim.dt_h
-    caps = effective_capacities(phi2, phi6, net)
-
-    def _system_cost(infl: Mapping[str, np.ndarray]) -> float:
-        Q_link = link_inflows(infl, net)
-        queues = _integrate_queues(Q_link, caps, net, sim)
-        _, tt_route = link_and_route_travel_times(queues, caps, net, sim)
-        return daily_system_cost(infl, tt_route, dt_h)
-
-    base_infl = {r: np.asarray(q, dtype=float) for r, q in inflow_by_route.items()}
-    routes = list(net.traveller_routes)  # AB routes, e.g. ["alpha", "beta"]
-    M = max(1, int(M))
-    sched = {r: np.zeros((K, M)) for r in routes}
-
-    # Total AB demand per minute (split-independent) and the per-increment chunk.
-    d_ab = np.zeros(K)
-    for r in routes:
-        d_ab = d_ab + base_infl[r]
-    chunk_flow = d_ab / M            # (K,) veh/h added per increment per minute
-    chunk_veh = chunk_flow * dt_h    # (K,) vehicles that flow represents
-
-    if seed == "belief":
-        # Start from the believed split; reassign rank slices one by one.
-        running = {rr: base_infl[rr].copy() for rr in base_infl}
-        # Believed route-1 flow fraction per minute (0.5 where there is no demand).
-        frac1 = np.where(d_ab > 0.0, base_infl[routes[0]] / np.where(d_ab > 0.0, d_ab, 1.0), 0.5)
-    else:  # "empty"
-        running = {rr: base_infl[rr].copy() for rr in base_infl}
-        for r in routes:
-            running[r][:] = 0.0
-        frac1 = None
-
-    sc_now = _system_cost(running)
-
-    for m in range(M):
-        if seed == "belief":
-            # Remove this rank slice from the route it is believed to sit on
-            # (the first frac1 fraction of ranks is believed on route 0), then
-            # re-roll the shared baseline with the slice pulled out.
-            for t in range(K):
-                if chunk_veh[t] <= 0.0:
-                    continue
-                bel = 0 if (m + 0.5) / M <= frac1[t] else 1
-                running[routes[bel]][t] = max(running[routes[bel]][t] - chunk_flow[t], 0.0)
-            sc_now = _system_cost(running)
-
-        # Probe each (minute, route) against the shared baseline.
-        marginals = {r: np.zeros(K) for r in routes}
-        for t in range(K):
-            if chunk_veh[t] <= 0.0:
-                continue
-            for r in routes:
-                probe = {rr: running[rr].copy() for rr in running}
-                probe[r][t] += chunk_flow[t]
-                marginals[r][t] = (_system_cost(probe) - sc_now) / chunk_veh[t]
-                sched[r][t, m] = marginals[r][t]
-        # Assign each minute's chunk to its argmin route, then re-roll once for
-        # the next increment's baseline.
-        for t in range(K):
-            if chunk_veh[t] <= 0.0:
-                continue
-            winner = min(routes, key=lambda rr: marginals[rr][t])
-            running[winner][t] += chunk_flow[t]
-        sc_now = _system_cost(running)
-
-    return sched
-
-
-def build_broadcast(
-    comm: CommunicationSpec,
-    tt_by_route: Mapping[str, np.ndarray],
-    queues_by_link: Mapping[int, np.ndarray],
-    net: NetworkParams,
-    sim: SimParams,
-    inflow_by_route: Mapping[str, np.ndarray] | None = None,
-    phi2: np.ndarray | None = None,
-    phi6: np.ndarray | None = None,
-    out_diagnostics: dict | None = None,
-) -> Broadcast:
-    """Assemble the broadcast for the *next* day from the realised day.
-
-    Each signal type maps to a per-route advisory (length ``K``):
-
-    * ``NONE``         -> zeros (no information shared);
-    * ``TRAVEL_TIME``  -> the route travel time ``TT_r`` (direct reading);
-    * ``CONGESTION``   -> the total queued vehicles along the route (direct);
-    * ``EXTERNALITY``  -> ``E_r = MSC_r - TT_r`` (finite-difference);
-    * ``MSC``          -> the marginal social cost ``MSC_r`` (finite-difference);
-    * ``EXTERNALITY_SEQUENTIAL`` / ``MSC_SEQUENTIAL`` -> a per-departure-minute
-      ``(K, M)`` schedule (incremental marginal social cost over ``M`` rank bins;
-      see :func:`_sequential_marginal_social_cost`), delivered per traveller by
-      rank in :mod:`inference.population`.
-
-    The EXTERNALITY / MSC (and their sequential variants) require the realised
-    route inflows and green splits (``inflow_by_route``, ``phi2``, ``phi6``) to
-    re-roll the queue model. All advisories are clipped to be non-negative
-    (higher discourages a route).
-
-    ``out_diagnostics``, when given, receives the **raw** (unclipped) marginal
-    social cost under ``"msc"`` (``{route: length-K array}``) whenever it is
-    computed, so the simulator can record it without re-rolling the day. For the
-    sequential signals the recorded value is the schedule averaged over the ``M``
-    bins (a length-K summary), so the existing MSC step columns and charts stay
-    unchanged. It is left untouched for the direct (non-MSC) signals.
-    """
-    st = comm.signal_type
-    if st is SignalType.NONE:
-        return empty_broadcast(net, sim)
-
-    value: dict[str, np.ndarray] = {}
-
-    if st in (SignalType.EXTERNALITY, SignalType.MSC):
-        if inflow_by_route is None or phi2 is None or phi6 is None:
-            raise ValueError(
-                f"Signal {st!r} needs inflow_by_route, phi2, phi6 to compute the "
-                "finite-difference marginal social cost."
-            )
-        msc = _marginal_social_cost(inflow_by_route, phi2, phi6, net, sim)
-        if out_diagnostics is not None:
-            out_diagnostics["msc"] = {r: v.copy() for r, v in msc.items()}
-        for r in net.traveller_routes:
-            tt = np.asarray(tt_by_route[r], dtype=float)
-            if st is SignalType.MSC:
-                value[r] = np.maximum(msc[r], 0.0)
-            else:  # EXTERNALITY: E_r = MSC_r - TT_r
-                value[r] = np.maximum(msc[r] - tt, 0.0)
-        return Broadcast(signal_type=st, value=value)
-
-    if st in (SignalType.EXTERNALITY_SEQUENTIAL, SignalType.MSC_SEQUENTIAL):
-        if inflow_by_route is None or phi2 is None or phi6 is None:
-            raise ValueError(
-                f"Signal {st!r} needs inflow_by_route, phi2, phi6 to compute the "
-                "sequential marginal social cost schedule."
-            )
-        sched = _sequential_marginal_social_cost(
-            inflow_by_route, phi2, phi6, net, sim, comm.sequential_increments,
-            seed=getattr(comm, "sequential_seed", "empty"),
-        )
-        if out_diagnostics is not None:
-            # Length-K summary (mean over increment bins) so the recorded MSC
-            # columns / route-cost chart keep the same shape as the raw signals.
-            out_diagnostics["msc"] = {r: v.mean(axis=1) for r, v in sched.items()}
-        for r in net.traveller_routes:
-            tt = np.asarray(tt_by_route[r], dtype=float)
-            if st is SignalType.MSC_SEQUENTIAL:
-                value[r] = np.maximum(sched[r], 0.0)
-            else:  # EXTERNALITY_SEQUENTIAL: E_r = MSC_r - TT_r per bin
-                value[r] = np.maximum(sched[r] - tt[:, None], 0.0)
-        return Broadcast(signal_type=st, value=value)
-
-    route_queue = route_arrival_queues(queues_by_link, net, sim)
-    for r in net.traveller_routes:
-        if st is SignalType.TRAVEL_TIME:
-            v = np.asarray(tt_by_route[r], dtype=float)
-        elif st is SignalType.CONGESTION:
-            v = np.maximum(route_queue[r], 0.0)
-        else:  # pragma: no cover - exhaustive over SignalType
-            raise ValueError(f"Unknown signal type {st!r}.")
-        value[r] = v
-    return Broadcast(signal_type=st, value=value)
 
 
 # ---------------------------------------------------------------------------
@@ -377,10 +51,9 @@ class ObservationBroadcast:
     belief over that route's latent ``(L, phi)`` at the end of the day (see
     :mod:`inference.population`).
 
-    These are raw observations (not clipped, unlike the cost-advisory
-    :class:`Broadcast`): the smoother treats them as noisy readings of the latent
-    ``L`` and ``phi``. They are the **realised** (noisy) values of the day, so the
-    relay simply lifts the traveller's partial observation to a fuller one.
+    These are raw observations: the smoother treats them as noisy readings of the
+    latent ``L`` and ``phi``. They are the **realised** (noisy) values of the day,
+    so the relay simply lifts the traveller's partial observation to a fuller one.
     """
 
     L: Mapping[str, np.ndarray] | None
@@ -447,7 +120,8 @@ def build_observation_broadcast(
 
 
 # ---------------------------------------------------------------------------
-# Controller-belief broadcasts for decision-time fusion (Experiment 3/4)
+# Controller-belief broadcasts for decision-time fusion (the parked
+# belief-sharing channel, optional in the Experiment 3 dropdown)
 # ---------------------------------------------------------------------------
 @dataclass(frozen=True)
 class BeliefBroadcast:

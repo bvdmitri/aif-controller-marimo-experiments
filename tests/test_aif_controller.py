@@ -63,7 +63,7 @@ def test_aif_favours_overloaded_movement():
 
 
 def test_aif_observation_precision_depends_on_split():
-    """A movement receiving more green is observed more precisely -- this is
+    """A movement receiving more green is observed more precisely; this is
     what makes the EFE epistemic term action-dependent (no longer inert)."""
     ctrl = build_controller(AIFControllerSpec(), SIGNAL, NET, SIM)
     _prepare(ctrl, alpha=800.0, gamma=800.0)

@@ -1,6 +1,6 @@
 # Paper figures
 
-Rendered in the `paper` style at the notebook gold defaults (medium measurement noise, stationary continuous filtering; config: {'days': 90, 'n_agents': 2000, 'thetas': (0.0, 0.25, 0.5, 0.75, 1.0)}, seed 42).
+Rendered in the `paper` style at the notebook gold defaults (medium measurement noise, stationary continuous filtering; config: {'days': 90, 'n_agents': 2000}, seed 42).
 
 | file | figure |
 | --- | --- |
@@ -14,11 +14,6 @@ Rendered in the `paper` style at the notebook gold defaults (medium measurement 
 | `exp1_green_split_heatmap.pdf` | Green-split / queue heatmap  (`plot_green_split_heatmap`) |
 | `exp1_daily_system_cost.pdf` | Daily system cost  (`plot_daily_system_cost`) |
 | `exp1_route_share_over_days.pdf` | Route share over days  (`plot_route_share_over_days`) |
-| `exp1_msc_tt_by_route.pdf` | Route cost decomposition: TT, MSC, externality  (`plot_msc_tt_by_route`) |
-| `exp1_theta_summary.pdf` | theta-sweep performance summary  (`plot_theta_summary`) |
-| `exp1_theta_route_choice.pdf` | theta behavioural mechanism  (`plot_theta_route_choice`) |
-| `exp1_msc_vs_theta.pdf` | MSC & travel time vs theta  (`plot_msc_vs_theta`) |
-| `exp2_controller_theta_grid.pdf` | theta x controller cost grid  (`plot_controller_theta_grid`) |
 | `exp2_controller_metrics.pdf` | Controller metrics  (`plot_controller_metrics`) |
 | `controller_comparison.pdf` | Controller day-series: cost & total queue  (`plot_controller_queue_comparison`) |
 | `within_day_queue_controllers.pdf` | Within-day queue by controller  (`plot_within_day_queue_by_controller`) |

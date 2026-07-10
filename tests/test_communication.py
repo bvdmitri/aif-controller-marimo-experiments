@@ -1,8 +1,8 @@
 """Communication + compliance mechanism.
 
-These pin the *mechanism* (broadcast -> perceived-cost offset -> choice, gated
-by theta and compliance). The exact signal definitions are provisional and not
-asserted here.
+These pin the two surviving controller -> traveller channels: the extra-observation
+relay (folded into the smoother) and the belief-sharing fusion (gated by
+compliance). The exact signal definitions are provisional and not asserted here.
 """
 
 from __future__ import annotations
@@ -14,7 +14,6 @@ import pytest
 
 from aif_traffic.communication import (
     build_belief_broadcast,
-    build_broadcast,
     build_observation_broadcast,
 )
 from aif_traffic.control.interface import QueueForecast
@@ -28,14 +27,13 @@ from aif_traffic.parameters import (
     ObservationSignal,
     Params,
     PopulationParams,
-    SignalType,
     SimParams,
 )
 from aif_traffic.simulator import run_experiment
 
 
-def _params(signal_type: SignalType, theta: float, compliance: float) -> Params:
-    cohort = CohortSpec(n_agents=80, window_size=2, theta=theta,
+def _params(compliance: float) -> Params:
+    cohort = CohortSpec(n_agents=80, window_size=2,
                         compliance_fraction=compliance)
     return replace(
         Params.default(),
@@ -43,22 +41,8 @@ def _params(signal_type: SignalType, theta: float, compliance: float) -> Params:
                       selected_days=(0, 1, 2)),
         population=PopulationParams(cohorts=(cohort,)),
         controller=FixedTimeControllerSpec(),
-        comm=CommunicationSpec(signal_type=signal_type),
+        comm=CommunicationSpec(),
     )
-
-
-def test_zero_compliance_matches_no_broadcast():
-    """No-one reads the broadcast -> choices identical to the no-info case."""
-    res_signal = run_experiment(_params(SignalType.EXTERNALITY, theta=0.5, compliance=0.0))
-    res_none = run_experiment(_params(SignalType.NONE, theta=0.5, compliance=0.0))
-    assert np.allclose(res_signal.step["P_alpha"], res_none.step["P_alpha"])
-
-
-def test_zero_theta_neutralises_broadcast():
-    """theta = 0 -> the externality offset is zero -> identical to no-info."""
-    res_signal = run_experiment(_params(SignalType.EXTERNALITY, theta=0.0, compliance=1.0))
-    res_none = run_experiment(_params(SignalType.NONE, theta=0.5, compliance=1.0))
-    assert np.allclose(res_signal.step["P_alpha"], res_none.step["P_alpha"])
 
 
 def _congested_alpha_scenario():
@@ -81,168 +65,6 @@ def _congested_alpha_scenario():
     phi2 = np.full(K, phi2_val)
     phi6 = np.full(K, signal.phi_sat - phi2_val)
     return net, sim, inflow, queues, tt_route, phi2, phi6
-
-
-def test_build_broadcast_msc_is_finite_difference_and_ordered():
-    net, sim, inflow, queues, tt_route, phi2, phi6 = _congested_alpha_scenario()
-    bc = build_broadcast(
-        CommunicationSpec(signal_type=SignalType.MSC),
-        tt_route, queues, net, sim, inflow_by_route=inflow, phi2=phi2, phi6=phi6,
-    )
-    assert bc.signal_type is SignalType.MSC
-    assert np.all(bc.value["alpha"] >= 0.0) and np.all(bc.value["beta"] >= 0.0)
-    # Adding a vehicle to the oversaturated A--B approach imposes far more
-    # marginal social cost than adding one to the free-flowing bypass.
-    assert bc.value["alpha"].mean() > bc.value["beta"].mean()
-
-
-def test_build_broadcast_externality_nonneg_and_ordered():
-    net, sim, inflow, queues, tt_route, phi2, phi6 = _congested_alpha_scenario()
-    bc = build_broadcast(
-        CommunicationSpec(signal_type=SignalType.EXTERNALITY),
-        tt_route, queues, net, sim, inflow_by_route=inflow, phi2=phi2, phi6=phi6,
-    )
-    assert bc.signal_type is SignalType.EXTERNALITY
-    assert np.all(bc.value["alpha"] >= 0.0)
-    assert np.all(bc.value["beta"] >= 0.0)
-    # The congested route carries the larger externality.
-    assert bc.value["alpha"].mean() > bc.value["beta"].mean()
-
-
-def test_build_broadcast_records_raw_msc_diagnostics():
-    """The out_diagnostics hook captures the raw (unclipped) per-route MSC."""
-    net, sim, inflow, queues, tt_route, phi2, phi6 = _congested_alpha_scenario()
-    diag: dict = {}
-    bc = build_broadcast(
-        CommunicationSpec(signal_type=SignalType.EXTERNALITY),
-        tt_route, queues, net, sim, inflow_by_route=inflow, phi2=phi2, phi6=phi6,
-        out_diagnostics=diag,
-    )
-    assert "msc" in diag and set(diag["msc"]) == set(net.traveller_routes)
-    for r in net.traveller_routes:
-        assert diag["msc"][r].shape == (sim.K,)
-        assert np.all(np.isfinite(diag["msc"][r]))
-    # The advisory is the clipped externality of the recorded raw MSC.
-    assert np.allclose(
-        bc.value["alpha"],
-        np.maximum(diag["msc"]["alpha"] - tt_route["alpha"], 0.0),
-    )
-    # A vehicle's marginal social cost includes at least its own travel time,
-    # so the raw MSC is strictly positive on both routes.
-    assert diag["msc"]["alpha"].min() > 0.0
-    assert diag["msc"]["beta"].min() > 0.0
-
-
-def test_build_broadcast_sequential_externality_is_scheduled_and_ordered():
-    """The sequential externality returns a per-minute (K, M) schedule that is
-    non-negative, orders the congested route above the free one, and (unlike the
-    single-value raw advisory) VARIES across increment bins: that per-rank
-    heterogeneity is exactly what lets the population split instead of herd."""
-    net, sim, inflow, queues, tt_route, phi2, phi6 = _congested_alpha_scenario()
-    M = 12
-    bc = build_broadcast(
-        CommunicationSpec(signal_type=SignalType.EXTERNALITY_SEQUENTIAL,
-                          sequential_increments=M),
-        tt_route, queues, net, sim, inflow_by_route=inflow, phi2=phi2, phi6=phi6,
-    )
-    assert bc.signal_type is SignalType.EXTERNALITY_SEQUENTIAL
-    for r in net.traveller_routes:
-        assert bc.value[r].shape == (sim.K, M)
-        assert np.all(bc.value[r] >= 0.0)
-    # The oversaturated A--B approach carries the larger externality throughout.
-    assert bc.value["alpha"].mean() > bc.value["beta"].mean()
-    # At least one route's advisory changes across the increment bins (the
-    # schedule is not a constant broadcast to everyone).
-    variation = max(np.ptp(bc.value[r], axis=1).max() for r in net.traveller_routes)
-    assert variation > 0.0
-
-
-def test_sequential_msc_schedule_rises_as_the_loaded_route_fills():
-    """As demand is incrementally piled onto the route the algorithm keeps
-    choosing, that route's marginal social cost is non-decreasing across bins:
-    the 'a route gets more expensive as it fills' mechanic the cobweb fix relies
-    on. Asserted on the raw MSC (before the externality clip)."""
-    net, sim, inflow, queues, tt_route, phi2, phi6 = _congested_alpha_scenario()
-    M = 12
-    diag: dict = {}
-    build_broadcast(
-        CommunicationSpec(signal_type=SignalType.MSC_SEQUENTIAL,
-                          sequential_increments=M),
-        tt_route, queues, net, sim, inflow_by_route=inflow, phi2=phi2, phi6=phi6,
-        out_diagnostics=diag,
-    )
-    from aif_traffic.communication import _sequential_marginal_social_cost
-    sched = _sequential_marginal_social_cost(inflow, phi2, phi6, net, sim, M)
-    # The cheaper bypass (beta) is the route the increments keep loading; its
-    # per-bin marginal social cost should not fall as it fills (generous
-    # tolerance for the store-and-forward re-integration).
-    for t in range(sim.K):
-        beta_curve = sched["beta"][t]
-        assert np.all(np.diff(beta_curve) >= -1e-6)
-    # The recorded diagnostic collapses the schedule to a length-K summary so the
-    # existing MSC step columns / charts keep working unchanged.
-    assert set(diag["msc"]) == set(net.traveller_routes)
-    for r in net.traveller_routes:
-        assert diag["msc"][r].shape == (sim.K,)
-        assert np.all(np.isfinite(diag["msc"][r]))
-
-
-def test_sequential_belief_seed_is_scheduled_and_ordered():
-    """The belief-seeded sequential advisory (start from the realised split and
-    reassign) also returns a non-negative (K, M) schedule that orders the
-    congested route above the free one and varies across bins."""
-    net, sim, inflow, queues, tt_route, phi2, phi6 = _congested_alpha_scenario()
-    M = 12
-    bc = build_broadcast(
-        CommunicationSpec(signal_type=SignalType.EXTERNALITY_SEQUENTIAL,
-                          sequential_increments=M, sequential_seed="belief"),
-        tt_route, queues, net, sim, inflow_by_route=inflow, phi2=phi2, phi6=phi6,
-    )
-    for r in net.traveller_routes:
-        assert bc.value[r].shape == (sim.K, M)
-        assert np.all(bc.value[r] >= 0.0)
-        assert np.all(np.isfinite(bc.value[r]))
-    assert bc.value["alpha"].mean() > bc.value["beta"].mean()
-    variation = max(np.ptp(bc.value[r], axis=1).max() for r in net.traveller_routes)
-    assert variation > 0.0
-
-
-def test_sequential_increments_inert_for_nonsequential_signals():
-    """The new sequential_increments field only bites for the sequential signals:
-    an EXTERNALITY run is bit-identical regardless of its value, guarding that the
-    change leaves every existing signal untouched."""
-    base = _params(SignalType.EXTERNALITY, theta=0.5, compliance=1.0)
-    res_a = run_experiment(replace(base, comm=replace(base.comm, sequential_increments=8)))
-    res_b = run_experiment(replace(base, comm=replace(base.comm, sequential_increments=24)))
-    assert np.allclose(res_a.step["P_alpha"], res_b.step["P_alpha"])
-    assert np.allclose(
-        res_a.cohort["sigma_beta_post"], res_b.cohort["sigma_beta_post"]
-    )
-
-
-def test_msc_columns_recorded_only_with_msc_signal():
-    """MSC_alpha/MSC_beta step columns exist iff the advisory computes MSC."""
-    res_ext = run_experiment(_params(SignalType.EXTERNALITY, theta=0.5, compliance=1.0))
-    assert {"MSC_alpha", "MSC_beta"} <= set(res_ext.step.columns)
-    assert np.isfinite(res_ext.step["MSC_alpha"]).all()
-    assert np.isfinite(res_ext.step["MSC_beta"]).all()
-
-    res_none = run_experiment(_params(SignalType.NONE, theta=0.5, compliance=1.0))
-    assert "MSC_alpha" not in res_none.step.columns
-    assert "MSC_beta" not in res_none.step.columns
-
-
-def test_none_broadcast_is_zero():
-    net = NetworkParams()
-    sim = SimParams(h_min=10, dt_min=1)
-    K = sim.K
-    tt_route = {r: np.full(K, 5.0) for r in net.routes}
-    queues = {lid: np.zeros(K) for lid in net.link_ids}
-    bc = build_broadcast(
-        CommunicationSpec(signal_type=SignalType.NONE), tt_route, queues, net, sim,
-    )
-    assert np.allclose(bc.value["alpha"], 0.0)
-    assert np.allclose(bc.value["beta"], 0.0)
 
 
 # --------------------------------------------------------------------------
@@ -328,7 +150,7 @@ def test_belief_broadcast_qb_sp_carries_both():
 def test_baseline_belief_signals_match_no_information():
     """An empty belief-signal set is bit-identical to the default (no belief
     channel): the BL path draws no randomness and folds no observations."""
-    base = _params(SignalType.NONE, theta=0.5, compliance=1.0)
+    base = _params(compliance=1.0)
     res_bl = run_experiment(replace(base, comm=CommunicationSpec()))
     res_default = run_experiment(base)
     assert np.allclose(res_bl.step["P_alpha"], res_default.step["P_alpha"])
@@ -392,7 +214,7 @@ def test_observation_broadcast_cg_sn_carries_both():
 def test_baseline_obs_signals_match_no_information():
     """An empty obs-signal set is bit-identical to the default (no extra-obs
     channel): the BL fold has all-zero masks (an exact no-op in the smoother)."""
-    base = _params(SignalType.NONE, theta=0.5, compliance=1.0)
+    base = _params(compliance=1.0)
     res_bl = run_experiment(
         replace(base, comm=CommunicationSpec(obs_signals=frozenset()))
     )
@@ -407,13 +229,13 @@ def test_extra_observations_change_belief_about_non_chosen_route():
     """CG+SN relayed to all travellers shifts the smoother posterior vs BL:
     folding the true non-chosen-route queue/split is *not* a no-op (unlike the
     masked-off baseline). Asserts the channel actually enters the belief update."""
-    base = _params(SignalType.NONE, theta=0.0, compliance=0.0)
+    base = _params(compliance=0.0)
     res_bl = run_experiment(replace(base, comm=CommunicationSpec()))
     res_eo = run_experiment(replace(base, comm=CommunicationSpec(
         obs_signals=frozenset(
             {ObservationSignal.ROUTE_CONGESTION, ObservationSignal.SIGNAL_CONTROL}))))
     # Compliance is 0, so this difference cannot come from any decision-time
-    # fusion -- only the extra-observation belief fold can move it.
+    # fusion; only the extra-observation belief fold can move it.
     assert not np.allclose(
         res_bl.cohort["sigma_beta_post"], res_eo.cohort["sigma_beta_post"]
     )

@@ -5,26 +5,15 @@ MVN posterior over ``z = (F, C, L)``, the predictive travel-time moments are
 computed by a first-order Taylor expansion of ``h(F,C,L) = F + 60 L/C`` around
 the posterior mean.
 
-**The agent's outcome is the perceived generalized cost.** In active-inference
-terms the outcome the traveller has preferences about is
-``zeta_r = TT_r + theta * E_r``, its predicted travel time plus the share
-``theta`` of the congestion externality ``E_r`` it internalises. This is the
-textbook-clean way to encode a *social* preference: ``theta`` scales a goal /
-preference term, it is **not** a distortion of the agent's belief about its own
-private trip. Because ``E_r`` is relayed as a *known* offset
-``cost_offset = theta * E_r`` (per agent; zero for non-compliant agents or with
-no broadcast), it shifts the predictive *mean* of the outcome
-``mu_zeta = mu_TT + cost_offset`` but carries no belief uncertainty, so it does
-**not** touch the predictive variance or the epistemic term. The preference is a
-prior over this outcome, ``N(mu_F_r, sigma_pref^2)`` ("prefer a generalized cost
+**The agent's outcome is its predicted travel time ``TT_r``.** The preference is
+a prior over this outcome, ``N(mu_F_r, sigma_pref^2)`` ("prefer a travel time
 near the free-flow ideal ``F``"). The closed-form EFE components are then:
 
-* ``risk(a)      = KL[N(mu_zeta, sigma_y^2 + sigma_obs^2) || N(mu_F_r, sigma_pref^2)]``
-* ``info_gain(a) = 1/2 log(1 + sigma_y^2 / sigma_obs^2)``   (unaffected by theta)
+* ``risk(a)      = KL[N(mu_TT, sigma_y^2 + sigma_obs^2) || N(mu_F_r, sigma_pref^2)]``
+* ``info_gain(a) = 1/2 log(1 + sigma_y^2 / sigma_obs^2)``
 
 with ``G(a) = w_R*risk - w_I*info_gain`` and route probability a softmax over
-``-gamma*G``. ``cost_offset=None`` gives ``zeta_r = TT_r``, the purely selfish
-(user-equilibrium) IWAI behaviour.
+``-gamma*G`` (the purely selfish, user-equilibrium IWAI behaviour).
 """
 
 from __future__ import annotations
@@ -107,37 +96,28 @@ def efe_route_probabilities(
     risk_weight: float,
     info_gain_weight: float,
     signalised: jnp.ndarray,
-    cost_offset: jnp.ndarray | None = None,
     phi_lo: float = PHI_LO_DEFAULT,
     phi_hi: float = PHI_HI_DEFAULT,
 ) -> jnp.ndarray:
     """Return ``p(a | i)`` of shape ``(N, n_routes)`` for each agent.
 
-    The outcome the agent has preferences about is the **perceived generalized
-    cost** ``zeta_r = TT_r + theta * E_r``. ``cost_offset`` (``(N, n_routes)`` or
-    ``None``) is the externality term ``theta * E_r`` folded into the *mean* of
-    that outcome (a known offset, so it does not change the predictive variance
-    or the epistemic term). With ``cost_offset=None`` the outcome is just the
-    private travel time ``TT_r``. ``signalised`` (``(n_routes,)`` 0/1) marks
-    routes where the green-split latent couples into the predicted travel time.
+    The outcome the agent has preferences about is its predicted travel time
+    ``TT_r``. ``signalised`` (``(n_routes,)`` 0/1) marks routes where the
+    green-split latent couples into the predicted travel time.
     """
     mu_tt, var_y = _predictive_moments(state, signalised, phi_lo, phi_hi)
     sigma_obs_sq = sigma_obs ** 2
     var_pred = var_y + sigma_obs_sq[:, None]
 
-    # Predictive mean of the outcome = the perceived generalized cost zeta_r:
-    # the private travel time plus the internalised externality (a known offset).
-    mu_zeta = mu_tt if cost_offset is None else mu_tt + cost_offset
-
-    # Preference: a prior over the perceived generalized cost, centred on the
-    # free-flow ideal F (empty road, no externality).
+    # Preference: a prior over the predicted travel time, centred on the
+    # free-flow ideal F (empty road).
     preferred_mean = state.mu[..., F_IDX]
 
-    # Pragmatic value (risk): divergence of the predicted generalized cost from
-    # the preferred one. Epistemic value (info_gain): expected reduction in
-    # state uncertainty, independent of the preference, hence of theta.
+    # Pragmatic value (risk): divergence of the predicted travel time from the
+    # preferred one. Epistemic value (info_gain): expected reduction in state
+    # uncertainty, independent of the preference.
     risk = _gaussian_kl(
-        mu_q=mu_zeta, var_q=var_pred,
+        mu_q=mu_tt, var_q=var_pred,
         mu_p=preferred_mean, var_p=(sigma_pref[:, None]) ** 2,
     )
     info_gain = 0.5 * jnp.log1p(var_y / sigma_obs_sq[:, None])
@@ -149,7 +129,6 @@ def efe_route_probabilities(
 # JIT-compiled per-day choice/predictive steps. Same eager math, compiled once
 # and reused (constant shapes within a run). ``phi_lo``/``phi_hi``/``risk_weight``/
 # ``info_gain_weight`` stay traced (no coercion to Python scalars inside), so
-# their values may change without recompiling. ``cost_offset`` is consistently
-# ``None`` or an array within a run, so its pytree structure is stable.
+# their values may change without recompiling.
 _predictive_moments_jit = jax.jit(_predictive_moments)
 efe_route_probabilities_jit = jax.jit(efe_route_probabilities)

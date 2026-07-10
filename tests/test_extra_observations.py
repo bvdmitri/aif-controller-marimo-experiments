@@ -1,14 +1,14 @@
 """Behavioural characterization of the *extra observations* channel (Exp 3).
 
-Travellers natively have a **partial view** of the network -- each observes only
+Travellers natively have a **partial view** of the network; each observes only
 the route it actually took that day. The extra-observation channel (CG/SN)
 relays the *true realised* route congestion / green split of the routes a
 traveller did *not* take into its end-of-day belief update, lifting it toward a
 fuller view.
 
-WHAT THESE PIN (and print, so they can be audited -- run with ``-s``):
+WHAT THESE PIN (and print, so they can be audited; run with ``-s``):
   1. Relaying CG+SN *reduces* travellers' route-belief uncertainty vs the BL
-     baseline -- the channel actually enters the smoother and sharpens beliefs.
+     baseline; the channel actually enters the smoother and sharpens beliefs.
   2. The effect is present at **zero compliance**: extra observations reach
      *every* traveller (they are sensor data, not a recommendation to follow),
      unlike the belief-sharing (QB/SP) channel, which only compliant travellers
@@ -81,7 +81,7 @@ def test_extra_observations_belief_uncertainty_report(runs):
     relaying the non-chosen route adds little at steady state and the effect is
     small / mixed. This is a shift from the paper's Experiment-3 story (which was
     run with a much larger observation noise, where the relay helped a lot), so
-    it is *surfaced* here rather than asserted -- a genuine change to reconcile,
+    it is *surfaced* here rather than asserted; a genuine change to reconcile,
     not to encode away."""
     bl, cgsn, _ = runs
     u_bl = _steady_mean_uncertainty(bl)
@@ -95,7 +95,7 @@ def test_extra_observations_belief_uncertainty_report(runs):
             "(small effect; cf. paper Exp-3, run at higher obs noise).",
         ],
     )
-    # Sanity only -- the direction is reported, not enforced (see docstring).
+    # Sanity only; the direction is reported, not enforced (see docstring).
     assert math.isfinite(u_bl) and math.isfinite(u_eo)
     assert u_bl > 0 and u_eo > 0
 
@@ -105,7 +105,7 @@ def test_extra_observations_are_ungated_by_compliance(runs):
     """Extra observations are NOT gated by compliance: they are sensor data
     folded into every traveller's belief update regardless of the compliance
     mask (unlike the belief-sharing channel). So the CG+SN run at compliance = 0
-    tracks the compliance = 1 run, *not* the BL baseline -- whatever the sign of
+    tracks the compliance = 1 run, *not* the BL baseline; whatever the sign of
     the (small, under realistic obs noise) CG+SN effect on the belief."""
     bl, cgsn, cgsn_nc = runs
     u_bl = _steady_mean_uncertainty(bl)
@@ -117,7 +117,7 @@ def test_extra_observations_are_ungated_by_compliance(runs):
         "Extra observations are NOT gated by compliance",
         [
             "EXPECT: with nobody compliant, CG+SN behaves like full-compliance",
-            "        CG+SN (ungated) -- so it tracks c=1, not BL.",
+            "        CG+SN (ungated), so it tracks c=1, not BL.",
             f"OBSERVED: SD  BL = {u_bl:.3f}  CG+SN(c=1) = {u_eo:.3f}  "
             f"CG+SN(c=0) = {u_eo_nc:.3f}",
             f"          |c=0 - c=1| = {gap_to_eo:.3f}   |c=0 - BL| = {gap_to_bl:.3f}",
@@ -170,14 +170,14 @@ def test_relaying_queue_lengths_backfires(runs_cg_sn):
     why CG raises system cost while SN lowers it.
 
     The intersection route alpha is cheap at the demand peak precisely *because*
-    travellers believe it is congested and avoid it -- their avoidance is what
+    travellers believe it is congested and avoid it; their avoidance is what
     keeps its queue low (a self-fulfilling equilibrium). Relaying that low queue
     (CG) lowers their believed alpha travel time, so more of them take alpha at
     the peak; on alpha's small green fraction the extra inflow rebuilds the queue
     and raises system cost. Relaying the green split (SN) instead conveys alpha's
     low *capacity*, which steers travellers further OFF alpha, so it does not
     backfire. Upshot: the controller should NOT broadcast the (self-fulfilling)
-    low queue -- keeping it private is what preserves the good equilibrium.
+    low queue; keeping it private is what preserves the good equilibrium.
     """
     bl, cg, sn = runs_cg_sn
     bel = {k: _steady_belief_tt_alpha(r) for k, r in (("BL", bl), ("CG", cg), ("SN", sn))}
@@ -202,6 +202,6 @@ def test_relaying_queue_lengths_backfires(runs_cg_sn):
     assert pa["CG"] > pa["BL"]            # so more take alpha at the peak
     assert l2["CG"] > l2["BL"]            # rebuilding its peak queue
     assert sc["CG"] > sc["BL"]            # and raising system cost (backfire)
-    # SN conveys alpha's low capacity, steering travellers OFF alpha -- no backfire.
+    # SN conveys alpha's low capacity, steering travellers OFF alpha; no backfire.
     assert pa["SN"] < pa["BL"]
     assert sc["SN"] <= sc["BL"] * 1.02

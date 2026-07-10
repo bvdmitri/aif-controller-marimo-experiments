@@ -30,7 +30,7 @@ def _layout_names() -> set[str]:
 
 def test_descriptions_builders_layout_are_in_sync():
     """Every control appears in DESCRIPTIONS, has a callable builder, and sits in
-    exactly one layout group -- no orphans in any of the three."""
+    exactly one layout group; no orphans in any of the three."""
     desc = set(nc.DESCRIPTIONS)
     layout = _layout_names()
     assert desc == layout, f"DESCRIPTIONS vs layout mismatch: {desc ^ layout}"
@@ -53,7 +53,7 @@ def test_builders_produce_widgets_and_learn_noise_defaults_on():
 def test_standard_panel_builds_subset_and_rejects_unknown():
     import marimo as mo
 
-    widgets = {"days": nc.days(), "theta": nc.theta(), "compliance": nc.compliance()}
+    widgets = {"days": nc.days(), "compliance": nc.compliance()}
     panel = nc.standard_panel(widgets, mo.ui.run_button(label="Run"))
     assert panel is not None
     with pytest.raises(KeyError):

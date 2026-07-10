@@ -34,17 +34,13 @@ from aif_traffic.parameters import (
     Params,
     PopulationParams,
     ReactiveControllerSpec,
-    SignalType,
     SimParams,
 )
 from aif_traffic.plotting import (
-    capacity_theta_summary,
     plot_across_day_by_demand,
     plot_belief_reality_queues,
     plot_co_adaptation,
     plot_controller_queue_comparison,
-    plot_controller_theta_grid,
-    plot_cost_vs_theta_by_capacity,
     plot_coupled_within_day,
     plot_demand_profile,
     plot_learned_obs_noise,
@@ -56,8 +52,6 @@ from aif_traffic.plotting import (
     plot_route_share_over_days,
     plot_signal_day,
     plot_sweep_metrics,
-    plot_theta_route_choice,
-    plot_theta_summary,
     plot_within_day_by_demand,
     plot_within_day_by_setting,
     plot_within_day_queue_by_controller,
@@ -81,7 +75,7 @@ def _save_figure(fig, name: str) -> None:
     fig.savefig(OUT_DIR / name, bbox_inches="tight", dpi=80)
 
 
-def _small_params(controller_spec, signal_type=SignalType.NONE) -> Params:
+def _small_params(controller_spec) -> Params:
     return replace(
         Params.default(),
         sim=SimParams(days=6, burn_in=1, h_min=60, dt_min=5, seed=42,
@@ -89,7 +83,7 @@ def _small_params(controller_spec, signal_type=SignalType.NONE) -> Params:
         population=PopulationParams(cohorts=(CohortSpec(n_agents=200, window_size=3),)),
         noise=NoiseParams(obs_noise_sd=1.0),
         controller=controller_spec,
-    ).with_comm(signal_type)
+    )
 
 
 def smoke_controllers() -> None:
@@ -163,7 +157,6 @@ def smoke_tables() -> None:
         communication_summary_table,
         controller_summary,
         run_summary_table,
-        theta_summary_table,
     )
 
     base = _small_params(AIFControllerSpec())
@@ -171,23 +164,11 @@ def smoke_tables() -> None:
     assert not run_summary_table(res, n_last=2).empty
     assert not controller_summary({"aif": res}).empty
 
-    grid = {"aif": {0.0: res},
-            "fixed_time": {0.0: run_experiment(_small_params(FixedTimeControllerSpec()))}}
-    assert not theta_summary_table(grid, n_last=2).empty
-
     ct = communication_summary_table({
         "BL": run_experiment(base.with_extra_observations()),
         "SN": run_experiment(base.with_extra_observations(ObservationSignal.SIGNAL_CONTROL)),
     }, n_last=2)
     assert list(ct["setting"]) == ["BL", "SN"]
-
-
-def smoke_communication() -> None:
-    """Run every cost-offset broadcast signal type with a compliant cohort."""
-    for st in SignalType:
-        params = _small_params(ReactiveControllerSpec(), signal_type=st)
-        res = run_experiment(params)
-        assert not res.step.empty, f"{st}: empty step frame"
 
 
 def smoke_extra_observations() -> None:
@@ -257,56 +238,6 @@ def smoke_belief_communication() -> None:
     _save_figure(plot_route_choice_heatmaps(results), "belief_route_choice.png")
 
 
-def smoke_capacity_sensitivity() -> None:
-    """Experiment 4: theta swept across bypass-capacity scales (externality
-    advisory on, full compliance), plus the raw-vs-smoothed advisory overlay.
-    Exercises the new cost-vs-theta-by-capacity chart, the capacity summary
-    table, and the advisory-smoothing knob end-to-end."""
-    base = _small_params(
-        AIFControllerSpec(), SignalType.EXTERNALITY).with_compliance(1.0)
-
-    grid = {}
-    for s in (1.0, 0.25):
-        row = {}
-        for t in (0.0, 1.0):
-            row[t] = run_experiment(
-                base.with_bypass_capacity_scale(s).with_theta(t)
-                .with_advisory_smoothing(25))
-        grid[f"bypass x{s:g}"] = row
-    for label, by_theta in grid.items():
-        for t, res in by_theta.items():
-            assert not res.step.empty, f"{label} theta {t}: empty step frame"
-    _save_figure(plot_cost_vs_theta_by_capacity(grid), "capacity_theta_cost.png")
-    assert not capacity_theta_summary(grid).empty, "capacity summary empty"
-
-    # Raw (W=1) vs smoothed (W=25) advisory at the throttled scale.
-    variants = {
-        "stale (W=1)": run_experiment(
-            base.with_bypass_capacity_scale(0.25).with_theta(1.0)
-            .with_advisory_smoothing(1)),
-        "smoothed (W=25)": run_experiment(
-            base.with_bypass_capacity_scale(0.25).with_theta(1.0)
-            .with_advisory_smoothing(25)),
-    }
-    _save_figure(plot_sweep_metrics(variants), "capacity_advisory.png")
-
-
-def smoke_theta_grid() -> None:
-    """Experiment 2 extension: steady-state cost over (theta x controller).
-    A small 2x2 grid exercises the heatmap end-to-end."""
-    grid = {}
-    for cname, spec in (("fixed_time", FixedTimeControllerSpec()),
-                        ("aif", AIFControllerSpec())):
-        grid[cname] = {}
-        for theta in (0.0, 1.0):
-            grid[cname][theta] = run_experiment(
-                _small_params(spec).with_theta(theta)
-            )
-    _save_figure(plot_controller_theta_grid(grid), "theta_controller_grid.png")
-    _save_figure(plot_theta_summary(grid, n_last=3), "theta_summary.png")
-    _save_figure(plot_theta_route_choice(grid, n_last=3), "theta_route_choice.png")
-
-
 def smoke_learn_obs_noise() -> None:
     """Variational observation-noise learning on both layers (controller per
     movement, travellers per agent). Exercises the VB path end-to-end and checks
@@ -330,26 +261,20 @@ def smoke_controls() -> None:
     from aif_traffic import notebook_controls as nc
 
     panels = {
-        "exp1": ["days", "warmup", "seed", "control_interval", "demand_scale",
-                 "traveller_window", "controller_window", "learn_noise",
-                 "stationary", "noise_regime", "theta", "compliance", "gamma",
-                 "omega", "sigma_pref", "phi_grid"],
+        "exp1": ["days", "warmup", "seed", "time_step", "control_interval",
+                 "demand_scale", "bypass_capacity_scale", "traveller_window",
+                 "controller_window", "learn_noise", "stationary", "noise_regime",
+                 "gamma", "omega", "sigma_pref", "phi_grid"],
         "exp2": ["days", "warmup", "seed", "control_interval", "demand_scale",
-                 "traveller_window", "controller_window", "learn_noise",
-                 "stationary", "noise_regime", "theta", "compliance", "gamma",
+                 "bypass_capacity_scale", "traveller_window", "controller_window",
+                 "learn_noise", "stationary", "noise_regime", "gamma",
                  "omega", "sigma_pref", "phi_grid", "k_L"],
         "exp3": ["days", "warmup", "seed", "control_interval", "demand_scale",
                  "traveller_window", "controller_window", "learn_noise",
                  "stationary", "noise_regime", "compliance"],
-        "exp4": ["days", "warmup", "seed", "time_step", "control_interval",
-                 "demand_scale", "bypass_capacity_scale", "traveller_window",
-                 "controller_window", "learn_noise", "stationary",
-                 "noise_regime", "advisory_smoothing"],
         "exp5": ["days", "warmup", "seed", "time_step", "control_interval",
                  "traveller_window", "controller_window", "learn_noise",
-                 "stationary", "noise_regime", "signal_mechanism",
-                 "sequential_increments", "sequential_seed",
-                 "advisory_smoothing"],
+                 "stationary", "noise_regime"],
     }
     import marimo as mo
 
@@ -361,10 +286,9 @@ def smoke_controls() -> None:
 
 def smoke_robustness() -> None:
     """Experiment 5: robustness to traffic demand. Re-run the coupled AIF system
-    (sequential-from-belief advisory, full compliance) at a few peak-demand
-    scales and render the within-day and across-day demand overlays."""
-    base = (_small_params(AIFControllerSpec(), SignalType.EXTERNALITY_SEQUENTIAL)
-            .with_sequential_seed("belief").with_compliance(1.0))
+    at a few peak-demand scales and render the within-day and across-day demand
+    overlays."""
+    base = _small_params(AIFControllerSpec())
     by_demand = {}
     for s in (0.8, 1.0, 1.2):
         demand = replace(DemandParams(),
@@ -390,12 +314,9 @@ def main() -> int:
         "mechanism": smoke_mechanism,
         "tables": smoke_tables,
         "stationary": smoke_stationary,
-        "communication": smoke_communication,
         "extra_observations": smoke_extra_observations,
         "belief_communication": smoke_belief_communication,
-        "capacity_sensitivity": smoke_capacity_sensitivity,
         "robustness": smoke_robustness,
-        "theta_grid": smoke_theta_grid,
         "learn_obs_noise": smoke_learn_obs_noise,
         "controls": smoke_controls,
     }
