@@ -22,7 +22,7 @@ from .palette import (
     comm_linestyle,
     sweep_linestyle,
 )
-from .primitives import light_borders, text_w
+from .primitives import light_borders, panel_label, text_w
 from .style import active_style
 
 
@@ -278,8 +278,9 @@ def plot_belief_sd_sweep(results_by_label: Mapping[str, object]):
     # two stacked full-width strips (paper Figure 6 redesign). Each panel has
     # its own "day" axis since they sit next to one another.
     fig, axes = plt.subplots(
-        1, len(panels), figsize=(text_w(), text_w() * 0.42),
+        1, len(panels), figsize=(text_w(), text_w() * 0.44),
     )
+    # Slightly enlarged fonts (Xue's review: the panel read a little flat).
     for ax, (ylabel, fn) in zip(axes, panels):
         for (label, res), colour, ls in zip(items, colours, styles):
             s = fn(res)
@@ -288,14 +289,103 @@ def plot_belief_sd_sweep(results_by_label: Mapping[str, object]):
             ax.plot(s.index.to_numpy(), s.to_numpy(),
                     color=colour, linewidth=lw, linestyle=ls,
                     label=_sweep_label(label))
-        ax.set_ylabel(ylabel)
-        ax.set_xlabel("day")
+        ax.set_ylabel(ylabel, fontsize=9)
+        ax.set_xlabel("day", fontsize=9)
+        ax.tick_params(labelsize=8)
         ax.grid(alpha=0.25)
+    panel_label(axes[0], "a")
+    panel_label(axes[1], "b")
     light_borders(axes)
 
+    # Legend inside the belief-uncertainty panel (Xue's review: moved off the
+    # top strip and into the figure). Both panels share the same variants, so a
+    # single legend suffices; the SD curves decay over days, leaving the upper
+    # area of the panel clear.
     handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(handles=handles, labels=labels, loc="upper center",
-               ncol=_legend_ncol(items), frameon=False,
-               bbox_to_anchor=(0.5, 1.05), fontsize=7.5)
-    fig.tight_layout(rect=(0, 0, 1, 0.90))
+    axes[0].legend(handles=handles, labels=labels, loc="upper right",
+                   ncol=1, frameon=True, framealpha=0.85, edgecolor="#cccccc",
+                   fontsize=8, handlelength=1.8, borderpad=0.4, labelspacing=0.3)
+    fig.tight_layout()
+    return fig
+
+
+def plot_communication_cost(results_by_label: Mapping[str, object],
+                            *, n_last: int = 30):
+    """Total system cost per information-communication setting: trend + summary.
+
+    Two panels, so the day-to-day behaviour and the steady-state numbers sit
+    side by side (the paper's Figure 8, replacing the placeholder bar chart):
+
+    * (a) the daily total system cost over the learning horizon, one line per
+      setting (BL/CG/SN/CG+SN, palette colours + dash patterns); the
+      steady-state window (the last ``n_last`` days that the summary averages) is
+      shaded.
+    * (b) a bar chart of the post-convergence mean daily cost per setting with a
+      +/- 1 SD error bar, the mean and SD annotated on each bar; a dashed
+      reference line marks the baseline (BL) mean so the settings that beat it
+      (SN) and those that do not (CG) read at a glance.
+
+    ``results_by_label`` is an ordered mapping ``{setting: ExperimentResult}``.
+    """
+    items = list(results_by_label.items())
+    labels = [str(lab) for lab, _ in items]
+    colours = _colours_for_labels(labels)
+    styles = _linestyles_for_labels(labels)
+    lw = active_style().line_main
+
+    fig, (ax_t, ax_b) = plt.subplots(1, 2, figsize=(text_w(), text_w() * 0.42))
+
+    # (a) daily cost trend, with the steady-state window shaded.
+    last_day = first_day = None
+    for (label, res), colour, ls in zip(items, colours, styles):
+        cost = _daily_cost(res.step)
+        ax_t.plot(cost.index.to_numpy(), cost.to_numpy(), color=colour,
+                  linewidth=lw, linestyle=ls, label=str(label))
+        d_max, d_min = float(cost.index.max()), float(cost.index.min())
+        last_day = d_max if last_day is None else max(last_day, d_max)
+        first_day = d_min if first_day is None else min(first_day, d_min)
+    if last_day is not None:
+        # Clamp the window to the data so a short run does not extend the axis.
+        span0 = max(first_day, last_day - n_last + 1)
+        ax_t.axvspan(span0, last_day, color="0.5", alpha=0.10,
+                     linewidth=0, zorder=0)
+    ax_t.set_xlabel("day")
+    ax_t.set_ylabel("system cost [veh-min]")
+    ax_t.grid(alpha=0.25)
+    ax_t.legend(loc="upper right", frameon=True, framealpha=0.85,
+                edgecolor="#cccccc", fontsize=7.5, ncol=1, handlelength=1.8,
+                borderpad=0.4, labelspacing=0.3)
+    panel_label(ax_t, "a")
+
+    # (b) post-convergence mean +/- 1 SD per setting.
+    means, sds = [], []
+    for _label, res in items:
+        sc = _daily_cost(res.step).iloc[-int(n_last):]
+        means.append(float(sc.mean()))
+        sds.append(float(sc.std()))
+    x = np.arange(len(items))
+    ax_b.bar(x, means, yerr=sds, color=colours, edgecolor="#333333",
+             linewidth=0.5, width=0.66, capsize=3,
+             error_kw=dict(elinewidth=0.9, ecolor="#333333"))
+    # Baseline reference so "beats / does not beat BL" reads directly.
+    if "BL" in labels:
+        bl_mean = means[labels.index("BL")]
+        ax_b.axhline(bl_mean, color="0.35", linewidth=0.8, linestyle="--",
+                     zorder=1)
+        ax_b.annotate("BL mean", (len(items) - 0.5, bl_mean), ha="right",
+                      va="bottom", fontsize=6.5, color="0.35",
+                      xytext=(0, 1), textcoords="offset points")
+    ax_b.set_xticks(x)
+    ax_b.set_xticklabels(labels)
+    ax_b.set_ylabel("steady-state cost [veh-min]")
+    ax_b.grid(alpha=0.25, axis="y")
+    top = max(m + s for m, s in zip(means, sds)) if means else 1.0
+    ax_b.set_ylim(0, top * 1.20)
+    for xi, m, s in zip(x, means, sds):
+        ax_b.annotate(f"{m:,.0f}\n(±{s:,.0f})", (xi, m + s), ha="center",
+                      va="bottom", fontsize=6.6, xytext=(0, 2),
+                      textcoords="offset points")
+    panel_label(ax_b, "b")
+
+    fig.tight_layout()
     return fig

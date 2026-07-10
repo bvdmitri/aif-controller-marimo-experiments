@@ -17,7 +17,7 @@ from matplotlib.lines import Line2D
 
 from .beliefs import _seed_slice
 from .comparison import _daily_cost
-from .primitives import light_borders, text_w
+from .primitives import light_borders, panel_label, text_w
 from .style import active_style
 
 
@@ -64,13 +64,15 @@ def plot_within_day_by_demand(
         ax.set_xlabel("time of day [min]")
         ax.grid(alpha=0.25)
     axes[2].set_ylim(0, 1)
+    for ax, tag in zip(axes, ("a", "b", "c")):
+        panel_label(ax, tag)
     light_borders(axgrid)
 
     handles, labels = axes[0].get_legend_handles_labels()
     fig.legend(handles=handles, labels=labels, loc="upper center",
                ncol=max(len(labels), 1), frameon=False,
-               bbox_to_anchor=(0.5, 1.05), fontsize=7.5)
-    fig.tight_layout(rect=(0, 0, 1, 0.90))
+               bbox_to_anchor=(0.5, 1.02), fontsize=7.5)
+    fig.tight_layout(rect=(0, 0, 1, 0.93))
     return fig
 
 
@@ -137,6 +139,8 @@ def plot_across_day_by_demand(results_by_scale: Mapping[str, object]):
     for ax in (ax_pa, ax_phi, ax_cost):
         ax.set_xlabel("day")
         ax.grid(alpha=0.25)
+    for ax, tag in zip((ax_pa, ax_phi, ax_cost), ("a", "b", "c")):
+        panel_label(ax, tag)
     light_borders([ax_pa, ax_phi, ax_cost])
 
     handles, _labels = ax_pa.get_legend_handles_labels()
@@ -149,6 +153,6 @@ def plot_across_day_by_demand(results_by_scale: Mapping[str, object]):
     labels = [h.get_label() for h in handles]
     fig.legend(handles=handles, labels=labels, loc="upper center",
                ncol=min(len(handles), 6), frameon=False,
-               bbox_to_anchor=(0.5, 1.06), fontsize=7)
-    fig.tight_layout(rect=(0, 0, 1, 0.88))
+               bbox_to_anchor=(0.5, 1.03), fontsize=7)
+    fig.tight_layout(rect=(0, 0, 1, 0.92))
     return fig

@@ -49,6 +49,14 @@ _ROUTE_COLOURS_MARIMO: dict[str, str] = {
     "gamma": "tab:orange",  # exogenous C--D stream (traverses signalised L6)
 }
 
+# --- controller signal (green split phi_2) ----------------------------------
+# The controller's *action* line (the realised / believed green split phi_2)
+# drawn in the coupled within-day figures. Kept out of the route palette (it is
+# not a traveller route) but served through the same override seam so the paper
+# style can give it a distinct vivid hue instead of the on-screen grey. Keyed
+# ``"phi2"`` under the ``"signal"`` override kind.
+_SIGNAL_COLOUR_MARIMO: str = "0.25"   # dark grey on screen
+
 # --- information-communication settings (Experiment 3) ----------------------
 COMM_ORDER: tuple[str, ...] = ("BL", "CG", "SN", "CG+SN")
 COMM_LABELS: dict[str, str] = {
@@ -127,6 +135,16 @@ def controller_label(name: str, *, abbr: bool = False) -> str:
 
 def route_colour(name: str) -> str:
     return _override("route").get(name, _ROUTE_COLOURS_MARIMO.get(name, "k"))
+
+
+def signal_colour() -> str:
+    """Colour of the controller's green-split ``phi_2`` line (realised / plan).
+
+    Not a traveller route, so it lives outside the route palette; served through
+    the style override seam (``"signal"`` kind, key ``"phi2"``) so the paper
+    style can render it as a distinct vivid hue rather than the on-screen grey.
+    """
+    return _override("signal").get("phi2", _SIGNAL_COLOUR_MARIMO)
 
 
 def comm_colour(name: str) -> str:

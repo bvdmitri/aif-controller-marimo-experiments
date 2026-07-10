@@ -552,6 +552,21 @@ CHART_GUIDE: dict[str, dict] = {
         "information should sharpen the controller's total-travel-time belief "
         "(bottom); the direct value-of-information readout.",
     },
+    "plot_communication_cost": {
+        "title": "System cost by setting",
+        "slider": None,
+        "what": "Two panels for the four communication settings (BL/CG/SN/CG+SN, "
+        "palette colours + dash patterns): (a) the daily total system cost over "
+        "the run, with the steady-state window (the last days the summary "
+        "averages) shaded; (b) a bar chart of the post-convergence mean daily "
+        "cost per setting with a +/- 1 SD error bar, the mean and SD annotated on "
+        "each bar and a dashed line drawn at the baseline (BL) mean.",
+        "read": "Panel (a) shows how noisy or stable each setting's cost is day to "
+        "day; a flatter line is a steadier setting. In panel (b) a shorter bar is "
+        "a lower average cost and a shorter error bar is smaller day-to-day "
+        "variation; a bar below the dashed baseline line beats the baseline mean, "
+        "one above it does not.",
+    },
     "plot_within_day_communication": {
         "title": "Within-day realised vs belief by setting",
         "slider": "day",
@@ -851,6 +866,7 @@ NOTEBOOK_CHARTS: dict[str, tuple[str, ...]] = {
     "information_communication": (
         "plot_sweep_metrics",
         "plot_belief_sd_sweep",
+        "plot_communication_cost",
         "plot_within_day_by_setting",
         "plot_within_day_communication",
         "plot_day_overview_grid",

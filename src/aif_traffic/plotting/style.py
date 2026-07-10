@@ -121,10 +121,19 @@ _PAPER = StyleContext(
             "anticipatory": "#E69F00",  # orange
             "aif": "#009E73",           # bluish green
         },
+        # Vivid, higher-contrast route hues (Xue's review of Fig 5: the old
+        # blue/bluish-green pair read dark and low-contrast). Kept colourblind-
+        # and greyscale-legible: the only same-axes pair (flow alpha vs beta)
+        # separates as blue vs coral, backed by the solid/dashed linestyles.
         "route": {
-            "alpha": "#0072B2",   # blue (A--B intersection)
-            "beta": "#009E73",    # bluish green (A--B bypass)
-            "gamma": "#D55E00",   # vermillion (C--D)
+            "alpha": "#2D7DD2",   # blue (A--B intersection, L2)
+            "beta": "#F45B69",    # coral (A--B bypass)
+            "gamma": "#F9A620",   # amber (C--D, L6)
+        },
+        # Controller green-split phi_2 line (not a traveller route): a distinct
+        # vivid green instead of the on-screen grey.
+        "signal": {
+            "phi2": "#2BA84A",
         },
         "comm": {
             "BL": "#666666",      # grey (reference)

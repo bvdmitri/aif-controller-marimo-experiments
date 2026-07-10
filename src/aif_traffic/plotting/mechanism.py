@@ -24,7 +24,7 @@ from .beliefs import (
 )
 from .comparison import _daily_cost
 from .network import _edges
-from .palette import route_colour, route_linestyle
+from .palette import route_colour, route_linestyle, signal_colour
 from .primitives import (
     light_borders,
     panel_label,
@@ -67,6 +67,7 @@ def plot_coupled_within_day(
     lw = active_style().line_main
     has_plan = "phi2_plan" in day_step.columns and day_step["phi2_plan"].notna().any()
     c_alpha, c_beta = route_colour("alpha"), route_colour("beta")
+    c_phi = signal_colour()
     ls_alpha, ls_beta = route_linestyle("alpha"), route_linestyle("beta")
 
     ncols = max(len(picked), 1)
@@ -92,11 +93,11 @@ def plot_coupled_within_day(
                   linestyle=ls_beta)
         ax_q.set_title(f"day {int(d)}", fontsize=8)
         ax_q.grid(alpha=0.25)
-        ax_phi.plot(tau, dd["phi2"].to_numpy(), color="0.25", linewidth=lw,
+        ax_phi.plot(tau, dd["phi2"].to_numpy(), color=c_phi, linewidth=lw,
                     zorder=4)
         if has_plan and dd["phi2_plan"].notna().any():
             ax_phi.plot(tau, dd["phi2_plan"].to_numpy(), linestyle="none",
-                        marker="o", markersize=2.0, color="0.25", alpha=0.7,
+                        marker="o", markersize=2.0, color=c_phi, alpha=0.7,
                         zorder=2)
         ax_phi.set_ylim(0, 1)
         ax_phi.grid(alpha=0.25)
@@ -110,10 +111,10 @@ def plot_coupled_within_day(
                label=r"flow $\alpha$"),
         Line2D([0], [0], color=c_beta, lw=2, linestyle=ls_beta,
                label=r"flow $\beta$"),
-        Line2D([0], [0], color="0.25", lw=2, label=r"realised $\phi_2$"),
+        Line2D([0], [0], color=c_phi, lw=2, label=r"realised $\phi_2$"),
     ]
     if has_plan:
-        handles.append(Line2D([0], [0], color="0.25", linestyle="none",
+        handles.append(Line2D([0], [0], color=c_phi, linestyle="none",
                               marker="o", markersize=3.5, label=r"believed $\phi_2$"))
     fig.legend(handles=handles, loc="upper center", bbox_to_anchor=(0.5, 1.0),
                ncol=len(handles), frameon=False, fontsize=7, columnspacing=1.4)
@@ -152,9 +153,13 @@ def plot_within_day_profile(
     dd = day_step[day_step["day"] == d].sort_values("tau")
     tau = dd["tau"].to_numpy(dtype=float)
     dt_min = int(params.sim.dt_min)
-    lw = active_style().line_main
+    # Heavier weight for the main realised series so the (brighter) lines carry
+    # the panel; the belief overlays stay a touch lighter to read as reference.
+    lw = active_style().line_main + 0.4
+    lw_ref = active_style().line_main
     c_alpha, c_beta, c_gamma = (route_colour("alpha"), route_colour("beta"),
                                 route_colour("gamma"))
+    c_phi = signal_colour()
     ls_alpha, ls_beta = route_linestyle("alpha"), route_linestyle("beta")
 
     fig, axes = plt.subplots(2, 3, figsize=(text_w(), text_w() * 0.58))
@@ -167,23 +172,25 @@ def plot_within_day_profile(
                  linestyle=ls_beta)
     ax_flow.set_ylabel("route flow [veh/h]")
     has_plan = "phi2_plan" in dd.columns and dd["phi2_plan"].notna().any()
-    ax_phi.plot(tau, dd["phi2"].to_numpy(), color="0.25", linewidth=lw, zorder=4)
+    ax_phi.plot(tau, dd["phi2"].to_numpy(), color=c_phi, linewidth=lw, zorder=4)
     if has_plan:
         ax_phi.plot(tau, dd["phi2_plan"].to_numpy(), linestyle="none", marker="o",
-                    markersize=2.0, color="0.25", alpha=0.7, zorder=2)
+                    markersize=2.4, color=c_phi, alpha=0.75, zorder=2)
     ax_phi.set_ylim(0, 1)
     ax_phi.set_ylabel(r"green split $\phi_2$")
-    handles_a = [
+    # Column (a) carries two panels (flows / green split), so each gets its own
+    # in-panel legend rather than one shared strip.
+    handles_flow = [
         Line2D([0], [0], color=c_alpha, lw=lw, linestyle=ls_alpha,
                label=r"flow $\alpha$"),
         Line2D([0], [0], color=c_beta, lw=lw, linestyle=ls_beta,
                label=r"flow $\beta$"),
-        Line2D([0], [0], color="0.25", lw=lw, label=r"realised $\phi_2$"),
     ]
+    handles_phi = [Line2D([0], [0], color=c_phi, lw=lw, label=r"realised $\phi_2$")]
     if has_plan:
-        handles_a.append(Line2D([0], [0], color="0.25", linestyle="none",
-                                marker="o", markersize=3.5,
-                                label=r"believed $\phi_2$"))
+        handles_phi.append(Line2D([0], [0], color=c_phi, linestyle="none",
+                                  marker="o", markersize=3.5,
+                                  label=r"believed $\phi_2$"))
 
     # -- column (b): believed (dots) vs realised (line) travel time.
     snap = (snapshots or {}).get((sample_seed, d))
@@ -194,7 +201,7 @@ def plot_within_day_profile(
                                   values=_ROUTE_TT[r], aggfunc="mean")
         taub = rz.columns.to_numpy(dtype=float)
         axb.plot(taub, rz.loc[d].to_numpy(), color=route_colour(r),
-                 linewidth=0.95, alpha=0.8, zorder=4)
+                 linewidth=lw_ref, alpha=0.9, zorder=4)
         if prof is not None:
             axb.plot(prof.index.to_numpy(), prof[_ROUTE_MU[r]].to_numpy(),
                      linestyle="none", marker="o", markersize=1.6,
@@ -213,8 +220,8 @@ def plot_within_day_profile(
         ("L6", c_gamma, "L6_belief_mu", "L6_belief_sd", r"$L_6$"),
     ]):
         axc = axes[row][2]
-        axc.plot(tau, dd[col].to_numpy(), color=colour, linewidth=0.95,
-                 alpha=0.8, zorder=4)
+        axc.plot(tau, dd[col].to_numpy(), color=colour, linewidth=lw_ref,
+                 alpha=0.9, zorder=4)
         if has_ctrl and bmu in dd.columns:
             mu = dd[bmu].to_numpy()
             sdv = dd[bsd].to_numpy()
@@ -237,15 +244,17 @@ def plot_within_day_profile(
     panel_label(axes[0][1], "b")
     panel_label(axes[0][2], "c")
     light_borders(axes)
-    # Compact per-column legend above each column's top panel (they describe
-    # different things, so one shared legend would be misleading).
-    for cc, handles, ncol in ((0, handles_a, 2), (1, handles_b, 2),
-                              (2, handles_c, 1)):
-        axes[0][cc].legend(handles=handles, loc="lower center",
-                           bbox_to_anchor=(0.5, 1.02), ncol=ncol, frameon=False,
-                           fontsize=6.5, columnspacing=1.0, handlelength=1.6,
-                           handletextpad=0.4)
-    fig.tight_layout(rect=(0, 0, 1, 0.99))
+    # Legends live *inside* their panels (Xue's review) with a light translucent
+    # frame so they sit over the data without hiding it. Placement is per-panel:
+    # the panel label occupies the top-left corner, so legends avoid it.
+    leg_kw = dict(frameon=True, framealpha=0.82, edgecolor="#cccccc",
+                  fontsize=6.5, handlelength=1.6, handletextpad=0.4,
+                  borderpad=0.35, labelspacing=0.25)
+    ax_flow.legend(handles=handles_flow, loc="upper right", **leg_kw)
+    ax_phi.legend(handles=handles_phi, loc="upper right", **leg_kw)
+    axes[0][1].legend(handles=handles_b, loc="upper right", **leg_kw)
+    axes[0][2].legend(handles=handles_c, loc="upper right", **leg_kw)
+    fig.tight_layout()
     return fig
 
 
@@ -257,11 +266,11 @@ def plot_co_adaptation(
 ):
     """Day-to-day co-adaptation of route choice, signal control, and cost.
 
-    A compact grid grouped as the paper's (a)-(b):
+    A compact grid grouped as the paper's (a)-(c):
 
-    * (a) side-by-side heatmaps of the intersection share ``P_alpha(d, t)`` and
-      the green split ``phi_2(d, t)`` over (day x time-of-day);
-    * (b) total system cost (full width), with the **controller's cost-belief
+    * (a) heatmap of the intersection share ``P_alpha(d, t)`` and (b) heatmap of
+      the green split ``phi_2(d, t)``, both over (day x time-of-day);
+    * (c) total system cost (full width), with the **controller's cost-belief
       SD** (red dashed, right axis) overlaid when ``controller_df`` records it, so
       the controller's shrinking uncertainty can be read against the settling
       cost.
@@ -311,6 +320,7 @@ def plot_co_adaptation(
     ax_pa.set_xlabel("day")
     ax_ph.set_xlabel("day")
     panel_label(ax_pa, "a")
+    panel_label(ax_ph, "b")
 
     ax = ax_cost
     handles = []
@@ -320,7 +330,7 @@ def plot_co_adaptation(
     ax.set_ylabel("system cost\n[veh-min]")
     ax.set_xlabel("day")
     ax.grid(alpha=0.25)
-    panel_label(ax, "b")
+    panel_label(ax, "c")
     ctrl = controller_df
     if ctrl is not None and "SC_belief_sd" in getattr(ctrl, "columns", []) \
             and ctrl["SC_belief_sd"].notna().any():

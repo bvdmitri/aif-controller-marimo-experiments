@@ -7,9 +7,7 @@ Rendered in the `paper` style at the notebook gold defaults (medium measurement 
 | `shifted_sine_demand_profiles.pdf` | Demand profile  (`plot_demand_profile`) |
 | `exp1_within_day_tt_vs_belief.pdf` | Within-day travel time: realised vs belief  (`plot_within_day_tt_vs_belief`) |
 | `exp1_coupled_within_day.pdf` | Coupled within-day: flow & green split  (`plot_coupled_within_day`) |
-| `within_day_profile_a.pdf` | Coupled within-day: flow & green split  (`plot_coupled_within_day`) |
-| `within_day_profile_b.pdf` | Within-day travel time: realised vs belief  (`plot_within_day_tt_vs_belief`) |
-| `within_day_profile_c.pdf` | Belief vs realised queue  (`plot_belief_reality_queues`) |
+| `within_day_profile.pdf` | plot_within_day_profile  (`plot_within_day_profile`) |
 | `across_day_profile.pdf` | Day-to-day co-adaptation  (`plot_co_adaptation`) |
 | `exp1_learning_uncertainty.pdf` | Learning uncertainty over days  (`plot_learning_uncertainty`) |
 | `exp1_signal_day.pdf` | Within-day queues & green split  (`plot_signal_day`) |
@@ -27,6 +25,7 @@ Rendered in the `paper` style at the notebook gold defaults (medium measurement 
 | `green_split_controllers.pdf` | Green split by controller  (`plot_green_split_heatmaps_by_controller`) |
 | `exp2_learned_obs_noise.pdf` | Learned observation noise  (`plot_learned_obs_noise`) |
 | `belief_sd_communication.pdf` | Belief uncertainty by setting  (`plot_belief_sd_sweep`) |
+| `communication_cost.pdf` | System cost by setting  (`plot_communication_cost`) |
 | `exp3_within_day_by_setting.pdf` | Within-day belief vs reality by setting  (`plot_within_day_by_setting`) |
 | `within_day_communication.pdf` | Within-day realised vs belief by setting  (`plot_within_day_communication`) |
 | `vary_observation_info_a.pdf` | Route-choice heatmaps  (`plot_route_choice_heatmaps`) |

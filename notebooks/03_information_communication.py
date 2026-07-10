@@ -85,6 +85,7 @@ def _():
         communication_summary_table,
         figure_placeholder,
         plot_belief_sd_sweep,
+        plot_communication_cost,
         plot_day_overview_grid,
         plot_queue_belief_day,
         plot_route_choice_heatmaps,
@@ -111,6 +112,7 @@ def _():
         nc,
         notebook_explainer,
         plot_belief_sd_sweep,
+        plot_communication_cost,
         plot_day_overview_grid,
         plot_queue_belief_day,
         plot_route_choice_heatmaps,
@@ -319,6 +321,20 @@ def _(figure_block, figure_placeholder, plot_belief_sd_sweep,
         else plot_belief_sd_sweep(results_by_setting)
     )
     figure_block("plot_belief_sd_sweep", fig_belief_sd)
+    return
+
+
+@app.cell
+def _(figure_block, figure_placeholder, plot_communication_cost,
+      results_by_setting):
+    # Total system cost per setting: the daily trend plus post-convergence
+    # mean +/- SD bars (the paper's Figure 8, replacing the placeholder chart).
+    fig_comm_cost = (
+        figure_placeholder("System cost by setting")
+        if results_by_setting is None
+        else plot_communication_cost(results_by_setting)
+    )
+    figure_block("plot_communication_cost", fig_comm_cost)
     return
 
 

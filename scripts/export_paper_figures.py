@@ -220,9 +220,11 @@ def _build_registry(cfg: dict):
     }
     reg += [
         # fig:across-day-communication -- belief SD panels (traveller + controller).
-        # The noisy day-by-day system-cost chart is replaced by a table (below).
         ("belief_sd_communication", "plot_belief_sd_sweep",
          lambda: pl.plot_belief_sd_sweep(by_setting)),
+        # fig:communication-cost -- daily cost trend + post-convergence mean/SD bars.
+        ("communication_cost", "plot_communication_cost",
+         lambda: pl.plot_communication_cost(by_setting)),
         ("exp3_within_day_by_setting", "plot_within_day_by_setting",
          lambda: pl.plot_within_day_by_setting(by_setting, base3)),
         # fig:within-day-communication -- realised vs belief at the profile day.

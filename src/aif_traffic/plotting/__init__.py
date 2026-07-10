@@ -60,6 +60,7 @@ from .robustness import (
 from .style import active_style, apply_style
 from .sweep import (
     plot_belief_sd_sweep,
+    plot_communication_cost,
     plot_route_choice_heatmaps,
     plot_sweep_metrics,
 )
@@ -119,6 +120,7 @@ __all__ = [
     "animate_controller_comparison",
     "plot_sweep_metrics",
     "plot_belief_sd_sweep",
+    "plot_communication_cost",
     "plot_route_choice_heatmaps",
     "plot_within_day_tt_vs_belief",
     "plot_within_day_by_setting",
