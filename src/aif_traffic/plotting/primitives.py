@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import textwrap
+
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -21,7 +23,21 @@ TEXT_W_HALF = 3.3
 __all__ = [
     "TEXT_W", "TEXT_W_HALF", "text_w", "text_w_half", "within_day_profile_size",
     "figure_placeholder", "place_legend_above", "panel_label", "light_borders",
+    "wrap_label",
 ]
+
+
+def wrap_label(text: str, width: int = 22) -> str:
+    """Wrap a long ``Full name (ABBR)`` label onto two or three lines so it fits
+    above a narrow heatmap / small-multiple panel instead of overflowing.
+
+    Short labels are returned unchanged; only names longer than ``width``
+    characters break (on spaces) onto extra lines. Used for the per-panel titles
+    of the multi-column heatmap and per-controller / per-setting grids, which now
+    show the full controller / setting name (with its abbreviation in
+    parentheses) in place of the bare abbreviation.
+    """
+    return textwrap.fill(str(text), width=width)
 
 
 def within_day_profile_size() -> tuple[float, float]:

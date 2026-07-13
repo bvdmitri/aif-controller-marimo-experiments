@@ -42,6 +42,7 @@ from aif_traffic.parameters import (  # noqa: E402
     SimParams,
 )
 from aif_traffic import plotting as pl  # noqa: E402
+from aif_traffic.plotting.palette import comm_label  # noqa: E402
 from aif_traffic.simulator import run_experiment  # noqa: E402
 
 # --- experiment configuration ----------------------------------------------
@@ -231,14 +232,10 @@ def _build_registry(cfg: dict):
 
 
 def _comm_setting_label(key: str) -> str:
-    """Full setting name (with abbreviation) for a table row, matching the
-    paper's BL/CG/SN/CG+SN wording."""
-    return {
-        "BL": "Baseline (BL)",
-        "CG": "Route congestion (CG)",
-        "SN": "Signal control (SN)",
-        "CG+SN": "Route cong. + signal (CG+SN)",
-    }.get(str(key), str(key))
+    """Full setting name (with abbreviation) for a table row, sharing the exact
+    wording the figure legends use (:func:`aif_traffic.plotting.palette.comm_label`)
+    so the table and the figures never diverge."""
+    return comm_label(str(key))
 
 
 def _df_to_booktabs(df, spec: dict) -> str:

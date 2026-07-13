@@ -16,7 +16,8 @@ from matplotlib.animation import FuncAnimation, PillowWriter
 from matplotlib.colors import Normalize
 
 from .network import _network_color_scale, _render_network_axes
-from .primitives import place_legend_above, text_w
+from .palette import controller_label
+from .primitives import place_legend_above, text_w, wrap_label
 
 
 def animate_days(
@@ -242,7 +243,8 @@ def animate_controller_comparison(
             ax_q.plot(d["tau"], d["L2"], color="tab:blue", lw=1.0)
             ax_q.plot(d["tau"], d["L6"], color="tab:orange", lw=1.0)
             ax_q.set_ylim(0, q_max)
-            ax_q.set_title(name, fontsize=7.5)
+            # Full controller name with abbreviation, not the raw snake_case key.
+            ax_q.set_title(wrap_label(controller_label(name)), fontsize=7.5)
             ax_phi.plot(d["tau"], d["phi2"], color="tab:blue", lw=1.0)
             ax_phi.plot(d["tau"], d["phi6"], color="tab:orange", lw=1.0)
             ax_phi.set_ylim(0, phi_max * 1.05)

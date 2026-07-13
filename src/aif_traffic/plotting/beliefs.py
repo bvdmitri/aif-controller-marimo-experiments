@@ -228,7 +228,7 @@ def plot_within_day_by_setting(
                 ax.plot(prof.index.to_numpy(), prof[mu_col].to_numpy(),
                         linestyle="none", marker="o", markersize=1.6,
                         color=cmap(shade[k]), alpha=0.6, zorder=2)
-        ax.set_title(str(label), fontsize=8)
+        ax.set_title(comm_label(str(label)), fontsize=8)
         ax.grid(alpha=0.25)
     for ax in axes[n:]:
         ax.set_visible(False)

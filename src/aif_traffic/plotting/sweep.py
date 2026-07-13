@@ -21,7 +21,7 @@ from .palette import (
     comm_linestyle,
     sweep_linestyle,
 )
-from .primitives import light_borders, panel_label, text_w
+from .primitives import light_borders, panel_label, text_w, wrap_label
 from .style import active_style
 
 
@@ -217,9 +217,9 @@ def plot_route_choice_heatmaps(
         days = hm.columns.to_numpy(dtype=float)
         im = ax.pcolormesh(_edges(days), _edges(taus), hm.values,
                            cmap="magma", vmin=vmin, vmax=vmax, shading="flat")
-        # Short abbreviation titles (BL/CG/SN/CG+SN) so adjacent columns do not
-        # overlap the way the full setting names did.
-        ax.set_title(str(label), fontsize=8)
+        # Full setting name with the abbreviation in parentheses, wrapped onto
+        # two lines for the long CG+SN name so adjacent columns do not overlap.
+        ax.set_title(wrap_label(comm_label(str(label))), fontsize=8)
         ax.set_xlabel("day")
     axes[0].set_ylabel("time of day [min]")
     label_txt = {
@@ -296,15 +296,15 @@ def plot_belief_sd_sweep(results_by_label: Mapping[str, object]):
     panel_label(axes[1], "b")
     light_borders(axes)
 
-    # Legend inside the belief-uncertainty panel (Xue's review: moved off the
-    # top strip and into the figure). Both panels share the same variants, so a
-    # single legend suffices; the SD curves decay over days, leaving the upper
-    # area of the panel clear.
+    # Shared legend outside, above both panels (Xue's review: (a) and (b) use
+    # the same variants, so one legend above the pair replaces the former
+    # in-panel legend). Two columns keep the full communication names from
+    # overflowing the figure width.
     handles, labels = axes[0].get_legend_handles_labels()
-    axes[0].legend(handles=handles, labels=labels, loc="upper right",
-                   ncol=1, frameon=True, framealpha=0.85, edgecolor="#cccccc",
-                   fontsize=8, handlelength=1.8, borderpad=0.4, labelspacing=0.3)
-    fig.tight_layout()
+    fig.legend(handles=handles, labels=labels, loc="upper center",
+               ncol=_legend_ncol(items), frameon=False,
+               bbox_to_anchor=(0.5, 1.02), fontsize=7.5)
+    fig.tight_layout(rect=(0, 0, 1, 0.87))
     return fig
 
 
@@ -339,7 +339,7 @@ def plot_communication_cost(results_by_label: Mapping[str, object],
     for (label, res), colour, ls in zip(items, colours, styles):
         cost = _daily_cost(res.step)
         ax_t.plot(cost.index.to_numpy(), cost.to_numpy(), color=colour,
-                  linewidth=lw, linestyle=ls, label=str(label))
+                  linewidth=lw, linestyle=ls, label=_sweep_label(label))
         d_max, d_min = float(cost.index.max()), float(cost.index.min())
         last_day = d_max if last_day is None else max(last_day, d_max)
         first_day = d_min if first_day is None else min(first_day, d_min)
@@ -351,9 +351,6 @@ def plot_communication_cost(results_by_label: Mapping[str, object],
     ax_t.set_xlabel("day")
     ax_t.set_ylabel("system cost [veh-min]")
     ax_t.grid(alpha=0.25)
-    ax_t.legend(loc="upper right", frameon=True, framealpha=0.85,
-                edgecolor="#cccccc", fontsize=7.5, ncol=1, handlelength=1.8,
-                borderpad=0.4, labelspacing=0.3)
     panel_label(ax_t, "a")
 
     # (b) post-convergence mean +/- 1 SD per setting.
@@ -386,5 +383,12 @@ def plot_communication_cost(results_by_label: Mapping[str, object],
                       textcoords="offset points")
     panel_label(ax_b, "b")
 
-    fig.tight_layout()
+    # Shared legend outside, above both panels, with the full communication
+    # names (abbreviation in parentheses). Panel (b)'s x-axis keeps the short
+    # abbreviations, so the legend is the only place the names are spelled out.
+    handles, labels = ax_t.get_legend_handles_labels()
+    fig.legend(handles=handles, labels=labels, loc="upper center",
+               ncol=_legend_ncol(items), frameon=False,
+               bbox_to_anchor=(0.5, 1.02), fontsize=7.5)
+    fig.tight_layout(rect=(0, 0, 1, 0.87))
     return fig
