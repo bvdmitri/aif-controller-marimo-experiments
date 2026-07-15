@@ -21,7 +21,7 @@ from .palette import (
     comm_linestyle,
     sweep_linestyle,
 )
-from .primitives import light_borders, panel_label, text_w, wrap_label
+from .primitives import light_borders, panel_label, text_w
 from .style import active_style
 
 
@@ -217,9 +217,9 @@ def plot_route_choice_heatmaps(
         days = hm.columns.to_numpy(dtype=float)
         im = ax.pcolormesh(_edges(days), _edges(taus), hm.values,
                            cmap="magma", vmin=vmin, vmax=vmax, shading="flat")
-        # Full setting name with the abbreviation in parentheses, wrapped onto
-        # two lines for the long CG+SN name so adjacent columns do not overlap.
-        ax.set_title(wrap_label(comm_label(str(label))), fontsize=8)
+        # Abbreviation-only titles (BL/CG/SN/CG+SN): the paper caption carries
+        # the expansions, and the narrow heatmap columns cannot fit full names.
+        ax.set_title(str(label), fontsize=8)
         ax.set_xlabel("day")
     axes[0].set_ylabel("time of day [min]")
     label_txt = {

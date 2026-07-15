@@ -25,7 +25,7 @@ from .palette import (
     route_colour,
     route_linestyle,
 )
-from .primitives import light_borders, panel_label, text_w, wrap_label
+from .primitives import light_borders, panel_label, text_w
 from .style import active_style
 
 
@@ -201,9 +201,9 @@ def plot_within_day_queue_by_controller(
         for col, colour, ls, _lab in specs:
             ax.plot(tau, dd[col].to_numpy(), color=colour, linewidth=lw,
                     linestyle=ls)
-        # Full controller name with its abbreviation in parentheses (wrapped for
-        # the longer names so the per-controller columns do not overlap).
-        ax.set_title(wrap_label(controller_label(name)), fontsize=8)
+        # Abbreviation-only titles (FT/RF/AC/AIF): the paper caption carries the
+        # expansions, and the narrow per-controller columns cannot fit full names.
+        ax.set_title(controller_label(name, abbr=True), fontsize=8)
         ax.set_xlabel("time of day [min]")
         ax.grid(alpha=0.25)
     axes[0].set_ylabel("queue [veh]")
@@ -248,9 +248,9 @@ def plot_green_split_heatmaps_by_controller(
         days = hm.columns.to_numpy(dtype=float)
         im = ax.pcolormesh(_edges(days), _edges(taus), hm.values,
                            cmap="viridis", vmin=vmin, vmax=vmax, shading="flat")
-        # Full controller name with its abbreviation in parentheses (wrapped for
-        # the longer names so the heatmap columns do not overlap).
-        ax.set_title(wrap_label(controller_label(name)), fontsize=8)
+        # Abbreviation-only titles (FT/RF/AC/AIF): the paper caption carries the
+        # expansions, and the narrow heatmap columns cannot fit full names.
+        ax.set_title(controller_label(name, abbr=True), fontsize=8)
         ax.set_xlabel("day")
     axes[0].set_ylabel("time of day [min]")
     label = {"phi2": r"green split $\phi_2$", "L2": r"queue $L_2$",
