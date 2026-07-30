@@ -247,7 +247,9 @@ def plot_green_split_heatmaps_by_controller(
         taus = hm.index.to_numpy(dtype=float)
         days = hm.columns.to_numpy(dtype=float)
         im = ax.pcolormesh(_edges(days), _edges(taus), hm.values,
-                           cmap="viridis", vmin=vmin, vmax=vmax, shading="flat")
+                           cmap="viridis", vmin=vmin, vmax=vmax, shading="flat",
+                           edgecolors="face", linewidth=0.0,
+                           rasterized=True)
         # Abbreviation-only titles (FT/RF/AC/AIF): the paper caption carries the
         # expansions, and the narrow heatmap columns cannot fit full names.
         ax.set_title(controller_label(name, abbr=True), fontsize=8)

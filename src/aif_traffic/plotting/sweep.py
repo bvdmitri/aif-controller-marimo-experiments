@@ -216,7 +216,9 @@ def plot_route_choice_heatmaps(
         taus = hm.index.to_numpy(dtype=float)
         days = hm.columns.to_numpy(dtype=float)
         im = ax.pcolormesh(_edges(days), _edges(taus), hm.values,
-                           cmap="magma", vmin=vmin, vmax=vmax, shading="flat")
+                           cmap="magma", vmin=vmin, vmax=vmax, shading="flat",
+                           edgecolors="face", linewidth=0.0,
+                           rasterized=True)
         # Abbreviation-only titles (BL/CG/SN/CG+SN): the paper caption carries
         # the expansions, and the narrow heatmap columns cannot fit full names.
         ax.set_title(str(label), fontsize=8)
@@ -271,7 +273,7 @@ def plot_belief_sd_sweep(results_by_label: Mapping[str, object]):
 
     panels = [
         (r"traveller SD on $TT_\alpha$ [min]", _trav_alpha_sd),
-        (r"controller SD on $TT^{tot}$ [veh-min]", _ctrl_tot_sd),
+        (r"controller SD on queue delay [veh-min]", _ctrl_tot_sd),
     ]
     # Side-by-side (1x2) so the two SD panels are roughly square rather than
     # two stacked full-width strips (paper Figure 6 redesign). Each panel has
@@ -368,9 +370,6 @@ def plot_communication_cost(results_by_label: Mapping[str, object],
         bl_mean = means[labels.index("BL")]
         ax_b.axhline(bl_mean, color="0.35", linewidth=0.8, linestyle="--",
                      zorder=1)
-        ax_b.annotate("BL mean", (len(items) - 0.5, bl_mean), ha="right",
-                      va="bottom", fontsize=6.5, color="0.35",
-                      xytext=(0, 1), textcoords="offset points")
     ax_b.set_xticks(x)
     ax_b.set_xticklabels(labels)
     ax_b.set_ylabel("steady-state cost [veh-min]")

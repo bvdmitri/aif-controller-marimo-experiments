@@ -131,7 +131,7 @@ def plot_across_day_by_demand(results_by_scale: Mapping[str, object]):
                    color=colour, linewidth=1.0, linestyle="--")
         drew_sd = True
     if drew_sd:
-        ax_sd.set_ylabel("cost-belief SD [veh-min]", color="0.3")
+        ax_sd.set_ylabel("queue-delay belief SD [veh-min]", color="0.3")
         ax_sd.tick_params(axis="y", labelcolor="0.3")
     else:
         ax_sd.set_visible(False)
@@ -141,7 +141,9 @@ def plot_across_day_by_demand(results_by_scale: Mapping[str, object]):
         ax.grid(alpha=0.25)
     for ax, tag in zip((ax_pa, ax_phi, ax_cost), ("a", "b", "c")):
         panel_label(ax, tag)
-    light_borders([ax_pa, ax_phi, ax_cost])
+    # ax_sd is a twin of ax_cost; without it here its default heavy spines
+    # draw a black frame over panel (c) that panels (a)/(b) do not have.
+    light_borders([ax_pa, ax_phi, ax_cost] + ([ax_sd] if drew_sd else []))
 
     handles, _labels = ax_pa.get_legend_handles_labels()
     if drew_sd:

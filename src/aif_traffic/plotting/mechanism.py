@@ -298,10 +298,15 @@ def plot_co_adaptation(
     ax_cost = fig.add_subplot(gs[1, :], sharex=ax_pa)
 
     im0 = ax_pa.pcolormesh(_edges(days), _edges(taus), pa.values,
-                           cmap="magma", vmin=0.0, vmax=1.0, shading="flat")
+                           cmap="magma", vmin=0.0, vmax=1.0, shading="flat",
+                           edgecolors="face", linewidth=0.0,
+                           rasterized=True)
     ax_pa.set_ylabel("time of day")
     im1 = ax_ph.pcolormesh(_edges(days), _edges(taus), ph.values,
-                           cmap="viridis", vmin=0.0, vmax=1.0, shading="flat")
+                           cmap="viridis", vmin=float(ph.values.min()),
+                           vmax=float(ph.values.max()), shading="flat",
+                           edgecolors="face", linewidth=0.0,
+                           rasterized=True)
     # Colourbars sit on top of each heatmap and span its full width: an inset
     # axis pinned to the axes x-extent (axes-fraction coords) makes the bar
     # exactly the chart width, unlike fig.colorbar's auto-stolen strip.
@@ -340,8 +345,8 @@ def plot_co_adaptation(
         ax2 = ax.twinx()
         l_sd, = ax2.plot(ctrl["day"].to_numpy(), ctrl["SC_belief_sd"].to_numpy(),
                          color="tab:red", linewidth=1.2, linestyle="--",
-                         label="controller cost-belief SD")
-        ax2.set_ylabel("cost-belief SD\n[veh-min]", color="tab:red")
+                         label="controller queue-delay belief SD")
+        ax2.set_ylabel("queue-delay belief SD\n[veh-min]", color="tab:red")
         ax2.tick_params(axis="y", labelcolor="tab:red")
         handles.append(l_sd)
     ax.legend(handles=handles, labels=[h.get_label() for h in handles],
